@@ -1,3 +1,4 @@
+import Login from './components/Login';
 import { useState } from 'react';
 import StudentForm from './components/StudentForm';
 import AnalysisProgress from './components/AnalysisProgress';
@@ -6,6 +7,7 @@ import StudentList from './components/StudentList';
 import './App.css';
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem('ef_token'));
   const [view, setView] = useState('list');
   const [analysisData, setAnalysisData] = useState(null);
   const [progressSteps, setProgressSteps] = useState([]);
@@ -28,7 +30,7 @@ export default function App() {
 
       const pdfCount = Object.values(files).filter(Boolean).length;
 
-      const response = await fetch('http://localhost:3001/api/analyze', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`), {
         method: 'POST',
         body: formData,
       });
@@ -72,6 +74,9 @@ export default function App() {
     }
   };
 
+  if (!isLoggedIn) {
+  return <Login onLogin={() => setIsLoggedIn(true)} />;
+}
   return (
     <div className="app">
       <aside className="sidebar">
