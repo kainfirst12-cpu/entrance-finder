@@ -31,9 +31,9 @@ export default function App() {
       const pdfCount = Object.values(files).filter(Boolean).length;
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
-        method: 'POST',
-        body: formData,
-      });
+    method: 'POST',
+    body: formData,
+});
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
