@@ -30,7 +30,7 @@ export default function App() {
 
       const pdfCount = Object.values(files).filter(Boolean).length;
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`), {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
         method: 'POST',
         body: formData,
       });
