@@ -4,7 +4,7 @@ import multer from 'multer';
 import 'dotenv/config';
 import { loadKnowledgeBase, loadStudentFiles } from './services/driveService.js';
 import { runFullAnalysis } from './services/claudeService.js';
-
+import jwt from 'jsonwebtoken';
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -102,7 +102,15 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
 app.get('/api/students', async (req, res) => {
   res.json({ success: true, students: [] });
 });
-
+app.post('/api/login', (req, res) => {
+  const { password } = req.body;
+  if (password === process.env.APP_PASSWORD) {
+    const token = jwt.sign({ auth: true }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
+    res.json({ success: true, token });
+  } else {
+    res.json({ success: false });
+  }
+});
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`\n🚀 입시-Finder 서버 실행 중: http://localhost:${PORT}`);
