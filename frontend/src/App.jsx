@@ -1,3 +1,4 @@
+import Settings from './components/Settings';
 import Login from './components/Login';
 import { useState } from 'react';
 import StudentForm from './components/StudentForm';
@@ -12,6 +13,7 @@ export default function App() {
   const [analysisData, setAnalysisData] = useState(null);
   const [progressSteps, setProgressSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
+  const [apiKey, setApiKey] = useState(localStorage.getItem('ef_apikey') || '');
 
   const startAnalysis = async (studentData, files) => {
     setView('analyzing');
@@ -32,6 +34,7 @@ export default function App() {
 
       const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
     method: 'POST',
+    headers: { 'x-api-key': apiKey },
     body: formData,
 });
 
@@ -94,6 +97,9 @@ export default function App() {
           <button className={`nav-item ${['form','analyzing','result'].includes(view)?'active':''}`} onClick={()=>setView('form')}>
             <span>✨</span> 새 분석 시작
           </button>
+          <button className={`nav-item ${view==='settings'?'active':''}`} onClick={()=>setView('settings')}>
+  <span>⚙️</span> 설정
+</button>
         </nav>
         <div className="sidebar-footer">
           <div className="drive-status"><span className="status-dot green"></span><span>Drive 연결됨</span></div>
@@ -106,6 +112,7 @@ export default function App() {
         {view==='analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
         {view==='result' && analysisData && (
           <AnalysisResult data={analysisData} onBack={()=>setView('list')} onNewAnalysis={()=>setView('form')} />
+        {view==='settings' && <Settings apiKey={apiKey} onSave={(key) => { setApiKey(key); localStorage.setItem('ef_apikey', key); setView('list'); }} />}
         )}
       </main>
     </div>
