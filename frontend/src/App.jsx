@@ -76,7 +76,11 @@ export default function App() {
       setView('form');
     }
   };
-
+const handleApiKeySave = (key) => {
+  setApiKey(key);
+  localStorage.setItem('ef_apikey', key);
+  setView('list');
+};
   if (!isLoggedIn) {
   return <Login onLogin={() => setIsLoggedIn(true)} />;
 }
@@ -112,7 +116,7 @@ export default function App() {
         {view==='analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
         {view==='result' && analysisData && (
           <AnalysisResult data={analysisData} onBack={()=>setView('list')} onNewAnalysis={()=>setView('form')} />
-        {view==='settings' && <Settings apiKey={apiKey} onSave={(key) => { setApiKey(key); localStorage.setItem('ef_apikey', key); setView('list'); }} />}
+        {view==='settings' && <Settings apiKey={apiKey} onSave={handleApiKeySave} />}
         )}
       </main>
     </div>
