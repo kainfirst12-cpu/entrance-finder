@@ -116,8 +116,8 @@ const handleApiKeySave = (key) => {
         {view==='analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
         {view==='result' && analysisData && (
           <AnalysisResult data={analysisData} onBack={()=>setView('list')} onNewAnalysis={()=>setView('form')} />
-        {view==='settings' && <Settings apiKey={apiKey} onSave={handleApiKeySave} />}
         )}
+        {view==='settings' && <Settings apiKey={apiKey} onSave={handleApiKeySave} />}
       </main>
     </div>
   );
