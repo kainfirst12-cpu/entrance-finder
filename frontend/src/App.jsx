@@ -14,6 +14,8 @@ export default function App() {
   const [progressSteps, setProgressSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [apiKey, setApiKey] = useState(localStorage.getItem('ef_apikey') || '');
+  const [geminiKey, setGeminiKey] = useState(localStorage.getItem('ef_geminikey') || '');
+const [gptKey, setGptKey] = useState(localStorage.getItem('ef_gptkey') || '');
 
   const startAnalysis = async (studentData, files) => {
     setView('analyzing');
@@ -76,11 +78,14 @@ export default function App() {
       setView('form');
     }
   };
-const handleApiKeySave = (key) => {
-  setApiKey(key);
-  localStorage.setItem('ef_apikey', key);
+const handleApiKeySave = (keys) => {
+  setApiKey(keys.anthropic);
+  localStorage.setItem('ef_apikey', keys.anthropic);
+  localStorage.setItem('ef_geminikey', keys.gemini);
+  localStorage.setItem('ef_gptkey', keys.gpt);
   setView('list');
 };
+ 
   if (!isLoggedIn) {
   return <Login onLogin={() => setIsLoggedIn(true)} />;
 }
@@ -117,7 +122,7 @@ const handleApiKeySave = (key) => {
         {view==='result' && analysisData && (
           <AnalysisResult data={analysisData} onBack={()=>setView('list')} onNewAnalysis={()=>setView('form')} />
         )}
-        {view==='settings' && <Settings apiKey={apiKey} onSave={handleApiKeySave} />}
+{view==='settings' && <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />}
       </main>
     </div>
   );
