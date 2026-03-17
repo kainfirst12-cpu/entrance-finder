@@ -60,7 +60,7 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
 // ── Claude 호출 헬퍼 ──────────────────────────────────
 const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null) => {
   const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY }); // ← 추가
-  const messages = buildUserMessage(userPrompt, pdfDocuments, apiKey);
+  const messages = buildUserMessage(userPrompt, pdfDocuments);
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: maxTokens,
@@ -75,9 +75,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
 // ══════════════════════════════════════════════════════
 
 export const step0_caseMatching = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
-  ...
-  return await callClaude(systemPrompt, userPrompt, 3000, pdfDocuments, apiKey);
-};
+
   const prompt = `
 [0단계: Drive 사례 매칭 탐색]
 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급 / 목표: ${studentData.targetUniv}
@@ -91,8 +89,9 @@ ${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', 
 ■ TOP 3 사례: 대학/학과 — 유사도 XX% — 유사 이유
 ■ 주요 참조 사례 및 분석 방향
 `;
-  return callClaude(systemPrompt, prompt, 1000, pdfDocuments, apiKey);
+return callClaude(systemPrompt, prompt, 1000, pdfDocuments, apiKey);
 };
+
 
 export const step1_academic = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
