@@ -41,10 +41,20 @@ export const extractFileText = async (fileId, mimeType, fileName) => {
     const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
     const buffer = Buffer.from(res.data);
     if (mimeType === 'application/pdf') {
-      const pdfParse = (await import('pdf-parse')).default;
-      const parsed = await pdfParse(buffer);
-      return parsed.text.slice(0, MAX_CHARS_PER_FILE);
+  try {
+    const pdfParse = (await import('pdf-parse')).default;
+    const parsed = await pdfParse(buffer, { max: 0 });
+    const text = parsed.text?.trim();
+    if (text && text.length > 50) {
+      return text.slice(0, MAX_CHARS_PER_FILE);
     }
+    return `[PDF: ${fileName} - 텍스트 추출 불가]`;
+  } catch (pdfErr) {
+    console.error(`PDF 파싱 실패 (${fileName}):`, pdfErr.message);
+    return `[PDF: ${fileName} - 파싱 오류]`;
+  }
+}
+    
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       const mammoth = await import('mammoth');
       const result = await mammoth.extractRawText({ buffer });
