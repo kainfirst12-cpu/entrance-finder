@@ -78,7 +78,10 @@ export const loadKnowledgeBase = async () => {
       fields: 'files(id, name)',
     });
     for (const folder of folders.data.files || []) {
+      console.log('폴더 발견:', folder.name, folder.id);
+     
       const files = await listFilesInFolder(folder.id);
+      console.log('파일 수:', files.length, files.map(f => f.name));
       let combined = `\n=== ${folder.name} ===\n`;
       for (const file of files) {
         const text = await extractFileText(file.id, file.mimeType, file.name);
