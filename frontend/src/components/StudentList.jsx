@@ -13,7 +13,7 @@ export default function StudentList({ onNewAnalysis }) {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/students')
+    fetch(`${import.meta.env.VITE_API_URL || 'https://entrance-finder-production.up.railway.app'}/api/students`)
       .then((r) => r.json())
       .then((d) => {
         if (d.success) setStudents(d.students);
