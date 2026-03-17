@@ -160,7 +160,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 
   return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
 
-export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pdfDocuments) => {
+export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pdfDocuments, apiKey) => {
   const prompt = `
 [4단계: 지원 전략 수립 — 사례 기반]
 앞선 분석 요약: ${prevAnalysis}
@@ -239,7 +239,7 @@ ${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 각 교과 세특
   return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
 };
 
-export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments) => {
+export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey) => {
   const prompt = `
 [7단계: 종합 대시보드]
 지금까지 분석: ${allAnalysis.slice(0, 2000)}
