@@ -7,9 +7,9 @@ const MAX_FILES_PER_FOLDER = 1;    // 폴더당 최대 파일 수
 const getAuth = () => new google.auth.GoogleAuth({
   credentials: {
     client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY
-      ?.replace(/\\n/g, '\n')
-      ?.replace(/\\\\n/g, '\n'),
+   private_key: (process.env.GOOGLE_PRIVATE_KEY || '')
+  .replace(/\\n/g, '\n')
+  .replace(/^"|"$/g, ''),
   },
   scopes: ['https://www.googleapis.com/auth/drive.readonly'],
 });
@@ -54,7 +54,6 @@ export const extractFileText = async (fileId, mimeType, fileName) => {
     console.error(`PDF 파싱 실패 (${fileName}):`, pdfErr.message);
     return `[PDF: ${fileName} - 파싱 오류]`;
   }
-}
 }
     
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
