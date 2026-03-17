@@ -4,6 +4,7 @@ import multer from 'multer';
 import 'dotenv/config';
 import { loadKnowledgeBase, loadStudentFiles } from './services/driveService.js';
 import { runFullAnalysis } from './services/claudeService.js';
+import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 const app = express();
 app.use(cors());
@@ -100,7 +101,23 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
     res.end();
   }
 });
-
+app.post('/api/generate-pdf', async (req, res) => {
+  try {
+    const { analysisData, studentData } = req.body;
+    if (!analysisData || !studentData) {
+      return res.status(400).json({ success: false, error: '데이터 없음' });
+    }
+    const pdfBuffer = await generateAnalysisPDF(analysisData, studentData);
+    const filename = encodeURIComponent(`${studentData.name || '학생'}_입시분석_리포트.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.end(pdfBuffer);
+  } catch (err) {
+    console.error('PDF 생성 오류:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 app.get('/api/students', async (req, res) => {
   res.json({ success: true, students: [] });
 });
