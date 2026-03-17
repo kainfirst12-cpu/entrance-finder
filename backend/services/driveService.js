@@ -1,8 +1,8 @@
 // services/driveService.js
 import { google } from 'googleapis';
 
-const MAX_CHARS_PER_FILE = 3000;   // 파일당 최대 글자수
-const MAX_FILES_PER_FOLDER = 3;    // 폴더당 최대 파일 수
+const MAX_CHARS_PER_FILE = 8000;   // 파일당 최대 글자수
+const MAX_FILES_PER_FOLDER = 1;    // 폴더당 최대 파일 수
 
 const getAuth = () => new google.auth.GoogleAuth({
   credentials: {
@@ -43,16 +43,18 @@ export const extractFileText = async (fileId, mimeType, fileName) => {
     if (mimeType === 'application/pdf') {
   try {
     const pdfParse = (await import('pdf-parse')).default;
-    const parsed = await pdfParse(buffer, { max: 0 });
+    const parsed = await Promise.race([
+      pdfParse(buffer, { max: 3 }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+    ]);
     const text = parsed.text?.trim();
-    if (text && text.length > 50) {
-      return text.slice(0, MAX_CHARS_PER_FILE);
-    }
+    if (text && text.length > 50) return text.slice(0, MAX_CHARS_PER_FILE);
     return `[PDF: ${fileName} - 텍스트 추출 불가]`;
   } catch (pdfErr) {
     console.error(`PDF 파싱 실패 (${fileName}):`, pdfErr.message);
     return `[PDF: ${fileName} - 파싱 오류]`;
   }
+}
 }
     
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
