@@ -1,6 +1,6 @@
-const PDFDocument = require('pdfkit');
-const path = require('path');
-const fs = require('fs');
+import PDFDocument from 'pdfkit';
+import path from 'path';
+import fs from 'fs';
 
 const C = {
   NAVY: '#1a2744', BLUE: '#2563eb', ACCENT: '#3b82f6',
