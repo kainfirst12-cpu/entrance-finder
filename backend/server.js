@@ -40,7 +40,31 @@ app.get('/api/drive/test', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
+// ── AI 연결 테스트 ──────────────────────────────────────
+app.post('/api/test-connection', async (req, res) => {
+  const { aiModel = 'claude' } = req.body;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
+  try {
+    if (aiModel === 'gemini') {
+      const result = await testGeminiConnection(apiKey);
+      return res.json(result);
+    }
+    if (aiModel === 'gpt') {
+      const result = await testGPTConnection(apiKey);
+      return res.json(result);
+    }
+    const client = new Anthropic({ apiKey });
+    await client.messages.create({
+      model: 'claude-opus-4-5',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'test' }],
+    });
+    return res.json({ success: true, message: 'Claude 연결 성공' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 app.post('/api/analyze', pdfFields, async (req, res) => {
   let studentData;
   try {
