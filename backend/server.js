@@ -6,6 +6,9 @@ import { loadKnowledgeBase, loadStudentFiles } from './services/driveService.js'
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
+import Anthropic from '@anthropic-ai/sdk';
+import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
+import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js';
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
