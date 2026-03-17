@@ -1035,3 +1035,55 @@ body {
   cursor: pointer;
 }
 .btn-ghost:hover { background: #f9fafb; color: #374151; }
+.model-selector {
+  padding: 12px 16px;
+  border-bottom: 1px solid #2a2a2a;
+  margin-bottom: 8px;
+}
+.model-selector-label {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.model-btn {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  margin-bottom: 4px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.model-btn:hover { background: #1e1e1e; color: #ccc; }
+.model-btn.active { background: #1a1a2e; font-weight: 600; }
+/* Settings - 연결 테스트 버튼 */
+.key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.key-row .api-key-input {
+  flex: 1;
+}
+.test-btn {
+  padding: 8px 14px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #ccc;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+.test-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.test-btn.success  { border-color: #4caf50; color: #4caf50; }
+.test-btn.fail     { border-color: #f44336; color: #f44336; }
+.test-btn.warn     { border-color: #ff9800; color: #ff9800; }
