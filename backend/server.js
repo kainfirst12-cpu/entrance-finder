@@ -46,6 +46,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   }
 
   if (!studentData?.name) return res.status(400).json({ error: '학생 이름 필수' });
+  const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -87,7 +88,8 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
       knowledgeBase,
       studentDriveFiles,
       (progress) => send({ type: 'progress', ...progress, total: 9 }),
-      pdfDocuments  // PDF를 직접 Claude에게 전달
+      pdfDocuments,
+      apiKey
     );
 
     send({ type: 'complete', results, notionUrl: null, message: '분석 완료!' });

@@ -1,7 +1,7 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 
 // ── System Prompt 생성 ─────────────────────────────────
 const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
@@ -58,8 +58,9 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
 };
 
 // ── Claude 호출 헬퍼 ──────────────────────────────────
-const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = []) => {
-  const messages = buildUserMessage(userPrompt, pdfDocuments);
+const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null) => {
+  const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY }); // ← 추가
+  const messages = buildUserMessage(userPrompt, pdfDocuments, apiKey);
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: maxTokens,
@@ -73,7 +74,10 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
 // 8단계 분석
 // ══════════════════════════════════════════════════════
 
-export const step0_caseMatching = async (systemPrompt, studentData, pdfDocuments) => {
+export const step0_caseMatching = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
+  ...
+  return await callClaude(systemPrompt, userPrompt, 3000, pdfDocuments, apiKey);
+};
   const prompt = `
 [0단계: Drive 사례 매칭 탐색]
 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급 / 목표: ${studentData.targetUniv}
@@ -87,10 +91,10 @@ ${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', 
 ■ TOP 3 사례: 대학/학과 — 유사도 XX% — 유사 이유
 ■ 주요 참조 사례 및 분석 방향
 `;
-  return callClaude(systemPrompt, prompt, 1000, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 1000, pdfDocuments, apiKey);
 };
 
-export const step1_academic = async (systemPrompt, studentData, pdfDocuments) => {
+export const step1_academic = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
 [1단계: 학업역량 심층 분석]
 ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})의 내용을 직접 읽고 분석하라.` : ''}
@@ -116,10 +120,10 @@ ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})�
 🎯 학업역량 종합: X/10
 강점 3가지 (근거 포함) / 약점 3가지 + 개선 방향
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
 
-export const step2_activity = async (systemPrompt, studentData, pdfDocuments) => {
+export const step2_activity = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
 [2단계: 비교과 활동 사례 매칭 비교]
 ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽고 분석하라.` : ''}
@@ -133,10 +137,10 @@ ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽�
 
 비교과 종합: X/10 / 스토리 일관성: X/10
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
 
-export const step3_career = async (systemPrompt, studentData, pdfDocuments) => {
+export const step3_career = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
 [3단계: 진로 역량 및 전공 적합성 분석]
 ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 분석하라.` : ''}
@@ -154,7 +158,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 
 
 전공 적합성: X/10 / 가장 시급한 보완 역량 TOP 3
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
 
 export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pdfDocuments) => {
@@ -179,10 +183,10 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
 
 ⚠️ 핵심 리스크 3가지 + 대응 방안
 `;
-  return callClaude(systemPrompt, prompt, 3000, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 3000, pdfDocuments, apiKey);
 };
 
-export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments) => {
+export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
 [5단계: 3년 로드맵 — 합격자 타임라인 대조]
 학생: ${studentData.name} / ${studentData.grade}학년 / 목표: ${studentData.targetUniv} ${studentData.major}
@@ -205,10 +209,10 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments) => 
 📌 이번 달 즉시 실행 액션 3가지
 ① [긴급] ② [중요] ③ [준비]
 `;
-  return callClaude(systemPrompt, prompt, 2500, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
 };
 
-export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments) => {
+export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
 [6단계: 세특 Before/After 개선안]
 ${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 각 교과 세특을 분석하라.` : `세특 내용: ${studentData.specialNotes || '(미입력)'}`}
@@ -233,7 +237,7 @@ ${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 각 교과 세특
 💬 담당 선생님께 전달할 세특 요청 문구
 (바로 사용 가능한 실제 대화 스크립트)
 `;
-  return callClaude(systemPrompt, prompt, 2500, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
 };
 
 export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments) => {
@@ -273,40 +277,40 @@ export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pd
   "즉시실행과제": ["","",""]
 }
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments);
+  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────
-export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = []) => {
+export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = [], apiKey) => {
   const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
   const results = {};
 
   onProgress?.({ step: 0, label: 'Drive 사례 매칭 중...' });
-  results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments);
+  results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
 
   onProgress?.({ step: 1, label: '학업역량 분석 중...' });
-  results.academic = await step1_academic(systemPrompt, studentData, pdfDocuments);
+  results.academic = await step1_academic(systemPrompt, studentData, pdfDocuments, apiKey);
 
   onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
-  results.activity = await step2_activity(systemPrompt, studentData, pdfDocuments);
+  results.activity = await step2_activity(systemPrompt, studentData, pdfDocuments, apiKey);
 
   onProgress?.({ step: 3, label: '진로 역량 분석 중...' });
-  results.career = await step3_career(systemPrompt, studentData, pdfDocuments);
+  results.career = await step3_career(systemPrompt, studentData, pdfDocuments, apiKey);
 
   const prevSummary = `학업:${results.academic?.slice(0,200)}\n비교과:${results.activity?.slice(0,200)}\n진로:${results.career?.slice(0,200)}`;
 
   onProgress?.({ step: 4, label: '지원 전략 수립 중...' });
-  results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocuments);
+  results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocuments, apiKey);
 
   onProgress?.({ step: 5, label: '3년 로드맵 생성 중...' });
-  results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocuments);
+  results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocuments, apiKey);
 
   onProgress?.({ step: 6, label: '세특 개선안 작성 중...' });
-  results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocuments);
+  results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocuments, apiKey);
 
   const allAnalysis = Object.values(results).join('\n\n');
   onProgress?.({ step: 7, label: '종합 대시보드 생성 중...' });
-  results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocuments);
+  results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey);
 
   onProgress?.({ step: 8, label: '분석 완료!' });
   return results;
