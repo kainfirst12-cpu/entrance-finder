@@ -1,12 +1,15 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
 
-
-
 // ── System Prompt 생성 ─────────────────────────────────
 const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
 당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
 15년 이상의 학생부종합전형 컨설팅 경험을 보유하고 있으며 서울대·연세대·고려대 합격자를 다수 배출했습니다.
+
+=== 출력 형식 원칙 ===
+- 이모티콘, 이모지를 절대 사용하지 마라 (노션 스타일 아이콘 포함)
+- 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──)만 사용하라
+- 전문 컨설팅 보고서 톤을 유지하라
 
 === 분석 원칙 ===
 1. 아래 [지식베이스]와 [합격자 사례]를 반드시 최우선으로 참조하라
@@ -34,10 +37,8 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
     return [{ role: 'user', content: promptText }];
   }
 
-  // PDF가 있으면 document 형태로 함께 전달
   const content = [];
 
-  // PDF 문서들 추가
   for (const pdf of pdfDocuments) {
     content.push({
       type: 'document',
@@ -51,7 +52,6 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
     });
   }
 
-  // 텍스트 프롬프트 추가
   content.push({ type: 'text', text: promptText });
 
   return [{ role: 'user', content }];
@@ -59,7 +59,7 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
 
 // ── Claude 호출 헬퍼 ──────────────────────────────────
 const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null) => {
-  const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY }); // ← 추가
+  const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
   const messages = buildUserMessage(userPrompt, pdfDocuments);
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -75,21 +75,26 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
 // ══════════════════════════════════════════════════════
 
 export const step0_caseMatching = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
-
   const prompt = `
 [0단계: Drive 사례 매칭 탐색]
 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급 / 목표: ${studentData.targetUniv}
 ${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')})를 먼저 읽고 학생 정보를 파악한 후 분석하라.` : ''}
 
 [합격자 사례] 자료에서 가장 유사한 사례를 찾아라.
-매칭 기준: 1순위-희망전공 일치, 2순위-내신±0.5등급, 3순위-비교과 유형, 4순위-전형 유형
+매칭 기준: 1순위-희망전공 일치, 2순위-내신+/-0.5등급, 3순위-비교과 유형, 4순위-전형 유형
 
-출력:
-■ 매칭된 사례: X건
-■ TOP 3 사례: 대학/학과 — 유사도 XX% — 유사 이유
-■ 주요 참조 사례 및 분석 방향
+출력 형식:
+──────────────────────────────────────
+[사례 매칭 결과]
+──────────────────────────────────────
+1. 매칭된 사례 수: X건
+2. 상위 3건 상세
+  (1) 대학/학과 — 유사도 XX% — 유사 이유
+  (2) 대학/학과 — 유사도 XX% — 유사 이유
+  (3) 대학/학과 — 유사도 XX% — 유사 이유
+3. 주요 참조 사례 및 분석 방향
 `;
-return callClaude(systemPrompt, prompt, 1000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 1000, pdfDocuments, apiKey);
 };
 
 
@@ -99,25 +104,26 @@ export const step1_academic = async (systemPrompt, studentData, pdfDocuments, ap
 ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})의 내용을 직접 읽고 분석하라.` : ''}
 학생 입력 데이터: 내신 ${studentData.gpa}등급 / 모의고사 ${studentData.mockExam || '미입력'} / 과목선택: ${studentData.subjectPlan || '미입력'}
 
-─────────────────────────────────────
-📊 내신 등급 비교표
-─────────────────────────────────────
+──────────────────────────────────────
+[표 1] 내신 등급 비교표
+──────────────────────────────────────
 과목       | 현재 학생 | 합격자 평균 | 차이 | 평가
 국어       |          |            |      |
 수학       |          |            |      |
 영어       |          |            |      |
 탐구(평균) |          |            |      |
 전체 평균  |          |            |      |
-─────────────────────────────────────
-※ PDF에서 실제 성적 데이터 추출하여 작성. 없으면 입력 데이터 활용.
+──────────────────────────────────────
+* PDF에서 실제 성적 데이터 추출하여 작성. 없으면 입력 데이터 활용.
 
-📝 세특 질적 평가 (PDF 내용 기반)
-[현재 학생 세특 수준]
-[합격자 세특 수준 — Drive 사례 기준]
-→ 갭 분석 및 개선 방향
+[세특 질적 평가] (PDF 내용 기반)
+- 현재 학생 세특 수준
+- 합격자 세특 수준 (Drive 사례 기준)
+> 갭 분석 및 개선 방향
 
-🎯 학업역량 종합: X/10
-강점 3가지 (근거 포함) / 약점 3가지 + 개선 방향
+[학업역량 종합 평가] X/10점
+- 강점 3가지 (근거 포함)
+- 약점 3가지 + 개선 방향
 `;
   return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
@@ -128,13 +134,19 @@ export const step2_activity = async (systemPrompt, studentData, pdfDocuments, ap
 ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽고 분석하라.` : ''}
 입력 데이터: 동아리-${studentData.club} / 봉사-${studentData.volunteer} / 리더십-${studentData.leadership} / 수상-${studentData.awards} / 특기-${studentData.talent}
 
-🔍 활동 유사도 매칭 결과 (Drive 사례 기준)
+──────────────────────────────────────
+[표 2] 활동 유사도 매칭 결과 (Drive 사례 기준)
+──────────────────────────────────────
 현재 학생 활동 | 매칭된 합격자 활동 | 유사도 | 차이점
 
-📋 활동 깊이 비교 분석
+──────────────────────────────────────
+[표 3] 활동 깊이 비교 분석
+──────────────────────────────────────
 항목 | 현재 학생 | 합격자 수준 | 개선 방향
 
-비교과 종합: X/10 / 스토리 일관성: X/10
+[비교과 종합 평가]
+- 비교과 종합: X/10점
+- 스토리 일관성: X/10점
 `;
   return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
@@ -145,17 +157,23 @@ export const step3_career = async (systemPrompt, studentData, pdfDocuments, apiK
 ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 분석하라.` : ''}
 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv} / 관심분야: ${studentData.interests}
 
-🎯 전공 적합성 체크리스트
-역량 항목 | 보유 여부 | 수준 | 보완 필요도
-전공 관련 교과 성취 | | |
-심화 탐구 경험 | | |
-관련 활동 이력 | | |
-핵심 과목 이수 | | |
+──────────────────────────────────────
+[표 4] 전공 적합성 체크리스트
+──────────────────────────────────────
+역량 항목             | 보유 여부 | 수준 | 보완 필요도
+전공 관련 교과 성취   |          |      |
+심화 탐구 경험        |          |      |
+관련 활동 이력        |          |      |
+핵심 과목 이수        |          |      |
 
-📚 과목 선택 전략 평가 (고교학점제)
-필수 과목 이수 여부 / 권장 과목 / 미이수 불이익 / 즉시 추가 과목
+[과목 선택 전략 평가] (고교학점제)
+- 필수 과목 이수 여부
+- 권장 과목
+- 미이수 불이익
+- 즉시 추가 과목
 
-전공 적합성: X/10 / 가장 시급한 보완 역량 TOP 3
+[전공 적합성 종합] X/10점
+- 가장 시급한 보완 역량 상위 3건
 `;
   return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
@@ -166,21 +184,35 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
 앞선 분석 요약: ${prevAnalysis}
 학생: 내신 ${studentData.gpa} / 모의 ${studentData.mockExam || '미입력'} / 목표 ${studentData.targetUniv} / ${studentData.major}
 
-📊 전형 유형 추천 (비율 및 이유)
-학생부종합: XX% / 학생부교과: XX% / 논술: XX% / 정시: XX%
+──────────────────────────────────────
+[전형 유형 추천]
+──────────────────────────────────────
+- 학생부종합: XX% (이유)
+- 학생부교과: XX% (이유)
+- 논술:       XX% (이유)
+- 정시:       XX% (이유)
 
-🎯 수시 지원 카드 6장 (Drive 사례 근거 포함)
+──────────────────────────────────────
+[수시 지원 카드 6장] (Drive 사례 근거 포함)
+──────────────────────────────────────
 
-[상향 ①] 대학: / 학과: / 전형:
-┌─────────────────────────────────┐
-│ Drive 사례 근거:                 │
-│ 합격 가능성: ★★☆☆☆ (XX%)       │
-│ 필요 개선:                      │
-└─────────────────────────────────┘
+[상향 1] 대학: / 학과: / 전형:
+  - Drive 사례 근거:
+  - 합격 가능성: XX%
+  - 필요 개선 사항:
 
-[상향 ②] / [적정 ①] / [적정 ②] / [안정 ①] / [안정 ②] — 동일 형식
+[상향 2] (동일 형식)
+[적정 1] (동일 형식)
+[적정 2] (동일 형식)
+[안정 1] (동일 형식)
+[안정 2] (동일 형식)
 
-⚠️ 핵심 리스크 3가지 + 대응 방안
+──────────────────────────────────────
+[핵심 리스크 분석]
+──────────────────────────────────────
+1. 리스크 — 대응 방안
+2. 리스크 — 대응 방안
+3. 리스크 — 대응 방안
 `;
   return callClaude(systemPrompt, prompt, 3000, pdfDocuments, apiKey);
 };
@@ -190,23 +222,33 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 [5단계: 3년 로드맵 — 합격자 타임라인 대조]
 학생: ${studentData.name} / ${studentData.grade}학년 / 목표: ${studentData.targetUniv} ${studentData.major}
 
-📅 학년별 합격자 vs 현재 학생 비교 로드맵
+──────────────────────────────────────
+[학년별 합격자 vs 현재 학생 비교 로드맵]
+──────────────────────────────────────
 
-■ 고1 (기반 구축기)
-시기 | 합격자 행동 (Drive 사례) | 현재 학생 목표
-3월  |                          |
-4-7월|                          |
-8-12월|                         |
-고1 핵심 메시지 / 내신 목표 / 세특 목표 / 비교과 목표
+[고1] 기반 구축기
+시기    | 합격자 행동 (Drive 사례) | 현재 학생 목표
+3월     |                         |
+4-7월   |                         |
+8-12월  |                         |
+> 핵심 메시지 / 내신 목표 / 세특 목표 / 비교과 목표
 
-■ 고2 (심화 차별화기)
-핵심 과제 3가지 / 심화 탐구 추천 주제 2개 / 과목 선택 확정 사항
+[고2] 심화 차별화기
+- 핵심 과제 3가지
+- 심화 탐구 추천 주제 2개
+- 과목 선택 확정 사항
 
-■ 고3 (완성·집대성기)
-수시 일정 / 면접 준비 방향 / 정시 대비 전략
+[고3] 완성 및 집대성기
+- 수시 일정
+- 면접 준비 방향
+- 정시 대비 전략
 
-📌 이번 달 즉시 실행 액션 3가지
-① [긴급] ② [중요] ③ [준비]
+──────────────────────────────────────
+[이번 달 즉시 실행 액션]
+──────────────────────────────────────
+1. [긴급]
+2. [중요]
+3. [준비]
 `;
   return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
 };
@@ -219,21 +261,29 @@ ${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 각 교과 세특
 
 주요 교과별로 아래 형식 출력:
 
-─────────────────────────────────────
-✏️ [교과명] 세특 개선안
-─────────────────────────────────────
+──────────────────────────────────────
+[교과명] 세특 개선안
+──────────────────────────────────────
 현재 수준: 상/중/하
 
-❌ 현재 (개선 전): "(현재 기록된 내용)"
-→ 문제점: · · ·
+(A) 현재 (개선 전):
+"(현재 기록된 내용)"
+> 문제점:
+  - ...
+  - ...
 
-✅ 개선 후 (합격자 수준으로 직접 작성):
+(B) 개선 후 (합격자 수준으로 직접 작성):
 "(구체적 탐구 과정이 담긴 개선 문장)"
 
-→ 개선 포인트: ① 탐구 계기 → ② 어려움 → ③ 해결 → ④ 공유 → ⑤ 발전
-─────────────────────────────────────
+> 개선 포인트:
+  1) 탐구 계기
+  2) 어려움
+  3) 해결
+  4) 공유
+  5) 발전
+──────────────────────────────────────
 
-💬 담당 선생님께 전달할 세특 요청 문구
+[담당 교사 전달용 세특 요청 문구]
 (바로 사용 가능한 실제 대화 스크립트)
 `;
   return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
@@ -244,30 +294,36 @@ export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pd
 [7단계: 종합 대시보드]
 지금까지 분석: ${allAnalysis.slice(0, 2000)}
 
-1. 한눈에 보는 종합 요약:
-
-─────────────────────────────────────
-🎓 ${studentData.name} 입시 컨설팅 종합 리포트
+──────────────────────────────────────
+${studentData.name} 입시 컨설팅 종합 리포트
 분석일: ${new Date().toLocaleDateString('ko-KR')}
-─────────────────────────────────────
-📊 역량 레이더 (10점 만점)
-학업역량    [████░░░░░░] X/10
-비교과      [████░░░░░░] X/10
-진로역량    [████░░░░░░] X/10
-세특 질    [████░░░░░░] X/10
-전공적합성  [████░░░░░░] X/10
+──────────────────────────────────────
 
-🚨 즉시 실행 필요 (이번 달 안에)
-① [긴급] ② [긴급] ③ [중요]
+[역량 평가] (10점 만점)
+  학업역량    X/10
+  비교과      X/10
+  진로역량    X/10
+  세특 질     X/10
+  전공적합성  X/10
+  종합        X/10
 
-✅ 이미 잘 하고 있는 것
-· ·
+[즉시 실행 과제] (이번 달 내)
+  1. [긴급] ...
+  2. [긴급] ...
+  3. [중요] ...
 
-📌 다음 상담 전 준비사항
-□ □ □
-─────────────────────────────────────
+[현재 강점]
+  - ...
+  - ...
 
-2. Notion 저장용 JSON:
+[다음 상담 전 준비사항]
+  [ ] ...
+  [ ] ...
+  [ ] ...
+
+──────────────────────────────────────
+
+[Notion 저장용 JSON]
 {
   "종합점수": {"학업역량":0,"비교과":0,"진로역량":0,"세특질":0,"전공적합성":0,"총점":0},
   "종합평가요약": "",

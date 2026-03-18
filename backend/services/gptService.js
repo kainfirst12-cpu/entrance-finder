@@ -18,6 +18,12 @@ export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriv
   const results = {};
 
   const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
+
+[출력 형식 원칙]
+- 이모티콘, 이모지를 절대 사용하지 마라 (노션 스타일 아이콘 포함)
+- 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──)만 사용하라
+- 전문 컨설팅 보고서 톤을 유지하라
+
 === 지식베이스 - 대입정책 ===
 ${knowledgeBase.대입정책 || '(자료 없음)'}
 === 지식베이스 - 대학별전형 ===
