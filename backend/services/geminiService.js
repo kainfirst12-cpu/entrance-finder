@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   const result = await model.generateContent(
     `${systemPrompt}\n\n${userPrompt}`
   );
@@ -51,7 +51,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 
 export async function testGeminiConnection(apiKey) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   const result = await model.generateContent('안녕하세요. 연결 테스트입니다. "연결성공"이라고만 답하세요.');
   return result.response.text();
 }

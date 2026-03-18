@@ -64,12 +64,13 @@ app.post('/api/test-connection', async (req, res) => {
     }
     const client = new Anthropic({ apiKey });
     await client.messages.create({
-      model: 'claude-opus-4-5',
+      model: 'claude-sonnet-4-5-20250514',
       max_tokens: 10,
       messages: [{ role: 'user', content: 'test' }],
     });
     return res.json({ success: true, message: 'Claude 연결 성공' });
   } catch (err) {
+    console.error(`[${aiModel}] 연결 테스트 실패:`, err.message, err.status || '', err.code || '');
     return res.status(500).json({ success: false, message: err.message });
   }
 });
