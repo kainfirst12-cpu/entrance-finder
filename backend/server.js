@@ -198,17 +198,27 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   try {
     send({ type: 'progress', step: 0, label: 'Google Drive 지식베이스 로딩 중...', total: 9 });
 
-    // 지식베이스는 캐시 사용, 학생파일은 타임아웃 15초
-    const [knowledgeBase, studentDriveFiles] = await Promise.all([
-      getCachedKnowledgeBase(),
-      Promise.race([
-        loadStudentFiles(studentData.name),
-        new Promise(resolve => setTimeout(() => {
-          console.log('[Analyze] 학생 파일 로딩 타임아웃 — 건너뜀');
-          resolve('');
-        }, 15000)),
-      ]),
-    ]);
+    // 전체 Drive 로딩을 20초 타임아웃으로 감싸기
+    let knowledgeBase = { 대입정책: '', 대학별전형: '', 합격자사례: '' };
+    let studentDriveFiles = '';
+    try {
+      const driveResult = await Promise.race([
+        Promise.all([
+          getCachedKnowledgeBase(),
+          loadStudentFiles(studentData.name).catch(e => {
+            console.error('[Analyze] 학생파일 오류:', e.message);
+            return '';
+          }),
+        ]),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Drive 로딩 20초 초과')), 20000)),
+      ]);
+      knowledgeBase = driveResult[0];
+      studentDriveFiles = driveResult[1];
+    } catch (driveErr) {
+      console.error('[Analyze] Drive 로딩 실패, 빈 데이터로 진행:', driveErr.message);
+      // 캐시에 데이터가 있으면 그거라도 사용
+      if (kbCache) knowledgeBase = kbCache;
+    }
 
     // PDF 파일들을 base64로 변환해서 Claude에게 직접 전달
     const uploadedFiles = req.files || {};
