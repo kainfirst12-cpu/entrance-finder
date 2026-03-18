@@ -198,9 +198,16 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   try {
     send({ type: 'progress', step: 0, label: 'Google Drive 지식베이스 로딩 중...', total: 9 });
 
+    // 지식베이스는 캐시 사용, 학생파일은 타임아웃 15초
     const [knowledgeBase, studentDriveFiles] = await Promise.all([
-      loadKnowledgeBase(),
-      loadStudentFiles(studentData.name),
+      getCachedKnowledgeBase(),
+      Promise.race([
+        loadStudentFiles(studentData.name),
+        new Promise(resolve => setTimeout(() => {
+          console.log('[Analyze] 학생 파일 로딩 타임아웃 — 건너뜀');
+          resolve('');
+        }, 15000)),
+      ]),
     ]);
 
     // PDF 파일들을 base64로 변환해서 Claude에게 직접 전달
