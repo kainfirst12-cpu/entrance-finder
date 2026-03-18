@@ -5,6 +5,7 @@ import StudentForm from './components/StudentForm';
 import AnalysisProgress from './components/AnalysisProgress';
 import AnalysisResult from './components/AnalysisResult';
 import StudentList from './components/StudentList';
+import ChatInterface from './components/ChatInterface';
 import './App.css';
 
 export default function App() {
@@ -153,6 +154,9 @@ export default function App() {
           >
             <span>✨</span> 새 분석 시작
           </button>
+          <button className={`nav-item ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
+            <span>💬</span> 입시 상담
+          </button>
           <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
             <span>⚙️</span> 설정
           </button>
@@ -176,6 +180,9 @@ export default function App() {
         {view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
         {view === 'result' && analysisData && (
           <AnalysisResult data={analysisData} onBack={() => setView('list')} onNewAnalysis={() => setView('form')} />
+        )}
+        {view === 'chat' && (
+          <ChatInterface getActiveKey={getActiveKey} selectedModel={selectedModel} />
         )}
         {view === 'settings' && (
           <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />

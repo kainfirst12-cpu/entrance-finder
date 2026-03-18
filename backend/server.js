@@ -74,6 +74,104 @@ app.post('/api/test-connection', async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
+// ── 지식베이스 캐시 (채팅용 — 10분 TTL) ──────────────
+let kbCache = null;
+let kbCacheTime = 0;
+const KB_TTL = 10 * 60 * 1000;
+
+async function getCachedKnowledgeBase() {
+  if (kbCache && Date.now() - kbCacheTime < KB_TTL) return kbCache;
+  kbCache = await loadKnowledgeBase();
+  kbCacheTime = Date.now();
+  return kbCache;
+}
+
+// ── 채팅 엔드포인트 ──────────────────────────────────
+app.post('/api/chat', async (req, res) => {
+  const { message, history = [] } = req.body;
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
+  if (!message) return res.status(400).json({ success: false, message: '메시지 없음' });
+
+  try {
+    const kb = await getCachedKnowledgeBase();
+
+    const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
+15년 이상의 학생부종합전형 컨설팅 경험을 보유하고 있으며 서울대·연세대·고려대 합격자를 다수 배출했습니다.
+
+아래 지식베이스를 참고하여 사용자의 질문에 전문적으로 답변하세요.
+지식베이스에 있는 내용을 우선 활용하고, 없는 내용은 일반 지식으로 보완하세요.
+답변은 구체적이고 실행 가능한 조언을 포함하세요.
+
+=== 지식베이스 — 대입정책 ===
+${kb.대입정책 || '(자료 없음)'}
+
+=== 지식베이스 — 대학별전형 ===
+${kb.대학별전형 || '(자료 없음)'}
+
+=== 합격자 사례 ===
+${kb.합격자사례 || '(자료 없음)'}`;
+
+    let reply;
+
+    if (aiModel === 'gemini') {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const chatHistory = history.map(h => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }],
+      }));
+      const chat = model.startChat({
+        history: [
+          { role: 'user', parts: [{ text: '시스템 지침: ' + systemPrompt }] },
+          { role: 'model', parts: [{ text: '네, 입시 전문 컨설턴트로서 답변하겠습니다.' }] },
+          ...chatHistory,
+        ],
+      });
+      const result = await chat.sendMessage(message);
+      reply = result.response.text();
+
+    } else if (aiModel === 'gpt') {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey });
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history.map(h => ({ role: h.role, content: h.content })),
+        { role: 'user', content: message },
+      ];
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 2000,
+        messages,
+      });
+      reply = response.choices[0].message.content;
+
+    } else {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({ apiKey });
+      const messages = [
+        ...history.map(h => ({ role: h.role, content: h.content })),
+        { role: 'user', content: message },
+      ];
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2000,
+        system: systemPrompt,
+        messages,
+      });
+      reply = response.content[0].text;
+    }
+
+    res.json({ success: true, reply });
+  } catch (err) {
+    console.error(`[chat/${aiModel}] 오류:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.post('/api/analyze', pdfFields, async (req, res) => {
   let studentData;
   try {
