@@ -2,19 +2,30 @@
 import { google } from 'googleapis';
 
 const MAX_CHARS_PER_FILE = 8000;   // 파일당 최대 글자수
-const MAX_FILES_PER_FOLDER = 1;    // 폴더당 최대 파일 수
+const MAX_FILES_PER_FOLDER = 3;    // 폴더당 최대 파일 수
 
-const getAuth = () => new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-   private_key: (process.env.GOOGLE_PRIVATE_KEY || '')
-  .replace(/\\n/g, '\n')
-  .replace(/^"|"$/g, ''),
-  },
-  scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-});
+const getAuth = () => {
+  const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
+  const rawKey = (process.env.GOOGLE_PRIVATE_KEY || '').trim();
+  // Railway에서 JSON 이스케이프된 키를 처리
+  let privateKey = rawKey
+    .replace(/\\n/g, '\n')
+    .replace(/^"|"$/g, '');
+  // 만약 여전히 실제 줄바꿈이 없으면 \\n → \n 한번 더
+  if (!privateKey.includes('\n') && privateKey.includes('\\n')) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
+  return new google.auth.GoogleAuth({
+    credentials: { client_email: email, private_key: privateKey },
+    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+  });
+};
 
-const getDrive = async () => google.drive({ version: 'v3', auth: getAuth() });
+const getDrive = async () => {
+  const auth = getAuth();
+  const client = await auth.getClient();
+  return google.drive({ version: 'v3', auth: client });
+};
 
 export const listFilesInFolder = async (folderId) => {
   const drive = await getDrive();
@@ -69,19 +80,41 @@ export const extractFileText = async (fileId, mimeType, fileName) => {
 };
 
 export const loadKnowledgeBase = async () => {
-  const folderId = process.env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID;
+  const folderId = (process.env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID || '').trim();
   const result = { 대입정책: '', 대학별전형: '', 합격자사례: '' };
+  if (!folderId) {
+    console.error('GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID 환경변수가 설정되지 않았습니다.');
+    return result;
+  }
   try {
     const drive = await getDrive();
+    console.log('[Drive] 인증 성공, 폴더 ID:', folderId);
+
+    // 먼저 폴더 자체에 접근 가능한지 확인
+    try {
+      const folderMeta = await drive.files.get({ fileId: folderId, fields: 'id, name' });
+      console.log('[Drive] 루트 폴더 접근 성공:', folderMeta.data.name);
+    } catch (metaErr) {
+      console.error('[Drive] 루트 폴더 접근 실패:', metaErr.message);
+    }
+
+    // 하위 폴더뿐 아니라 모든 항목도 조회 (디버그)
+    const allItems = await drive.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: 'files(id, name, mimeType)',
+    });
+    console.log('[Drive] 폴더 내 모든 항목:', (allItems.data.files || []).map(f => `${f.name} (${f.mimeType})`));
+
     const folders = await drive.files.list({
       q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: 'files(id, name)',
     });
+    console.log('[Drive] 하위 폴더 수:', (folders.data.files || []).length);
     for (const folder of folders.data.files || []) {
-      console.log('폴더 발견:', folder.name, folder.id);
-     
+      console.log('[Drive] 폴더 발견:', folder.name, folder.id);
+
       const files = await listFilesInFolder(folder.id);
-      console.log('파일 수:', files.length, files.map(f => f.name));
+      console.log('[Drive] 파일 수:', files.length, files.map(f => f.name));
       let combined = `\n=== ${folder.name} ===\n`;
       for (const file of files) {
         const text = await extractFileText(file.id, file.mimeType, file.name);

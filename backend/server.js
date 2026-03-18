@@ -35,9 +35,17 @@ app.get('/api/drive/test', async (req, res) => {
       대학별전형: kb.대학별전형.length > 0 ? `✅ ${kb.대학별전형.length}자 로딩됨` : '❌ 파일 없음',
       합격자사례: kb.합격자사례.length > 0 ? `✅ ${kb.합격자사례.length}자 로딩됨` : '❌ 파일 없음',
     };
-    res.json({ success: true, summary });
+    res.json({
+      success: true,
+      summary,
+      env: {
+        folderId: (process.env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID || '').trim().slice(0, 10) + '...',
+        serviceAccount: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '(미설정)',
+        hasPrivateKey: !!(process.env.GOOGLE_PRIVATE_KEY),
+      },
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
   }
 });
 // ── AI 연결 테스트 ──────────────────────────────────────
@@ -47,12 +55,12 @@ app.post('/api/test-connection', async (req, res) => {
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
   try {
     if (aiModel === 'gemini') {
-      const result = await testGeminiConnection(apiKey);
-      return res.json(result);
+      const text = await testGeminiConnection(apiKey);
+      return res.json({ success: true, message: `Gemini 연결 성공: ${text}` });
     }
     if (aiModel === 'gpt') {
-      const result = await testGPTConnection(apiKey);
-      return res.json(result);
+      const text = await testGPTConnection(apiKey);
+      return res.json({ success: true, message: `GPT 연결 성공: ${text}` });
     }
     const client = new Anthropic({ apiKey });
     await client.messages.create({
@@ -74,6 +82,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   }
 
   if (!studentData?.name) return res.status(400).json({ error: '학생 이름 필수' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
   const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -111,14 +120,15 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
 
     send({ type: 'progress', step: 1, label: 'Drive 자료 로딩 완료!', total: 9 });
 
-    const results = await runFullAnalysis(
-      studentData,
-      knowledgeBase,
-      studentDriveFiles,
-      (progress) => send({ type: 'progress', ...progress, total: 9 }),
-      pdfDocuments,
-      apiKey
-    );
+    const progressCb = (progress) => send({ type: 'progress', ...progress, total: 9 });
+    let results;
+    if (aiModel === 'gemini') {
+      results = await runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
+    } else if (aiModel === 'gpt') {
+      results = await runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
+    } else {
+      results = await runFullAnalysis(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
+    }
 
     send({ type: 'complete', results, notionUrl: null, message: '분석 완료!' });
     res.end();
