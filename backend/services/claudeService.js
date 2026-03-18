@@ -62,7 +62,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
   const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY }); // ← 추가
   const messages = buildUserMessage(userPrompt, pdfDocuments);
   const response = await client.messages.create({
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-sonnet-4-5-20250514',
     max_tokens: maxTokens,
     system: systemPrompt,
     messages,

@@ -7,7 +7,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.20.1",
+    "@anthropic-ai/sdk": "^0.79.0",
     "@google/generative-ai": "^0.24.1",
     "@notionhq/client": "^2.2.14",
     "bcryptjs": "^3.0.3",
