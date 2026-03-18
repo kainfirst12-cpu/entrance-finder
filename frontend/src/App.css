@@ -1087,3 +1087,4 @@ body {
 .test-btn.success  { border-color: #4caf50; color: #4caf50; }
 .test-btn.fail     { border-color: #f44336; color: #f44336; }
 .test-btn.warn     { border-color: #ff9800; color: #ff9800; }
+.test-error        { color: #f44336; font-size: 0.75rem; margin: 4px 0 0; word-break: break-all; }

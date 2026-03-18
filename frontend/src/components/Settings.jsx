@@ -10,6 +10,7 @@ export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
   });
   const [saved, setSaved] = useState(false);
   const [testStatus, setTestStatus] = useState({ claude: null, gemini: null, gpt: null });
+  const [testError, setTestError] = useState({ claude: '', gemini: '', gpt: '' });
 
   const handleSave = () => {
     onSave(keys);
@@ -40,9 +41,16 @@ export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
         body: JSON.stringify({ aiModel: model }),
       });
       const data = await res.json();
-      setTestStatus(prev => ({ ...prev, [model]: data.success ? 'success' : 'fail' }));
-    } catch {
+      if (data.success) {
+        setTestStatus(prev => ({ ...prev, [model]: 'success' }));
+        setTestError(prev => ({ ...prev, [model]: '' }));
+      } else {
+        setTestStatus(prev => ({ ...prev, [model]: 'fail' }));
+        setTestError(prev => ({ ...prev, [model]: data.message || '알 수 없는 오류' }));
+      }
+    } catch (err) {
       setTestStatus(prev => ({ ...prev, [model]: 'fail' }));
+      setTestError(prev => ({ ...prev, [model]: err.message }));
     }
   };
 
@@ -87,6 +95,7 @@ export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
             {statusLabel('claude')}
           </button>
         </div>
+        {testError.claude && <p className="test-error">{testError.claude}</p>}
       </div>
 
       <div className="settings-section">
@@ -107,6 +116,7 @@ export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
             {statusLabel('gemini')}
           </button>
         </div>
+        {testError.gemini && <p className="test-error">{testError.gemini}</p>}
       </div>
 
       <div className="settings-section">
@@ -127,6 +137,7 @@ export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
             {statusLabel('gpt')}
           </button>
         </div>
+        {testError.gpt && <p className="test-error">{testError.gpt}</p>}
       </div>
 
       <p className="settings-hint">API 키는 브라우저에만 저장되며 서버로 직접 전달됩니다.</p>
