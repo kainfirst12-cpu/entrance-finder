@@ -94,7 +94,7 @@ ${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', 
   (3) 대학/학과 — 유사도 XX% — 유사 이유
 3. 주요 참조 사례 및 분석 방향
 `;
-  return callClaude(systemPrompt, prompt, 1000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
 };
 
 
@@ -125,7 +125,7 @@ ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})�
 - 강점 3가지 (근거 포함)
 - 약점 3가지 + 개선 방향
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step2_activity = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -148,7 +148,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽�
 - 비교과 종합: X/10점
 - 스토리 일관성: X/10점
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step3_career = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -175,7 +175,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 
 [전공 적합성 종합] X/10점
 - 가장 시급한 보완 역량 상위 3건
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pdfDocuments, apiKey) => {
@@ -214,7 +214,7 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
 2. 리스크 — 대응 방안
 3. 리스크 — 대응 방안
 `;
-  return callClaude(systemPrompt, prompt, 3000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
 };
 
 export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -250,7 +250,7 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 2. [중요]
 3. [준비]
 `;
-  return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -286,13 +286,13 @@ ${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 각 교과 세특
 [담당 교사 전달용 세특 요청 문구]
 (바로 사용 가능한 실제 대화 스크립트)
 `;
-  return callClaude(systemPrompt, prompt, 2500, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey) => {
   const prompt = `
 [7단계: 종합 대시보드]
-지금까지 분석: ${allAnalysis.slice(0, 2000)}
+지금까지 분석: ${allAnalysis.slice(0, 6000)}
 
 ──────────────────────────────────────
 ${studentData.name} 입시 컨설팅 종합 리포트
@@ -332,7 +332,7 @@ ${studentData.name} 입시 컨설팅 종합 리포트
   "즉시실행과제": ["","",""]
 }
 `;
-  return callClaude(systemPrompt, prompt, 2000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────

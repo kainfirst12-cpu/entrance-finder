@@ -8,6 +8,7 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -66,6 +67,21 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
     }
   };
 
+  const copyMessage = async (content, idx) => {
+    await navigator.clipboard.writeText(content);
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  const copyAllChat = async () => {
+    const text = messages
+      .map(m => `[${m.role === 'user' ? '나' : 'AI 컨설턴트'}]\n${m.content}`)
+      .join('\n\n---\n\n');
+    await navigator.clipboard.writeText(text);
+    setCopiedIdx('all');
+    setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
   const clearChat = () => {
     setMessages([
       { role: 'assistant', content: '대화가 초기화되었습니다. 새로운 질문을 해주세요!' },
@@ -80,6 +96,9 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
         <h2>입시 상담 채팅</h2>
         <div className="chat-header-right">
           <span className="chat-model-badge">{modelLabels[selectedModel] || 'Claude'}</span>
+          <button className="btn-ghost chat-clear-btn" onClick={copyAllChat}>
+            {copiedIdx === 'all' ? '복사됨!' : '전체 복사'}
+          </button>
           <button className="btn-ghost chat-clear-btn" onClick={clearChat}>초기화</button>
         </div>
       </div>
@@ -95,6 +114,14 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
                 <span key={j}>{line}<br /></span>
               ))}
             </div>
+            {msg.role === 'assistant' && (
+              <button
+                className="chat-copy-btn"
+                onClick={() => copyMessage(msg.content, i)}
+              >
+                {copiedIdx === i ? '복사됨!' : '복사'}
+              </button>
+            )}
           </div>
         ))}
         {loading && (

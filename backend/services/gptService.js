@@ -52,7 +52,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 
   for (const s of steps) {
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
-    results[s.key] = await callGPT(systemPrompt, s.prompt, 2000, apiKey);
+    results[s.key] = await callGPT(systemPrompt, s.prompt, 4000, apiKey);
   }
 
   onProgress?.({ step: 8, label: '분석 완료!' });
