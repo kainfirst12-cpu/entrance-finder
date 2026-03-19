@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://entrance-finder-production.up.railway.app';
+const API_BASE = 'https://entrance-finder-production.up.railway.app';
 
 export default function ChatInterface({ getActiveKey, selectedModel }) {
   const [messages, setMessages] = useState([

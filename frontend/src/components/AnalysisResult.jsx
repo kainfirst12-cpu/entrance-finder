@@ -8,7 +8,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis }) {
     if (downloading) return;
     setDownloading(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://entrance-finder-production.up.railway.app';
+      const apiUrl = 'https://entrance-finder-production.up.railway.app';
       const response = await fetch(`${apiUrl}/api/generate-pdf`, {
         method: 'POST',
         headers: {

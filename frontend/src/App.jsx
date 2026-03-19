@@ -8,7 +8,7 @@ import StudentList from './components/StudentList';
 import ChatInterface from './components/ChatInterface';
 import './App.css';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://entrance-finder-production.up.railway.app';
+const API_BASE = 'https://entrance-finder-production.up.railway.app';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn]   = useState(!!localStorage.getItem('ef_token'));
