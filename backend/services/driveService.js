@@ -6,22 +6,51 @@ const MAX_FILES_PER_FOLDER = 3;
 const PDF_TIMEOUT = 10000;       // PDF 파싱 타임아웃 10초
 const TOTAL_TIMEOUT = 60000;     // 전체 로딩 타임아웃 60초
 
+const AUTH_TIMEOUT = 15000; // 인증 타임아웃 15초
+
 // ── Drive 클라이언트 싱글톤 (인증 1회만) ──────────────
 let driveClient = null;
 
+function parsePrivateKey(raw) {
+  if (!raw) return '';
+  // 1) 앞뒤 따옴표 제거
+  let key = raw.trim().replace(/^["']|["']$/g, '');
+  // 2) 리터럴 \\n → 실제 줄바꿈 (Railway 등 환경변수에서 흔한 문제)
+  key = key.replace(/\\n/g, '\n');
+  // 3) 여전히 줄바꿈이 없으면 base64 블록 기준으로 복원 시도
+  if (!key.includes('\n') && key.includes('-----')) {
+    key = key
+      .replace(/-----BEGIN PRIVATE KEY-----/, '-----BEGIN PRIVATE KEY-----\n')
+      .replace(/-----END PRIVATE KEY-----/, '\n-----END PRIVATE KEY-----\n');
+  }
+  return key;
+}
+
 async function getDrive() {
   if (driveClient) return driveClient;
+
   const email = (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '').trim();
-  const rawKey = (process.env.GOOGLE_PRIVATE_KEY || '').trim();
-  let privateKey = rawKey.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
-  if (!privateKey.includes('\n') && privateKey.includes('\\n')) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+  const privateKey = parsePrivateKey(rawKey);
+
+  if (!email || !privateKey) {
+    throw new Error(`Drive 인증 정보 누락 — email: ${email ? '있음' : '없음'}, key: ${privateKey ? '있음' : '없음'}`);
   }
+
+  console.log('[Drive] 인증 시도...', { email, keyLength: privateKey.length, keyStart: privateKey.slice(0, 30) });
+
   const auth = new google.auth.GoogleAuth({
     credentials: { client_email: email, private_key: privateKey },
     scopes: ['https://www.googleapis.com/auth/drive.readonly'],
   });
-  const client = await auth.getClient();
+
+  const client = await Promise.race([
+    auth.getClient(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Drive 인증 타임아웃 (15초) — GOOGLE_PRIVATE_KEY 형식을 확인하세요')), AUTH_TIMEOUT)
+    ),
+  ]);
+
   driveClient = google.drive({ version: 'v3', auth: client });
   console.log('[Drive] 인증 완료');
   return driveClient;

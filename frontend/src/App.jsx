@@ -8,6 +8,8 @@ import StudentList from './components/StudentList';
 import ChatInterface from './components/ChatInterface';
 import './App.css';
 
+const API_BASE = import.meta.env.VITE_API_URL || 'https://entrance-finder-production.up.railway.app';
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn]   = useState(!!localStorage.getItem('ef_token'));
   const [view, setView]               = useState('list');
@@ -44,7 +46,7 @@ export default function App() {
       const pdfCount = Object.values(files).filter(Boolean).length;
       const token = localStorage.getItem('ef_token');
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/analyze`, {
+      const response = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         headers: {
           'x-api-key':  getActiveKey(),
@@ -54,9 +56,14 @@ export default function App() {
         body: formData,
       });
 
+      if (!response.ok) {
+        throw new Error(`서버 응답 오류: ${response.status}`);
+      }
+
       const reader  = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let completed = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -77,15 +84,22 @@ export default function App() {
               ]);
             }
             if (data.type === 'complete') {
+              completed = true;
               setAnalysisData({ results: data.results, notionUrl: data.notionUrl, studentData, pdfCount });
               setView('result');
             }
             if (data.type === 'error') {
+              completed = true;
               alert('분석 오류: ' + data.message);
               setView('form');
             }
           } catch {}
         }
+      }
+
+      if (!completed) {
+        alert('서버 연결이 끊어졌습니다. 다시 시도해주세요.');
+        setView('form');
       }
     } catch (err) {
       alert('서버 연결 오류: ' + err.message);

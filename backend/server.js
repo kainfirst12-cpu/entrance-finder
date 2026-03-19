@@ -45,6 +45,7 @@ app.get('/api/drive/test', async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('[Drive Test] 실패:', err.message);
     res.status(500).json({ success: false, error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
   }
 });
@@ -192,8 +193,12 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
 
-  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const send = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    if (typeof res.flush === 'function') res.flush();
+  };
 
   try {
     send({ type: 'progress', step: 0, label: 'Google Drive 지식베이스 로딩 중...', total: 9 });
@@ -291,5 +296,12 @@ app.post('/api/login', (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`\n🚀 입시-Finder 서버 실행 중: http://localhost:${PORT}`);
-  console.log(`📁 Drive 연결 테스트: http://localhost:${PORT}/api/drive/test\n`);
+  console.log(`📁 Drive 연결 테스트: http://localhost:${PORT}/api/drive/test`);
+
+  // 시작 시 Drive 환경변수 상태 출력 (디버그)
+  const hasEmail = !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const hasKey = !!process.env.GOOGLE_PRIVATE_KEY;
+  const keyLen = (process.env.GOOGLE_PRIVATE_KEY || '').length;
+  const hasFolder = !!process.env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID;
+  console.log(`📋 Drive 환경변수: email=${hasEmail}, key=${hasKey}(${keyLen}자), folder=${hasFolder}\n`);
 });
