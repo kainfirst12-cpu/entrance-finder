@@ -5,8 +5,18 @@ const MAX_CHARS_PER_FILE = 8000;
 const MAX_FILES_PER_FOLDER = 3;
 const PDF_TIMEOUT = 10000;       // PDF 파싱 타임아웃 10초
 const TOTAL_TIMEOUT = 60000;     // 전체 로딩 타임아웃 60초
+const API_TIMEOUT = 10000;       // Drive API 개별 호출 타임아웃 10초
+const AUTH_TIMEOUT = 15000;      // 인증 타임아웃 15초
 
-const AUTH_TIMEOUT = 15000; // 인증 타임아웃 15초
+// ── Drive API 호출 래퍼 (타임아웃 포함) ─────────────────
+function withTimeout(promise, ms = API_TIMEOUT, label = 'Drive API') {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} 타임아웃 (${ms / 1000}초)`)), ms)
+    ),
+  ]);
+}
 
 // ── Drive 클라이언트 싱글톤 (인증 1회만) ──────────────
 let driveClient = null;
@@ -58,12 +68,16 @@ async function getDrive() {
 
 // ── 파일 목록 조회 ────────────────────────────────────
 async function listFiles(drive, folderId) {
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents and trashed=false`,
-    fields: 'files(id, name, mimeType)',
-    orderBy: 'modifiedTime desc',
-    pageSize: MAX_FILES_PER_FOLDER,
-  });
+  const res = await withTimeout(
+    drive.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: 'files(id, name, mimeType)',
+      orderBy: 'modifiedTime desc',
+      pageSize: MAX_FILES_PER_FOLDER,
+    }),
+    API_TIMEOUT,
+    'files.list'
+  );
   return res.data.files || [];
 }
 
@@ -71,15 +85,24 @@ async function listFiles(drive, folderId) {
 async function extractText(drive, fileId, mimeType, fileName) {
   try {
     if (mimeType === 'text/plain') {
-      const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' });
+      const res = await withTimeout(
+        drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' }),
+        API_TIMEOUT, `files.get(${fileName})`
+      );
       return String(res.data).slice(0, MAX_CHARS_PER_FILE);
     }
     if (mimeType === 'application/vnd.google-apps.document') {
-      const res = await drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' });
+      const res = await withTimeout(
+        drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' }),
+        API_TIMEOUT, `files.export(${fileName})`
+      );
       return String(res.data).slice(0, MAX_CHARS_PER_FILE);
     }
 
-    const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+    const res = await withTimeout(
+      drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' }),
+      API_TIMEOUT, `files.get(${fileName})`
+    );
     const buffer = Buffer.from(res.data);
 
     if (mimeType === 'application/pdf') {
@@ -146,10 +169,14 @@ export const loadKnowledgeBase = async () => {
     // 전체 타임아웃 래핑
     const loadWithTimeout = async () => {
       // 하위 폴더 조회
-      const folders = await drive.files.list({
-        q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        fields: 'files(id, name)',
-      });
+      const folders = await withTimeout(
+        drive.files.list({
+          q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+          fields: 'files(id, name)',
+        }),
+        API_TIMEOUT,
+        'folders.list'
+      );
 
       const subFolders = folders.data.files || [];
       console.log(`[Drive] 하위 폴더 ${subFolders.length}개 발견 (${Date.now() - startTime}ms)`);
@@ -191,10 +218,14 @@ export const loadStudentFiles = async (studentName) => {
 
   try {
     const drive = await getDrive();
-    const folders = await drive.files.list({
-      q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and name contains '${studentName}' and trashed=false`,
-      fields: 'files(id, name)',
-    });
+    const folders = await withTimeout(
+      drive.files.list({
+        q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and name contains '${studentName}' and trashed=false`,
+        fields: 'files(id, name)',
+      }),
+      API_TIMEOUT,
+      'student.folders.list'
+    );
     if (!folders.data.files?.length) return '';
 
     const files = await listFiles(drive, folders.data.files[0].id);
