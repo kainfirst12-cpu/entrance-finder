@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 export default function AnalysisResult({ data, onBack, onNewAnalysis }) {
   const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { results, studentData, pdfCount } = data || {};
 
   const handleDownloadPDF = async () => {
@@ -51,6 +52,17 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis }) {
     );
   };
 
+  const handleCopyAll = async () => {
+    const sections = sectionMap
+      .filter(({ key }) => results?.[key])
+      .map(({ key, title }) => `## ${title}\n\n${results[key]}`)
+      .join('\n\n---\n\n');
+    const header = `# ${studentData?.name || '학생'} 입시 분석 결과\n${studentData?.school || ''} · ${studentData?.major || ''}\n\n---\n\n`;
+    await navigator.clipboard.writeText(header + sections);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const sectionMap = [
     { key: 'caseMatching',   title: 'Drive 합격자 사례 매칭', icon: '🔍' },
     { key: 'academic',       title: '학업역량 분석',          icon: '📚' },
@@ -73,6 +85,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis }) {
         <div className="result-actions">
           <button className="btn-download-pdf" onClick={handleDownloadPDF} disabled={downloading}>
             {downloading ? '⏳ PDF 생성 중...' : '📄 PDF 다운로드'}
+          </button>
+          <button className="btn-secondary" onClick={handleCopyAll}>
+            {copied ? '✅ 복사됨!' : '📋 전체 복사'}
           </button>
           <button className="btn-secondary" onClick={onNewAnalysis}>✨ 새 분석</button>
           <button className="btn-ghost" onClick={onBack}>← 목록</button>
