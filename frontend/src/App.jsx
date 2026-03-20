@@ -85,7 +85,7 @@ export default function App() {
             }
             if (data.type === 'complete') {
               completed = true;
-              setAnalysisData({ results: data.results, notionUrl: data.notionUrl, studentData, pdfCount });
+              setAnalysisData({ results: data.results, notionUrl: data.notionUrl, studentData, pdfCount, analyzedModel: selectedModel });
               setView('result');
             }
             if (data.type === 'error') {
@@ -193,7 +193,15 @@ export default function App() {
         {view === 'form'      && <StudentForm onSubmit={startAnalysis} onCancel={() => setView('list')} />}
         {view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
         {view === 'result' && analysisData && (
-          <AnalysisResult data={analysisData} onBack={() => setView('list')} onNewAnalysis={() => setView('form')} />
+          <AnalysisResult
+            data={analysisData}
+            onBack={() => setView('list')}
+            onNewAnalysis={() => setView('form')}
+            selectedModel={selectedModel}
+            apiKey={apiKey}
+            geminiKey={geminiKey}
+            gptKey={gptKey}
+          />
         )}
         {view === 'chat' && (
           <ChatInterface getActiveKey={getActiveKey} selectedModel={selectedModel} />

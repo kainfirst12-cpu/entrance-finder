@@ -178,6 +178,82 @@ ${kb.합격자사례 || '(자료 없음)'}`;
   }
 });
 
+// ── AI 교차 검증 엔드포인트 ──────────────────────────
+app.post('/api/verify', async (req, res) => {
+  const { studentData, analysisText, originalModel } = req.body;
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
+  if (!analysisText) return res.status(400).json({ success: false, message: '분석 데이터 없음' });
+
+  const studentName = studentData?.name || '학생';
+  const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트이자 분석 검증 전문가입니다.
+다른 AI(${originalModel || 'AI'})가 작성한 입시 분석 결과를 검증하고 피드백을 제공합니다.
+
+[검증 원칙]
+1. 각 섹션별로 분석의 정확성, 논리적 일관성, 실현 가능성을 평가하라
+2. 잘된 점과 보완이 필요한 점을 구분하여 제시하라
+3. 추가 고려사항이나 빠진 관점이 있으면 보충하라
+4. 최종 종합 평가를 제공하라
+
+[출력 형식]
+- 이모티콘, 이모지를 절대 사용하지 마라
+- 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──)만 사용하라
+- 전문 컨설팅 검증 보고서 톤을 유지하라
+
+[학생 정보]
+이름: ${studentName}
+학교: ${studentData?.school || '미입력'}
+계열: ${studentData?.major || '미입력'}`;
+
+  try {
+    let reply;
+
+    if (aiModel === 'gemini') {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const result = await model.generateContent([
+        { text: systemPrompt },
+        { text: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
+      ]);
+      reply = result.response.text();
+
+    } else if (aiModel === 'gpt') {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey });
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 4000,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
+        ],
+      });
+      reply = response.choices[0].message.content;
+
+    } else {
+      const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
+      const client = new AnthropicSDK({ apiKey });
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
+        ],
+      });
+      reply = response.content[0].text;
+    }
+
+    res.json({ success: true, reply });
+  } catch (err) {
+    console.error(`[verify/${aiModel}] 오류:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.post('/api/analyze', pdfFields, async (req, res) => {
   let studentData;
   try {
