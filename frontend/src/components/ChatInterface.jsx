@@ -2,6 +2,46 @@ import { useState, useRef, useEffect } from 'react';
 
 const API_BASE = 'https://entrance-finder-production.up.railway.app';
 
+// 마크다운 → HTML 변환 (채팅 인쇄용)
+function chatMdToHtml(raw) {
+  if (!raw) return '';
+  // 이모지 제거
+  let text = raw.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '');
+  // HTML escape
+  text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|/.test(line)) {
+      const tbl = [];
+      while (i < lines.length && /^\s*\|.*\|/.test(lines[i])) { tbl.push(lines[i]); i++; }
+      const rows = tbl.filter(l => !/^\s*\|[\s\-:]+\|/.test(l));
+      if (rows.length) {
+        let h = '<table style="width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px;">';
+        rows.forEach((r, ri) => {
+          const cells = r.split('|').filter((_, ci, a) => ci > 0 && ci < a.length - 1).map(c => c.trim());
+          const tag = ri === 0 ? 'th' : 'td';
+          const style = ri === 0 ? 'background:#1e293b;color:#fff;padding:8px 12px;text-align:left;border:1px solid #334155;' : 'padding:8px 12px;border:1px solid #e2e8f0;';
+          h += '<tr>' + cells.map(c => `<${tag} style="${style}">${c}</${tag}>`).join('') + '</tr>';
+        });
+        h += '</table>';
+        out.push(h);
+      }
+      continue;
+    }
+    if (/^\s*```/.test(line)) { i++; continue; }
+    if (/^[─━]{5,}/.test(line.trim())) { out.push('<hr style="border:none;height:1px;background:#e2e8f0;margin:12px 0;">'); i++; continue; }
+    const hm = line.match(/^(#{1,6})\s+(.+)/);
+    if (hm) { out.push(`<div style="font-size:15px;font-weight:700;color:#1e293b;margin:16px 0 6px;">${hm[2]}</div>`); i++; continue; }
+    let p = line.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    out.push(p);
+    i++;
+  }
+  return out.join('\n');
+}
+
 export default function ChatInterface({ getActiveKey, selectedModel }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: '안녕하세요! 입시 전문 컨설턴트입니다.\n생기부, 세특, 입시 전략 등 궁금한 점을 자유롭게 질문해 주세요.' },
@@ -93,10 +133,7 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
     const modelLabel = modelLabels[selectedModel] || 'AI';
 
     const messagesHTML = messages.map((msg) => {
-      const content = msg.content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+      const content = chatMdToHtml(msg.content);
       const isUser = msg.role === 'user';
       return `
         <div class="msg ${isUser ? 'user' : 'ai'}">
