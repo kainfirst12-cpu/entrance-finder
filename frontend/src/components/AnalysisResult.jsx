@@ -19,20 +19,75 @@ const SECTION_MAP = [
   { key: 'dashboard',      num: '7', title: '종합 대시보드' },
 ];
 
-// 이모지 + 마크다운 기호 제거 함수
-function stripEmojis(text) {
-  if (!text) return text;
-  return text
-    // 이모지 제거
-    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '')
-    // 마크다운 헤딩 (### ## #) → 제거
-    .replace(/^#{1,6}\s+/gm, '')
-    // 볼드 **text** → text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    // 이탤릭 *text* → text (단독 * 불릿은 유지)
-    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1')
-    // 연속 공백 정리
-    .replace(/\s{2,}/g, ' ');
+// 이모지 제거
+function stripEmojis(str) {
+  if (!str) return str;
+  return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '');
+}
+
+// 마크다운 → HTML 변환 (테이블, 볼드, 헤딩 등)
+function mdToHtml(raw) {
+  if (!raw) return '';
+  let text = stripEmojis(raw);
+  // HTML escape
+  text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // 마크다운 테이블 감지: | col | col | 패턴
+    if (/^\s*\|.*\|/.test(line)) {
+      const tableLines = [];
+      while (i < lines.length && /^\s*\|.*\|/.test(lines[i])) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      // 구분선 (|---|---| ) 제거하고 데이터 행만 추출
+      const dataRows = tableLines.filter(l => !/^\s*\|[\s\-:]+\|/.test(l));
+      if (dataRows.length > 0) {
+        let html = '<table class="md-table">';
+        dataRows.forEach((row, ri) => {
+          const cells = row.split('|').filter((_, ci, arr) => ci > 0 && ci < arr.length - 1).map(c => c.trim());
+          const tag = ri === 0 ? 'th' : 'td';
+          html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+        });
+        html += '</table>';
+        out.push(html);
+      }
+      continue;
+    }
+
+    // 코드블록 ``` 제거
+    if (/^\s*```/.test(line)) { i++; continue; }
+
+    // 구분선 (────) → <hr>
+    if (/^[─━─]{5,}/.test(line.trim())) {
+      out.push('<hr class="md-hr">');
+      i++; continue;
+    }
+
+    // 헤딩 ### → 소제목
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (headingMatch) {
+      const level = Math.min(headingMatch[1].length, 4);
+      out.push(`<div class="md-h${level}">${headingMatch[2]}</div>`);
+      i++; continue;
+    }
+
+    // 일반 텍스트: 볼드, 이탤릭 처리
+    let processed = line
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+
+    out.push(processed);
+    i++;
+  }
+
+  return out.join('\n');
 }
 
 export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedModel, apiKey, geminiKey, gptKey }) {
@@ -115,10 +170,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     // 검증 결과
     let verifyHTML = '';
     if (verifyResult) {
-      const vContent = stripEmojis(verifyResult.content)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+      const vContent = mdToHtml(verifyResult.content);
       const vLabel = MODEL_CONFIG[verifyResult.model]?.label || 'AI';
       verifyHTML = `
         <div class="section">
@@ -331,6 +383,42 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     padding: 0;
   }
 
+  /* 마크다운 변환된 테이블 */
+  .md-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: normal;
+  }
+  .md-table th {
+    background: var(--navy);
+    color: #fff;
+    font-weight: 600;
+    padding: 10px 14px;
+    text-align: left;
+    border: 1px solid var(--dark-blue);
+  }
+  .md-table td {
+    padding: 9px 14px;
+    border: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  .md-table tr:nth-child(even) td { background: #f8fafc; }
+  .md-hr { border: none; height: 1px; background: #e2e8f0; margin: 14px 0; }
+  .md-h1, .md-h2 {
+    font-size: 16px; font-weight: 700; color: var(--navy);
+    margin: 22px 0 8px; padding-bottom: 6px;
+    border-bottom: 2px solid var(--blue); white-space: normal;
+  }
+  .md-h3, .md-h4 {
+    font-size: 14px; font-weight: 600; color: var(--navy);
+    margin: 16px 0 6px; white-space: normal;
+  }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+
   /* ── 검증 ─────────────────────────────── */
   .verify-badge {
     display: inline-block;
@@ -423,8 +511,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
     <!-- 분석 섹션들 -->
     ${activeSections.map(({ key, num, title }, idx) => {
-      const c = stripEmojis(results[key] || '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const c = mdToHtml(results[key] || '');
       return `<div class="section"><h2 class="section-title">${idx + 1}. [${num}단계] ${title}</h2><div class="section-line"></div><div class="section-body">${c}</div></div>`;
     }).join('')}
 
@@ -587,11 +674,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           <span className="section-num-badge">{num}</span>
           <h3>{title}</h3>
         </div>
-        <div className="section-content">
-          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.6' }}>
-            {stripEmojis(content)}
-          </pre>
-        </div>
+        <div
+          className="section-content md-rendered"
+          dangerouslySetInnerHTML={{ __html: mdToHtml(content) }}
+        />
       </div>
     );
   };
@@ -682,11 +768,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
               {usedCfg.icon} {usedCfg.label} 분석 → {MODEL_CONFIG[verifyResult.model]?.icon} {MODEL_CONFIG[verifyResult.model]?.label} 검증
             </span>
           </div>
-          <div className="verify-result-body">
-            <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.7' }}>
-              {stripEmojis(verifyResult.content)}
-            </pre>
-          </div>
+          <div
+            className="verify-result-body md-rendered"
+            dangerouslySetInnerHTML={{ __html: mdToHtml(verifyResult.content) }}
+          />
           <div className="verify-result-actions">
             <button
               className="btn-refine"
