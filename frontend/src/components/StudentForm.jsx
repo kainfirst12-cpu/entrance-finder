@@ -1,26 +1,18 @@
-// src/components/StudentForm.jsx
 import { useState } from 'react';
 
-const GRADES = ['고1', '고2', '고3', 'N수'];
+const GRADES = ['고1','고2','고3'];
 const MAJORS = [
-  // 공학계열
   '컴퓨터공학/SW', '전기/전자공학', '기계/로봇공학',
   '화학/신소재공학', '산업/시스템공학', '건축/토목공학',
   '에너지/환경공학', '생명공학/바이오',
-  // 자연과학
   '수학/통계', '물리학', '화학', '생명과학', '지구/해양과학',
-  // 의약학
   '의학/의예과', '치의학/치의예과', '한의학/한의예과',
   '약학', '수의학', '간호학',
-  // 인문사회
   '경영/경제', '법학', '행정/정치외교', '심리학',
   '사회학/사회복지', '언론/미디어', '국어국문/문학',
   '영어영문/외국어', '사학/철학',
-  // 교육
   '사범/교육', '유아교육', '특수교육',
-  // 예체능
   '미술/디자인', '음악', '체육', '연극/영화',
-  // 기타
   '농업/식품', '해양/수산', '항공/우주', '국제학', '자유전공/학부', '기타',
 ];
 
@@ -40,15 +32,14 @@ const PdfUploader = ({ label, fileKey, files, onChange, hint }) => {
       {hint && <div className="pdf-hint">{hint}</div>}
       {file ? (
         <div className="pdf-file-row">
-          <span className="pdf-icon">📄</span>
+          <span className="pdf-icon">PDF</span>
           <span className="pdf-filename">{file.name}</span>
           <span className="pdf-size">({(file.size/1024/1024).toFixed(1)}MB)</span>
-          <button className="pdf-remove" onClick={remove}>✕</button>
+          <button className="pdf-remove" onClick={remove}>X</button>
         </div>
       ) : (
         <label className="pdf-drop-zone">
           <input type="file" accept=".pdf" onChange={handleFile} style={{display:'none'}} />
-          <span className="pdf-upload-icon">📎</span>
           <span>클릭해서 PDF 업로드</span>
           <span className="pdf-limit">최대 20MB</span>
         </label>
@@ -76,7 +67,7 @@ export default function StudentForm({ onSubmit, onCancel }) {
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const input = (k) => ({ value:form[k], onChange:(e)=>set(k,e.target.value) });
   const setFile = (k,v) => setFiles(f=>({...f,[k]:v}));
-  const tabs = ['기본 정보','성적 정보','비교과 활동','생기부 & 세특'];
+  const tabs = ['기본 정보','생기부 & 자료 업로드'];
   const uploadedCount = Object.values(files).filter(Boolean).length;
 
   const handleSubmit = () => {
@@ -90,7 +81,7 @@ export default function StudentForm({ onSubmit, onCancel }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">새 분석 시작</h1>
-          <p className="page-desc">학생 정보를 입력하면 Drive 자료 기반 AI 분석이 시작됩니다
+          <p className="page-desc">기본 정보 입력 + 생기부 PDF 업로드만 하면 AI가 자동 분석합니다
             {uploadedCount > 0 && <span className="upload-badge"> · PDF {uploadedCount}개 업로드됨</span>}
           </p>
         </div>
@@ -112,7 +103,7 @@ export default function StudentForm({ onSubmit, onCancel }) {
                 {GRADES.map(g=><option key={g}>{g}</option>)}
               </select>
             </div>
-            <div className="field"><label>학교명</label><input placeholder="○○고등학교" {...input('school')} /></div>
+            <div className="field"><label>학교명</label><input placeholder="OO고등학교" {...input('school')} /></div>
             <div className="field"><label>지역</label><input placeholder="부천 / 서울 / 경기" {...input('region')} /></div>
             <div className="field full"><label>희망 전공 계열</label>
               <select value={form.major} onChange={e=>set('major',e.target.value)}>
@@ -122,83 +113,59 @@ export default function StudentForm({ onSubmit, onCancel }) {
             <div className="field full"><label>목표 대학 (상향 기준) *</label>
               <input placeholder="예: 서울대학교 / 연세대학교 / KAIST" {...input('targetUniv')} />
             </div>
-          </div>
-        )}
-        {tab===1 && (
-          <div className="form-grid">
             <div className="field"><label>내신 평균 등급</label>
               <input type="number" min="1" max="9" step="0.1" placeholder="예: 1.8" {...input('gpa')} />
             </div>
             <div className="field"><label>모의고사 등급 (국/수/영/탐)</label>
               <input placeholder="예: 1/1/2/1" {...input('mockExam')} />
             </div>
-            <div className="field full"><label>과목 선택 계획</label>
-              <textarea placeholder="예: 고2 - 미적분Ⅰ, 기하, 물리학Ⅰ&#10;고3 - 미적분Ⅱ, 과제연구" {...input('subjectPlan')} rows={3} />
-            </div>
-            <div className="field full">
-              <label>📎 성적 관련 PDF 업로드</label>
-              <div className="pdf-grid">
-                <PdfUploader label="성적표 PDF" fileKey="gradePdf" files={files} onChange={setFile} hint="내신 성적표" />
-                <PdfUploader label="모의고사 성적 PDF" fileKey="mockExamPdf" files={files} onChange={setFile} hint="최근 모의고사 결과" />
-              </div>
-            </div>
           </div>
         )}
-        {tab===2 && (
-          <div className="form-grid">
-            <div className="field full"><label>동아리 활동</label>
-              <textarea placeholder="예: 과학동아리 (3년, 로봇 제작)" {...input('club')} rows={2} />
-            </div>
-            <div className="field full"><label>봉사활동</label>
-              <textarea placeholder="예: 수학 멘토링 (30시간)" {...input('volunteer')} rows={2} />
-            </div>
-            <div className="field full"><label>리더십 경험</label>
-              <textarea placeholder="예: 학급 부반장, 동아리 부장" {...input('leadership')} rows={2} />
-            </div>
-            <div className="field full"><label>수상 경력</label>
-              <textarea placeholder="예: 수학경시대회 대상, 과학탐구대회 금상" {...input('awards')} rows={2} />
-            </div>
-            <div className="field"><label>특기/재능</label>
-              <input placeholder="예: 아두이노, 3D 모델링" {...input('talent')} />
-            </div>
-            <div className="field"><label>관심 탐구 분야</label>
-              <input placeholder="예: 자율주행 로봇, AI" {...input('interests')} />
-            </div>
-            <div className="field full">
-              <label>📎 수상내역 PDF 업로드</label>
-              <PdfUploader label="수상내역 PDF" fileKey="awardsPdf" files={files} onChange={setFile} hint="수상 내역 정리 파일 (선택사항)" />
-            </div>
-          </div>
-        )}
-        {tab===3 && (
+        {tab===1 && (
           <div className="form-grid">
             <div className="field full">
-              <label>📄 생기부 원본 PDF 업로드 (권장)</label>
-              <div className="info-box full" style={{marginBottom:'12px',background:'var(--blue-bg)'}}>
-                🤖 PDF를 업로드하면 AI가 직접 읽고 분석해요. 텍스트 입력보다 훨씬 정확해요!
+              <div className="info-box full" style={{marginBottom:'16px',background:'var(--blue-bg)'}}>
+                생기부 PDF를 업로드하면 AI가 성적, 세특, 비교과, 수상 등 모든 정보를 자동으로 추출하여 분석합니다. 별도로 성적이나 활동을 입력할 필요가 없습니다.
               </div>
-              <PdfUploader label="생기부 원본 PDF" fileKey="recordPdf" files={files} onChange={setFile} hint="학교생활기록부 전체 PDF" />
             </div>
+
             <div className="field full">
-              <div className="divider-text">또는 직접 텍스트 입력</div>
+              <PdfUploader label="생기부 원본 PDF (핵심)" fileKey="recordPdf" files={files} onChange={setFile} hint="학교생활기록부 전체 PDF — 이것 하나면 분석 가능" />
             </div>
-            <div className="field full">
-              <label>세특 주요 내용 (PDF 없을 경우)</label>
-              <textarea
-                placeholder="PDF가 없는 경우 세특 내용을 직접 붙여넣기 해주세요.&#10;[수학] 정수론 탐구 중 페르마 소정리를..."
-                {...input('specialNotes')}
-                rows={10}
-              />
+
+            <div className="field full" style={{marginTop:'8px'}}>
+              <details className="extra-upload-details">
+                <summary className="extra-upload-summary">추가 자료 업로드 (선택사항)</summary>
+                <div className="pdf-grid" style={{marginTop:'12px'}}>
+                  <PdfUploader label="성적표 PDF" fileKey="gradePdf" files={files} onChange={setFile} hint="내신 성적표 (별도 파일인 경우)" />
+                  <PdfUploader label="모의고사 PDF" fileKey="mockExamPdf" files={files} onChange={setFile} hint="최근 모의고사 결과" />
+                  <PdfUploader label="수상내역 PDF" fileKey="awardsPdf" files={files} onChange={setFile} hint="수상 내역 정리 파일" />
+                </div>
+              </details>
+            </div>
+
+            <div className="field full" style={{marginTop:'12px'}}>
+              <details className="extra-upload-details">
+                <summary className="extra-upload-summary">텍스트 직접 입력 (PDF 없을 경우)</summary>
+                <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'12px'}}>
+                  <div className="field full"><label>세특 주요 내용</label>
+                    <textarea placeholder="PDF가 없는 경우 세특 내용을 직접 붙여넣기 해주세요." {...input('specialNotes')} rows={6} />
+                  </div>
+                  <div className="field full"><label>동아리/봉사/수상 등 비교과</label>
+                    <textarea placeholder="동아리, 봉사활동, 리더십, 수상 경력 등" {...input('club')} rows={4} />
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         )}
       </div>
       <div className="form-footer">
         <div className="form-nav">
-          <button className="btn-ghost" onClick={()=>setTab(t=>Math.max(0,t-1))} disabled={tab===0}>← 이전</button>
-          {tab<3
+          <button className="btn-ghost" onClick={()=>setTab(t=>Math.max(0,t-1))} disabled={tab===0}>이전</button>
+          {tab<1
             ? <button className="btn-primary" onClick={()=>setTab(t=>t+1)}>다음 →</button>
-            : <button className="btn-analyze" onClick={handleSubmit}>🚀 AI 분석 시작</button>
+            : <button className="btn-analyze" onClick={handleSubmit}>AI 분석 시작</button>
           }
         </div>
       </div>

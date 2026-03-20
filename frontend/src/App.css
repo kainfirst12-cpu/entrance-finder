@@ -1754,3 +1754,35 @@ body {
 .logo-dropzone:hover { border-color: var(--accent); background: var(--surface2); }
 .logo-dropzone-text { font-size: 13px; color: var(--text2); font-weight: 500; }
 .logo-dropzone-hint { font-size: 11px; color: var(--text3); }
+
+/* ── 추가 업로드 토글 ──────────────── */
+.extra-upload-details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.extra-upload-summary {
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  cursor: pointer;
+  background: var(--surface2);
+  list-style: none;
+}
+.extra-upload-summary::-webkit-details-marker { display: none; }
+.extra-upload-summary::before {
+  content: '+ ';
+  font-weight: 700;
+  color: var(--accent);
+}
+.extra-upload-details[open] .extra-upload-summary {
+  border-bottom: 1px solid var(--border);
+}
+.extra-upload-details[open] .extra-upload-summary::before {
+  content: '- ';
+}
+.extra-upload-details > .pdf-grid,
+.extra-upload-details > div {
+  padding: 0 16px 16px;
+}
