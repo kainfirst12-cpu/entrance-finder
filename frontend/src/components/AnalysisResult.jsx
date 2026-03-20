@@ -610,7 +610,8 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': vKey,
-          'x-ai-model': verifyModel,
+          'x-ai-model': MODEL_CONFIG[verifyModel]?.group || verifyModel,
+          'x-ai-submodel': verifyModel,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
@@ -654,7 +655,8 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': refineKey,
-          'x-ai-model': usedModel,
+          'x-ai-model': MODEL_CONFIG[usedModel]?.group || usedModel,
+          'x-ai-submodel': usedModel,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
