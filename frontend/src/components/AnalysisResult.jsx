@@ -98,6 +98,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [verifyResult, setVerifyResult] = useState(null);
   const [refining, setRefining] = useState(false);
   const [refinedResults, setRefinedResults] = useState(null);
+  const [editingKey, setEditingKey] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [manualEdits, setManualEdits] = useState({});
   const [showCoverModal, setShowCoverModal] = useState(false);
   const [coverEdit, setCoverEdit] = useState({
     reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
@@ -106,7 +109,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     logoData: localStorage.getItem('ef_logo') || '',
   });
   const { results: originalResults, studentData, pdfCount, analyzedModel } = data || {};
-  const results = refinedResults || originalResults;
+  const baseResults = refinedResults || originalResults;
+  // 수동 편집이 있으면 해당 섹션만 덮어씌움
+  const results = { ...baseResults, ...manualEdits };
 
   const usedModel = analyzedModel || selectedModel || 'claude';
 
@@ -697,18 +702,55 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     }
   };
 
-  const renderSection = (num, title, content) => {
+  const startEdit = (key, content) => {
+    setEditingKey(key);
+    setEditText(content || '');
+  };
+
+  const saveEdit = (key) => {
+    setManualEdits(prev => ({ ...prev, [key]: editText }));
+    setEditingKey(null);
+    setEditText('');
+  };
+
+  const cancelEdit = () => {
+    setEditingKey(null);
+    setEditText('');
+  };
+
+  const renderSection = (key, num, title, content) => {
     if (!content) return null;
+    const isEditing = editingKey === key;
     return (
-      <div className="result-section" key={title}>
+      <div className="result-section" key={key}>
         <div className="section-header">
           <span className="section-num-badge">{num}</span>
           <h3>{title}</h3>
+          <div className="section-header-actions">
+            {manualEdits[key] && <span className="edit-badge">수정됨</span>}
+            {!isEditing ? (
+              <button className="btn-edit-section" onClick={() => startEdit(key, content)}>수정</button>
+            ) : (
+              <>
+                <button className="btn-save-section" onClick={() => saveEdit(key)}>저장</button>
+                <button className="btn-cancel-section" onClick={cancelEdit}>취소</button>
+              </>
+            )}
+          </div>
         </div>
-        <div
-          className="section-content md-rendered"
-          dangerouslySetInnerHTML={{ __html: mdToHtml(content) }}
-        />
+        {isEditing ? (
+          <textarea
+            className="section-edit-textarea"
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            rows={20}
+          />
+        ) : (
+          <div
+            className="section-content md-rendered"
+            dangerouslySetInnerHTML={{ __html: mdToHtml(content) }}
+          />
+        )}
       </div>
     );
   };
@@ -819,7 +861,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
       )}
 
       <div className="result-sections">
-        {SECTION_MAP.map(({ key, num, title }) => renderSection(num, title, results?.[key]))}
+        {SECTION_MAP.map(({ key, num, title }) => renderSection(key, num, title, results?.[key]))}
       </div>
 
       {/* 표지 수정 모달 */}

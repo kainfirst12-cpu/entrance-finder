@@ -580,6 +580,73 @@ body {
   flex-shrink: 0;
 }
 
+/* ── 섹션 수동 편집 ──────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-edit-section {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text2);
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-edit-section:hover { border-color: var(--accent); color: var(--accent); }
+.btn-save-section {
+  padding: 3px 10px;
+  background: var(--accent);
+  border: none;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+}
+.btn-cancel-section {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  font-family: inherit;
+}
+.edit-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.section-edit-textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 16px 20px;
+  border: 2px solid var(--accent);
+  border-radius: 0 0 var(--radius) var(--radius);
+  font-size: 13px;
+  font-family: 'Noto Sans KR', sans-serif;
+  line-height: 1.7;
+  color: var(--text);
+  background: #fff;
+  resize: vertical;
+  outline: none;
+}
+
 /* ── 마크다운 렌더링 스타일 ────────────── */
 .md-rendered {
   font-size: 13px;
