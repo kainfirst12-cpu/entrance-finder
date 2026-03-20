@@ -43,9 +43,12 @@ function chatMdToHtml(raw) {
 }
 
 const MODEL_CFG = {
-  claude: { icon: '🔵', label: 'Claude', color: '#7c6af7' },
-  gemini: { icon: '🟢', label: 'Gemini', color: '#4caf50' },
-  gpt:    { icon: '🟡', label: 'GPT-4o', color: '#f0a500' },
+  claude:       { icon: '🔵', label: 'Claude Sonnet', color: '#7c6af7', group: 'claude' },
+  'claude-opus':{ icon: '🔷', label: 'Claude Opus',   color: '#5b21b6', group: 'claude' },
+  gemini:       { icon: '🟢', label: 'Gemini Flash',  color: '#4caf50', group: 'gemini' },
+  'gemini-pro': { icon: '🟩', label: 'Gemini Pro',    color: '#166534', group: 'gemini' },
+  gpt:          { icon: '🟡', label: 'GPT-4o',        color: '#f0a500', group: 'gpt' },
+  'gpt-mini':   { icon: '🟠', label: 'GPT-4o Mini',   color: '#ea580c', group: 'gpt' },
 };
 
 export default function ChatInterface({ getActiveKey, selectedModel }) {
@@ -87,7 +90,8 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
-          'x-ai-model': selectedModel,
+          'x-ai-model': MODEL_CFG[selectedModel]?.group || selectedModel,
+          'x-ai-submodel': selectedModel,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ message: text, history }),

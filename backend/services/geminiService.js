@@ -1,8 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey) {
+const GEMINI_MODELS = {
+  'gemini': 'gemini-2.5-flash',
+  'gemini-pro': 'gemini-2.5-pro',
+};
+
+async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gemini') {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const modelId = GEMINI_MODELS[submodel] || GEMINI_MODELS['gemini'];
+  const model = genAI.getGenerativeModel({ model: modelId });
   const result = await model.generateContent(
     `${systemPrompt}\n\n${userPrompt}`
   );

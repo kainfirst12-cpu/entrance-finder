@@ -53,6 +53,7 @@ app.get('/api/drive/test', async (req, res) => {
 app.post('/api/refine', async (req, res) => {
   const { studentData, analysisText, verifyText, sectionKey } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
 
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
@@ -91,14 +92,14 @@ app.post('/api/refine', async (req, res) => {
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
       const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
       reply = result.response.text();
     } else if (aiModel === 'gpt') {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o', max_tokens: 8000,
+        model: getModelId('gpt', submodel || aiModel), max_tokens: 8000,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       });
       reply = response.choices[0].message.content;
@@ -106,7 +107,7 @@ app.post('/api/refine', async (req, res) => {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 8000, system: systemPrompt,
+        model: getModelId('claude', submodel || aiModel), max_tokens: 8000, system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       });
       reply = response.content[0].text;
@@ -157,10 +158,24 @@ async function getCachedKnowledgeBase() {
   return kbCache;
 }
 
+// ── 모델 ID 매핑 ──────────────────────────────────────
+const MODEL_IDS = {
+  claude: 'claude-sonnet-4-6',
+  'claude-opus': 'claude-opus-4-6',
+  gemini: 'gemini-2.5-flash',
+  'gemini-pro': 'gemini-2.5-pro',
+  gpt: 'gpt-4o',
+  'gpt-mini': 'gpt-4o-mini',
+};
+function getModelId(group, submodel) {
+  return MODEL_IDS[submodel] || MODEL_IDS[group] || MODEL_IDS.claude;
+}
+
 // ── 채팅 엔드포인트 ──────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   const { message, history = [] } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
 
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
@@ -196,7 +211,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel) });
       const chatHistory = history.map(h => ({
         role: h.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: h.content }],
@@ -220,7 +235,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
         { role: 'user', content: message },
       ];
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: getModelId('gpt', submodel),
         max_tokens: 2000,
         messages,
       });
@@ -234,7 +249,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
         { role: 'user', content: message },
       ];
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: getModelId('claude', submodel),
         max_tokens: 2000,
         system: systemPrompt,
         messages,
@@ -253,6 +268,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
 app.post('/api/verify', async (req, res) => {
   const { studentData, analysisText, originalModel } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
 
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
@@ -284,7 +300,7 @@ app.post('/api/verify', async (req, res) => {
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
       const result = await model.generateContent([
         { text: systemPrompt },
         { text: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
@@ -295,7 +311,7 @@ app.post('/api/verify', async (req, res) => {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: getModelId('gpt', submodel || aiModel),
         max_tokens: 4000,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -308,7 +324,7 @@ app.post('/api/verify', async (req, res) => {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: getModelId('claude', submodel || aiModel),
         max_tokens: 4000,
         system: systemPrompt,
         messages: [
@@ -335,6 +351,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
 
   if (!studentData?.name) return res.status(400).json({ error: '학생 이름 필수' });
   const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
 
   res.setHeader('Content-Type', 'text/event-stream');

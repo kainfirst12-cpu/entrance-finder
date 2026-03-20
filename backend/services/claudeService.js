@@ -64,11 +64,17 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
 };
 
 // ── Claude 호출 헬퍼 ──────────────────────────────────
-const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null) => {
+const CLAUDE_MODELS = {
+  'claude': 'claude-sonnet-4-6',
+  'claude-opus': 'claude-opus-4-6',
+};
+
+const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null, submodel = 'claude') => {
   const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
   const messages = buildUserMessage(userPrompt, pdfDocuments);
+  const modelId = CLAUDE_MODELS[submodel] || CLAUDE_MODELS['claude'];
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: modelId,
     max_tokens: maxTokens,
     system: systemPrompt,
     messages,

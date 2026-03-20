@@ -24,8 +24,9 @@ export default function App() {
   );
 
   const getActiveKey = () => {
-    if (selectedModel === 'gemini') return geminiKey;
-    if (selectedModel === 'gpt')    return gptKey;
+    const group = modelConfig[selectedModel]?.group || selectedModel;
+    if (group === 'gemini') return geminiKey;
+    if (group === 'gpt')    return gptKey;
     return apiKey;
   };
 
@@ -50,7 +51,8 @@ export default function App() {
         method: 'POST',
         headers: {
           'x-api-key':  getActiveKey(),
-          'x-ai-model': selectedModel,
+          'x-ai-model': modelConfig[selectedModel]?.group || selectedModel,
+          'x-ai-submodel': selectedModel,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: formData,
@@ -127,9 +129,12 @@ export default function App() {
   }
 
   const modelConfig = {
-    claude: { icon: '🔵', label: 'Claude',  color: '#7c6af7' },
-    gemini: { icon: '🟢', label: 'Gemini',  color: '#4caf50' },
-    gpt:    { icon: '🟡', label: 'GPT-4o',  color: '#f0a500' },
+    claude:       { icon: '🔵', label: 'Claude Sonnet',    color: '#7c6af7', group: 'claude' },
+    'claude-opus':{ icon: '🔷', label: 'Claude Opus',      color: '#5b21b6', group: 'claude' },
+    gemini:       { icon: '🟢', label: 'Gemini Flash',     color: '#4caf50', group: 'gemini' },
+    'gemini-pro': { icon: '🟩', label: 'Gemini Pro',       color: '#166534', group: 'gemini' },
+    gpt:          { icon: '🟡', label: 'GPT-4o',           color: '#f0a500', group: 'gpt' },
+    'gpt-mini':   { icon: '🟠', label: 'GPT-4o Mini',      color: '#ea580c', group: 'gpt' },
   };
 
   return (

@@ -1,9 +1,15 @@
 import OpenAI from 'openai';
 
-async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey) {
+const GPT_MODELS = {
+  'gpt': 'gpt-4o',
+  'gpt-mini': 'gpt-4o-mini',
+};
+
+async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gpt') {
   const openai = new OpenAI({ apiKey });
+  const modelId = GPT_MODELS[submodel] || GPT_MODELS['gpt'];
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: modelId,
     max_tokens: maxTokens,
     messages: [
       { role: 'system', content: systemPrompt },
