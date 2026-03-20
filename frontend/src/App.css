@@ -1697,6 +1697,23 @@ body {
   color: var(--text3);
   text-align: center;
 }
+.cover-modal-row {
+  display: flex;
+  gap: 12px;
+}
+.cover-modal-row .cover-modal-field {
+  flex: 1;
+}
+.cover-modal-group-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
 .cover-modal-footer {
   display: flex;
   justify-content: flex-end;

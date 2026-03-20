@@ -159,9 +159,16 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   };
 
   // 표지 수정 모달 열기
+  const year = new Date().getFullYear();
   const openCoverModal = () => {
     setCoverEdit({
       reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
+      mainTitle: '입시 컨설팅 종합 분석 리포트',
+      subTitle: `${studentData?.entryYear || year + 2}학년도 대입 대비`,
+      studentName: studentData?.name || '',
+      studentSchool: `${studentData?.school || ''}${studentData?.grade ? ' / ' + studentData.grade : ''}`,
+      studentMajor: studentData?.major || '',
+      studentTarget: studentData?.targetUniv || studentData?.target || '',
       brandName: localStorage.getItem('ef_brand_name') || 'PATHFINDER EDU',
       brandSub: localStorage.getItem('ef_brand_sub') || '패스파인더 에듀',
       logoData: localStorage.getItem('ef_logo') || '',
@@ -171,14 +178,15 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
   const handlePrintHTML = () => {
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-    const year = new Date().getFullYear();
-    const name = studentData?.name || '학생';
-    const school = studentData?.school || '';
-    const major = studentData?.major || '';
-    const grade = studentData?.grade || '';
-    const target = studentData?.targetUniv || studentData?.target || '';
+    const yr = new Date().getFullYear();
     const modelLabel = MODEL_CONFIG[usedModel]?.label || 'AI';
-    const entryYear = studentData?.entryYear || `${year + 2}`;
+    // 표지 정보는 모달에서 편집된 coverEdit 사용
+    const cvName = coverEdit.studentName || studentData?.name || '학생';
+    const cvSchool = coverEdit.studentSchool || `${studentData?.school || ''}${studentData?.grade ? ' / ' + studentData.grade : ''}`;
+    const cvMajor = coverEdit.studentMajor || studentData?.major || '';
+    const cvTarget = coverEdit.studentTarget || studentData?.targetUniv || '';
+    const cvMainTitle = coverEdit.mainTitle || '입시 컨설팅 종합 분석 리포트';
+    const cvSubTitle = coverEdit.subTitle || `${studentData?.entryYear || yr + 2}학년도 대입 대비`;
 
     // 섹션 타이틀 매핑 (PDF 시안 스타일)
     const sectionTitles = [
@@ -512,14 +520,14 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     <!-- 커버 -->
     <div class="cover">
       <div class="cover-brand">${coverEdit.reportTitle}</div>
-      <div class="cover-main-title">입시 컨설팅 종합 분석 리포트</div>
-      <div class="cover-sub">${entryYear}학년도 대입 대비</div>
+      <div class="cover-main-title">${cvMainTitle}</div>
+      <div class="cover-sub">${cvSubTitle}</div>
 
       <table class="cover-info-table">
-        <tr><td>학생명</td><td>${name}</td></tr>
-        ${school ? `<tr><td>학교/학년</td><td>${school}${grade ? ' / ' + grade : ''}</td></tr>` : ''}
-        ${major ? `<tr><td>희망 전공</td><td>${major}</td></tr>` : ''}
-        ${target ? `<tr><td>목표 대학</td><td>${target}</td></tr>` : ''}
+        <tr><td>학생명</td><td>${cvName}</td></tr>
+        ${cvSchool ? `<tr><td>학교/학년</td><td>${cvSchool}</td></tr>` : ''}
+        ${cvMajor ? `<tr><td>희망 전공</td><td>${cvMajor}</td></tr>` : ''}
+        ${cvTarget ? `<tr><td>목표 대학</td><td>${cvTarget}</td></tr>` : ''}
         <tr><td>분석일</td><td>${today}</td></tr>
         <tr><td>분석 AI</td><td>${modelLabel}</td></tr>
         ${pdfCount > 0 ? `<tr><td>첨부 자료</td><td>PDF ${pdfCount}건 분석 포함</td></tr>` : ''}
@@ -877,32 +885,50 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
               <button className="cover-modal-close" onClick={() => setShowCoverModal(false)}>X</button>
             </div>
             <div className="cover-modal-body">
+              <div className="cover-modal-group-label">표지 내용</div>
               <div className="cover-modal-field">
-                <label>리포트 상단 타이틀</label>
-                <input
-                  type="text"
-                  value={coverEdit.reportTitle}
-                  onChange={e => setCoverEdit({ ...coverEdit, reportTitle: e.target.value })}
-                  placeholder="PATHFINDER REPORT"
-                />
+                <label>리포트 제목</label>
+                <input type="text" value={coverEdit.mainTitle} onChange={e => setCoverEdit({ ...coverEdit, mainTitle: e.target.value })} placeholder="입시 컨설팅 종합 분석 리포트" />
               </div>
               <div className="cover-modal-field">
-                <label>기관 이름 (영문)</label>
-                <input
-                  type="text"
-                  value={coverEdit.brandName}
-                  onChange={e => setCoverEdit({ ...coverEdit, brandName: e.target.value })}
-                  placeholder="PATHFINDER EDU"
-                />
+                <label>부제목</label>
+                <input type="text" value={coverEdit.subTitle} onChange={e => setCoverEdit({ ...coverEdit, subTitle: e.target.value })} placeholder="2028학년도 대입 대비" />
               </div>
+              <div className="cover-modal-row">
+                <div className="cover-modal-field">
+                  <label>학생명</label>
+                  <input type="text" value={coverEdit.studentName} onChange={e => setCoverEdit({ ...coverEdit, studentName: e.target.value })} />
+                </div>
+                <div className="cover-modal-field">
+                  <label>학교/학년</label>
+                  <input type="text" value={coverEdit.studentSchool} onChange={e => setCoverEdit({ ...coverEdit, studentSchool: e.target.value })} />
+                </div>
+              </div>
+              <div className="cover-modal-row">
+                <div className="cover-modal-field">
+                  <label>희망 전공</label>
+                  <input type="text" value={coverEdit.studentMajor} onChange={e => setCoverEdit({ ...coverEdit, studentMajor: e.target.value })} />
+                </div>
+                <div className="cover-modal-field">
+                  <label>목표 대학</label>
+                  <input type="text" value={coverEdit.studentTarget} onChange={e => setCoverEdit({ ...coverEdit, studentTarget: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="cover-modal-group-label" style={{marginTop:'16px'}}>브랜딩</div>
               <div className="cover-modal-field">
-                <label>기관 이름 (한글)</label>
-                <input
-                  type="text"
-                  value={coverEdit.brandSub}
-                  onChange={e => setCoverEdit({ ...coverEdit, brandSub: e.target.value })}
-                  placeholder="패스파인더 에듀"
-                />
+                <label>상단 타이틀</label>
+                <input type="text" value={coverEdit.reportTitle} onChange={e => setCoverEdit({ ...coverEdit, reportTitle: e.target.value })} placeholder="PATHFINDER REPORT" />
+              </div>
+              <div className="cover-modal-row">
+                <div className="cover-modal-field">
+                  <label>기관명 (영문)</label>
+                  <input type="text" value={coverEdit.brandName} onChange={e => setCoverEdit({ ...coverEdit, brandName: e.target.value })} placeholder="PATHFINDER EDU" />
+                </div>
+                <div className="cover-modal-field">
+                  <label>기관명 (한글)</label>
+                  <input type="text" value={coverEdit.brandSub} onChange={e => setCoverEdit({ ...coverEdit, brandSub: e.target.value })} placeholder="패스파인더 에듀" />
+                </div>
               </div>
               <div className="cover-modal-field">
                 <label>학원 로고</label>
