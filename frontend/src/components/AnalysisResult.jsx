@@ -3,9 +3,12 @@ import { useState } from 'react';
 const API_BASE = 'https://entrance-finder-production.up.railway.app';
 
 const MODEL_CONFIG = {
-  claude: { icon: '🔵', label: 'Claude',  color: '#7c6af7' },
-  gemini: { icon: '🟢', label: 'Gemini',  color: '#4caf50' },
-  gpt:    { icon: '🟡', label: 'GPT-4o',  color: '#f0a500' },
+  claude:        { icon: '🔵', label: 'Claude Sonnet', color: '#7c6af7', group: 'claude' },
+  'claude-opus': { icon: '🔷', label: 'Claude Opus',   color: '#5b21b6', group: 'claude' },
+  gemini:        { icon: '🟢', label: 'Gemini Flash',  color: '#4caf50', group: 'gemini' },
+  'gemini-pro':  { icon: '🟩', label: 'Gemini Pro',    color: '#166534', group: 'gemini' },
+  gpt:           { icon: '🟡', label: 'GPT-4o',        color: '#f0a500', group: 'gpt' },
+  'gpt-mini':    { icon: '🟠', label: 'GPT-4o Mini',   color: '#ea580c', group: 'gpt' },
 };
 
 const SECTION_MAP = [
@@ -119,9 +122,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const verifyOptions = Object.entries(MODEL_CONFIG).filter(([key]) => key !== usedModel);
 
   const getKeyForModel = (model) => {
-    if (model === 'claude') return apiKey;
-    if (model === 'gemini') return geminiKey;
-    if (model === 'gpt') return gptKey;
+    const group = MODEL_CONFIG[model]?.group || model;
+    if (group === 'claude' || model.startsWith('claude')) return apiKey;
+    if (group === 'gemini' || model.startsWith('gemini')) return geminiKey;
+    if (group === 'gpt' || model.startsWith('gpt')) return gptKey;
     return '';
   };
 
