@@ -236,7 +236,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
       ];
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel),
-        max_tokens: 2000,
+        max_tokens: 4000,
         messages,
       });
       reply = response.choices[0].message.content;
@@ -250,7 +250,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
       ];
       const response = await client.messages.create({
         model: getModelId('claude', submodel),
-        max_tokens: 2000,
+        max_tokens: 4000,
         system: systemPrompt,
         messages,
       });
