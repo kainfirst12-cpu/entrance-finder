@@ -42,6 +42,12 @@ function chatMdToHtml(raw) {
   return out.join('\n');
 }
 
+const MODEL_CFG = {
+  claude: { icon: '🔵', label: 'Claude', color: '#7c6af7' },
+  gemini: { icon: '🟢', label: 'Gemini', color: '#4caf50' },
+  gpt:    { icon: '🟡', label: 'GPT-4o', color: '#f0a500' },
+};
+
 export default function ChatInterface({ getActiveKey, selectedModel }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: '안녕하세요! 입시 전문 컨설턴트입니다.\n생기부, 세특, 입시 전략 등 궁금한 점을 자유롭게 질문해 주세요.' },
@@ -49,6 +55,7 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  const [verifyingIdx, setVerifyingIdx] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -120,6 +127,67 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
     await navigator.clipboard.writeText(text);
     setCopiedIdx('all');
     setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  // 다른 AI로 교차 검증
+  const verifyChatMessage = async (msgIdx, verifyModel) => {
+    const msg = messages[msgIdx];
+    if (!msg || msg.role !== 'assistant') return;
+    // 해당 답변 바로 위의 사용자 질문 찾기
+    let userQuestion = '';
+    for (let j = msgIdx - 1; j >= 0; j--) {
+      if (messages[j].role === 'user') { userQuestion = messages[j].content; break; }
+    }
+
+    const vKey = verifyModel === 'claude'
+      ? localStorage.getItem('ef_apikey')
+      : verifyModel === 'gemini'
+        ? localStorage.getItem('ef_geminikey')
+        : localStorage.getItem('ef_gptkey');
+
+    if (!vKey) {
+      alert(`${MODEL_CFG[verifyModel]?.label} API 키가 설정되지 않았습니다.`);
+      return;
+    }
+
+    setVerifyingIdx(msgIdx);
+    try {
+      const token = localStorage.getItem('ef_token');
+      const res = await fetch(`${API_BASE}/api/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': vKey,
+          'x-ai-model': verifyModel,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          studentData: { name: '상담 학생' },
+          analysisText: `[질문]\n${userQuestion}\n\n[${modelLabels[selectedModel]} 답변]\n${msg.content}`,
+          originalModel: modelLabels[selectedModel] || 'AI',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const verifyMsg = {
+          role: 'assistant',
+          content: `[${MODEL_CFG[verifyModel]?.label} 교차 검증]\n${data.reply}`,
+          isVerify: true,
+          verifyModel,
+        };
+        setMessages(prev => {
+          const copy = [...prev];
+          copy.splice(msgIdx + 1, 0, verifyMsg);
+          return copy;
+        });
+      } else {
+        alert('검증 오류: ' + data.message);
+      }
+    } catch (err) {
+      alert('검증 요청 실패: ' + err.message);
+    } finally {
+      setVerifyingIdx(null);
+    }
   };
 
   const clearChat = () => {
@@ -319,9 +387,9 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
 
       <div className="chat-messages">
         {messages.map((msg, i) => (
-          <div key={i} className={`chat-bubble ${msg.role}`}>
+          <div key={i} className={`chat-bubble ${msg.role} ${msg.isVerify ? 'verify' : ''}`}>
             <div className="chat-bubble-label">
-              {msg.role === 'user' ? '나' : 'AI 컨설턴트'}
+              {msg.role === 'user' ? '나' : msg.isVerify ? `${MODEL_CFG[msg.verifyModel]?.label || 'AI'} 교차 검증` : 'AI 컨설턴트'}
             </div>
             <div className="chat-bubble-content">
               {msg.content.split('\n').map((line, j) => (
@@ -329,12 +397,31 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
               ))}
             </div>
             {msg.role === 'assistant' && (
-              <button
-                className="chat-copy-btn"
-                onClick={() => copyMessage(msg.content, i)}
-              >
-                {copiedIdx === i ? '복사됨!' : '복사'}
-              </button>
+              <div className="chat-bubble-actions">
+                <button
+                  className="chat-copy-btn"
+                  onClick={() => copyMessage(msg.content, i)}
+                >
+                  {copiedIdx === i ? '복사됨!' : '복사'}
+                </button>
+                {!msg.isVerify && (
+                  <span className="chat-verify-group">
+                    {Object.entries(MODEL_CFG)
+                      .filter(([key]) => key !== selectedModel)
+                      .map(([key, cfg]) => (
+                        <button
+                          key={key}
+                          className="chat-verify-btn"
+                          style={{ borderColor: cfg.color, color: cfg.color }}
+                          onClick={() => verifyChatMessage(i, key)}
+                          disabled={verifyingIdx === i}
+                        >
+                          {verifyingIdx === i ? '...' : `${cfg.icon} ${cfg.label} 검증`}
+                        </button>
+                      ))}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         ))}
