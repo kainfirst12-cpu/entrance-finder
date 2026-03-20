@@ -78,10 +78,10 @@ function mdToHtml(raw) {
       i++; continue;
     }
 
-    // 일반 텍스트: 볼드, 이탤릭 처리
+    // 마크다운 볼드/이탤릭 → 텍스트만 남김 (AI스러운 ** 제거)
     let processed = line
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1');
 
     out.push(processed);
     i++;

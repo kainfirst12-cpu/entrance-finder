@@ -35,7 +35,7 @@ function chatMdToHtml(raw) {
     if (/^[─━]{5,}/.test(line.trim())) { out.push('<hr style="border:none;height:1px;background:#e2e8f0;margin:12px 0;">'); i++; continue; }
     const hm = line.match(/^(#{1,6})\s+(.+)/);
     if (hm) { out.push(`<div style="font-size:15px;font-weight:700;color:#1e293b;margin:16px 0 6px;">${hm[2]}</div>`); i++; continue; }
-    let p = line.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    let p = line.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1');
     out.push(p);
     i++;
   }
