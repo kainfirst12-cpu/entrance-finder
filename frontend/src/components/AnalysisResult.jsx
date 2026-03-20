@@ -102,25 +102,6 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
     const activeSections = sectionTitles.filter(({ key }) => results?.[key]);
 
-    // 목차 HTML
-    const tocHTML = activeSections.map(({ num, title }, idx) =>
-      `<div class="toc-item"><span class="toc-num">${idx + 1}.</span>[${num}단계] ${title}</div>`
-    ).join('');
-
-    // 섹션 HTML
-    const sectionsHTML = activeSections.map(({ key, num, title }, idx) => {
-      const content = stripEmojis(results[key] || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      return `
-        <div class="section">
-          <h2 class="section-title">${idx + 1}. [${num}단계] ${title}</h2>
-          <div class="section-divider"></div>
-          <div class="section-body">${content}</div>
-        </div>`;
-    }).join('');
-
     // 검증 결과
     let verifyHTML = '';
     if (verifyResult) {
@@ -142,15 +123,30 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>${name} 입시 분석 리포트 - IPSI-FINDER</title>
+<title>${name} 입시 분석 리포트 - PATHFINDER REPORT</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  :root {
+    --navy: #0f172a;
+    --dark-blue: #1e293b;
+    --blue: #1d4ed8;
+    --blue-light: #3b82f6;
+    --blue-bg: #eff6ff;
+    --red: #dc2626;
+    --text: #1e293b;
+    --text2: #475569;
+    --text3: #94a3b8;
+    --border: #e2e8f0;
+    --surface: #f8fafc;
+  }
+
   body {
-    font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
-    color: #222;
+    font-family: 'Noto Sans KR', 'Inter', sans-serif;
+    color: var(--text);
     background: #fff;
     font-size: 13px;
     line-height: 1.75;
@@ -158,213 +154,213 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     print-color-adjust: exact;
   }
 
-  /* ── 인쇄 바 ────────────────────────── */
   .print-bar {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    background: linear-gradient(135deg, #1a2744 0%, #2563eb 100%);
+    position: fixed; top: 0; left: 0; right: 0;
+    background: var(--navy);
     color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    padding: 12px 24px;
-    z-index: 100;
-    font-size: 14px;
-    font-weight: 500;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    padding: 12px 24px; z-index: 100;
+    font-size: 14px; font-weight: 500;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
   }
   .print-bar button {
-    padding: 10px 28px;
-    background: #fff;
-    color: #1a2744;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
+    padding: 10px 28px; background: #fff; color: var(--navy);
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 700;
+    cursor: pointer; font-family: inherit;
   }
-  .print-bar button:hover { background: #e0e7ff; }
+  .print-bar button:hover { background: var(--blue-bg); }
   .print-bar .close-btn {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.4);
-    color: #fff;
-    padding: 10px 20px;
-    font-weight: 500;
-  }
-  .print-bar .close-btn:hover { background: rgba(255,255,255,0.1); }
-
-  .report {
-    max-width: 780px;
-    margin: 72px auto 60px;
-    padding: 0 20px;
+    background: transparent; border: 1px solid rgba(255,255,255,0.3);
+    color: #fff; padding: 10px 20px; font-weight: 500;
   }
 
-  /* ── 커버 페이지 ─────────────────────── */
+  .report { max-width: 780px; margin: 68px auto 60px; padding: 0 20px; }
+
+  /* ── 커버 ─────────────────────────────── */
   .cover {
     text-align: center;
-    padding: 80px 40px 60px;
+    padding: 0;
     margin-bottom: 0;
     page-break-after: always;
-    min-height: 90vh;
+    min-height: 92vh;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+    position: relative;
   }
   .cover-brand {
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    color: #2563eb;
-    margin-bottom: 48px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.25em;
+    color: var(--blue);
+    text-transform: uppercase;
+    margin-bottom: 52px;
   }
   .cover-main-title {
-    font-size: 36px;
+    font-size: 38px;
     font-weight: 900;
-    color: #1a2744;
-    line-height: 1.3;
-    margin-bottom: 16px;
+    color: var(--navy);
+    line-height: 1.25;
+    margin-bottom: 14px;
   }
-  .cover-sub-title {
-    font-size: 18px;
-    color: #6b7280;
+  .cover-sub {
+    font-size: 17px;
+    color: var(--text2);
     font-weight: 400;
-    margin-bottom: 60px;
+    margin-bottom: 56px;
   }
   .cover-info-table {
     text-align: left;
     margin: 0 auto;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     width: auto;
-    min-width: 400px;
+    min-width: 420px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
   }
   .cover-info-table td {
-    padding: 10px 20px;
+    padding: 13px 24px;
     font-size: 15px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--border);
   }
+  .cover-info-table tr:last-child td { border-bottom: none; }
   .cover-info-table td:first-child {
     font-weight: 700;
-    color: #1a2744;
-    width: 120px;
+    color: var(--navy);
+    background: var(--surface);
+    width: 130px;
+    border-right: 1px solid var(--border);
   }
-  .cover-info-table td:last-child {
-    color: #374151;
-  }
-  .cover-info-table tr:last-child td {
-    border-bottom: none;
-  }
-  .cover-note {
-    margin-top: 48px;
-    font-size: 12px;
-    color: #9ca3af;
-    line-height: 1.7;
-    text-align: center;
-  }
+  .cover-info-table td:last-child { color: var(--text); }
 
-  /* ── 목차 ────────────────────────────── */
-  .toc {
-    padding: 40px 0;
-    page-break-after: always;
-  }
-  .toc h2 {
-    font-size: 28px;
-    font-weight: 900;
-    color: #1a2744;
-    margin-bottom: 12px;
-  }
-  .toc-divider {
-    height: 3px;
-    background: #dc2626;
-    margin-bottom: 28px;
+  .cover-bottom {
+    margin-top: auto;
+    padding-top: 40px;
+    text-align: center;
     width: 100%;
   }
-  .toc-item {
-    padding: 10px 0 10px 8px;
-    font-size: 15px;
-    color: #374151;
-    border-left: 3px solid transparent;
+  .cover-note {
+    font-size: 11.5px;
+    color: var(--text3);
+    line-height: 1.7;
+    margin-bottom: 24px;
+  }
+  .cover-logo {
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 10px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
   }
-  .toc-item:hover { border-left-color: #2563eb; }
-  .toc-num {
-    color: #1a2744;
-    font-weight: 600;
-    width: 24px;
+  .cover-logo-icon {
+    width: 32px; height: 32px;
+    background: var(--navy);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 16px; font-weight: 900;
+    font-family: 'Inter', sans-serif;
+  }
+  .cover-logo-text {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--navy);
+    letter-spacing: 0.05em;
+  }
+  .cover-logo-sub {
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 400;
   }
 
-  /* ── 섹션 ────────────────────────────── */
+  /* ── 목차 ─────────────────────────────── */
+  .toc { padding: 48px 0; page-break-after: always; }
+  .toc h2 {
+    font-size: 26px; font-weight: 900; color: var(--navy); margin-bottom: 10px;
+  }
+  .toc-line { height: 3px; background: var(--red); margin-bottom: 28px; }
+  .toc-item {
+    padding: 11px 0 11px 12px;
+    font-size: 15px;
+    color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .toc-item:last-child { border-bottom: none; }
+  .toc-bullet {
+    width: 6px; height: 6px;
+    background: var(--navy);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── 섹션 ─────────────────────────────── */
   .section {
-    margin-bottom: 8px;
-    padding: 36px 0 24px;
+    margin-bottom: 4px;
+    padding: 40px 0 20px;
     page-break-inside: avoid;
   }
   .section-title {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 900;
-    color: #2563eb;
+    color: var(--blue);
     margin-bottom: 8px;
   }
-  .section-divider {
-    height: 3px;
-    background: #dc2626;
-    margin-bottom: 24px;
-    width: 100%;
-  }
+  .section-line { height: 3px; background: var(--red); margin-bottom: 20px; }
   .section-body {
     font-size: 13.5px;
-    line-height: 1.85;
+    line-height: 1.9;
     white-space: pre-wrap;
     word-break: break-word;
-    color: #333;
+    color: var(--text);
     padding: 0;
   }
 
-  /* ── 검증 배지 ───────────────────────── */
+  /* ── 검증 ─────────────────────────────── */
   .verify-badge {
     display: inline-block;
     padding: 6px 16px;
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #fcd34d;
-    border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    margin-bottom: 16px;
+    background: #fef3c7; color: #92400e;
+    border: 1px solid #fcd34d; border-radius: 6px;
+    font-size: 12px; font-weight: 600; margin-bottom: 16px;
   }
 
-  /* ── 푸터 ────────────────────────────── */
+  /* ── 푸터 ─────────────────────────────── */
   .report-footer {
     text-align: center;
-    padding: 32px 0;
-    font-size: 11px;
-    color: #9ca3af;
-    border-top: 2px solid #e5e7eb;
-    margin-top: 32px;
-    line-height: 1.8;
+    padding: 28px 0;
+    border-top: 2px solid var(--navy);
+    margin-top: 36px;
   }
-  .report-footer strong {
-    color: #6b7280;
+  .footer-logo {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-bottom: 8px;
   }
+  .footer-logo-box {
+    width: 22px; height: 22px;
+    background: var(--navy); border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px; font-weight: 900; font-family: 'Inter', sans-serif;
+  }
+  .footer-logo-name {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; font-weight: 700; color: var(--navy); letter-spacing: 0.05em;
+  }
+  .footer-copy { font-size: 11px; color: var(--text3); }
 
-  /* ── 인쇄 스타일 ─────────────────────── */
   @media print {
     .print-bar { display: none !important; }
     .report { margin-top: 0; padding: 0; }
-    .cover { min-height: auto; padding: 60px 40px 40px; }
+    .cover { min-height: auto; padding: 50px 0 30px; }
     .section { break-inside: avoid; }
     body { font-size: 12px; }
   }
-
-  @page {
-    size: A4;
-    margin: 18mm 15mm;
-  }
+  @page { size: A4; margin: 18mm 15mm; }
 </style>
 </head>
 <body>
@@ -375,11 +371,11 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   </div>
 
   <div class="report">
-    <!-- 커버 페이지 -->
+    <!-- 커버 -->
     <div class="cover">
-      <div class="cover-brand">IPSI-FINDER REPORT</div>
+      <div class="cover-brand">PATHFINDER REPORT</div>
       <div class="cover-main-title">입시 컨설팅 종합 분석 리포트</div>
-      <div class="cover-sub-title">${entryYear}학년도 대입 대비</div>
+      <div class="cover-sub">${entryYear}학년도 대입 대비</div>
 
       <table class="cover-info-table">
         <tr><td>학생명</td><td>${name}</td></tr>
@@ -391,29 +387,47 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         ${pdfCount > 0 ? `<tr><td>첨부 자료</td><td>PDF ${pdfCount}건 분석 포함</td></tr>` : ''}
       </table>
 
-      <div class="cover-note">
-        본 리포트는 학생의 학교생활기록부를 바탕으로<br>
-        AI 빅데이터 합격 사례 분석을 통해 작성되었습니다.
+      <div class="cover-bottom">
+        <div class="cover-note">
+          본 리포트는 학생의 학교생활기록부를 바탕으로<br>
+          AI 빅데이터 합격 사례 분석을 통해 작성되었습니다.
+        </div>
+        <div class="cover-logo">
+          <div class="cover-logo-icon">P</div>
+          <div>
+            <div class="cover-logo-text">PATHFINDER EDU</div>
+            <div class="cover-logo-sub">패스파인더 에듀</div>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- 목차 -->
     <div class="toc">
       <h2>목차</h2>
-      <div class="toc-divider"></div>
-      ${tocHTML}
+      <div class="toc-line"></div>
+      ${activeSections.map(({ num, title }, idx) =>
+        `<div class="toc-item"><span class="toc-bullet"></span>${idx + 1}. [${num}단계] ${title}</div>`
+      ).join('')}
     </div>
 
     <!-- 분석 섹션들 -->
-    ${sectionsHTML}
+    ${activeSections.map(({ key, num, title }, idx) => {
+      const c = stripEmojis(results[key] || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return `<div class="section"><h2 class="section-title">${idx + 1}. [${num}단계] ${title}</h2><div class="section-line"></div><div class="section-body">${c}</div></div>`;
+    }).join('')}
 
     <!-- 검증 결과 -->
     ${verifyHTML}
 
     <!-- 푸터 -->
     <div class="report-footer">
-      <strong>IPSI-FINDER</strong> | 패스파인더 에듀<br>
-      &copy; ${year} &mdash; ${today} 생성
+      <div class="footer-logo">
+        <div class="footer-logo-box">P</div>
+        <span class="footer-logo-name">PATHFINDER EDU</span>
+      </div>
+      <div class="footer-copy">&copy; ${year} &mdash; ${today} 생성</div>
     </div>
   </div>
 </body>
