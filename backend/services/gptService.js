@@ -1,19 +1,42 @@
 import OpenAI from 'openai';
+import pdfParse from 'pdf-parse';
 
 const GPT_MODELS = {
   'gpt': 'gpt-4o',
   'gpt-mini': 'gpt-4o-mini',
 };
 
-async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gpt') {
+async function extractPdfTexts(pdfDocuments) {
+  const texts = [];
+  for (const pdf of pdfDocuments) {
+    try {
+      const buffer = Buffer.from(pdf.base64, 'base64');
+      const data = await pdfParse(buffer);
+      texts.push(`[${pdf.label} 내용]\n${data.text.slice(0, 15000)}`);
+    } catch (e) {
+      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패: ${e.message}`);
+    }
+  }
+  return texts.join('\n\n');
+}
+
+async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gpt', pdfDocuments = []) {
   const openai = new OpenAI({ apiKey });
   const modelId = GPT_MODELS[submodel] || GPT_MODELS['gpt'];
+
+  // PDF가 있으면 텍스트 추출해서 프롬프트에 포함
+  let pdfContext = '';
+  if (pdfDocuments.length > 0) {
+    pdfContext = await extractPdfTexts(pdfDocuments);
+    pdfContext = `\n\n=== 첨부 PDF 내용 (AI가 반드시 읽고 분석할 것) ===\n${pdfContext}\n===\n\n`;
+  }
+
   const response = await openai.chat.completions.create({
     model: modelId,
     max_tokens: maxTokens,
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
+      { role: 'user', content: pdfContext + userPrompt },
     ],
   });
   return response.choices[0].message.content;
@@ -45,15 +68,19 @@ ${knowledgeBase.대학별전형 || '(자료 없음)'}
 === 합격자 사례 ===
 ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 
+  const pdfNote = pdfDocuments.length > 0
+    ? `\n[중요] 위에 첨부된 PDF 내용을 반드시 읽고 학생의 성적, 세특, 비교과 정보를 추출하여 분석에 활용하라. PDF에 있는 데이터를 무시하고 '데이터 부재'로 처리하지 마라.\n`
+    : '';
+
   const steps = [
     { key: 'caseMatching', label: 'Drive 사례 매칭 탐색', step: 1,
-      prompt: `[0단계] 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급\n합격자 사례에서 가장 유사한 사례 3건을 찾아 분석하라.` },
+      prompt: `${pdfNote}[0단계] 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급\n합격자 사례에서 가장 유사한 사례 3건을 찾아 분석하라.` },
     { key: 'academic', label: '학업역량 분석', step: 2,
-      prompt: `[1단계] 학생 내신: ${studentData.gpa}등급 / 모의고사: ${studentData.mockExam || '미입력'}\n교과별 성취도와 세특 질적 수준을 합격자와 비교 분석하라.` },
+      prompt: `${pdfNote}[1단계] 학생 내신: ${studentData.gpa}등급 / 모의고사: ${studentData.mockExam || '미입력'}\n첨부 PDF에서 성적과 세특을 직접 읽고 교과별 성취도와 세특 질적 수준을 합격자와 비교 분석하라.` },
     { key: 'activity', label: '비교과 활동 분석', step: 3,
-      prompt: `[2단계] 동아리: ${studentData.club} / 봉사: ${studentData.volunteer}\n비교과 활동의 진로 연계성과 깊이를 분석하라.` },
+      prompt: `${pdfNote}[2단계] 동아리: ${studentData.club} / 봉사: ${studentData.volunteer}\n첨부 PDF에서 비교과 활동을 직접 읽고 진로 연계성과 깊이를 분석하라.` },
     { key: 'career', label: '진로 역량 분석', step: 4,
-      prompt: `[3단계] 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv}\n전공 적합성과 진로 역량을 분석하라.` },
+      prompt: `${pdfNote}[3단계] 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv}\n첨부 PDF에서 진로 관련 내용을 읽고 전공 적합성과 진로 역량을 분석하라.` },
     { key: 'strategy', label: '지원 전략 수립', step: 5,
       prompt: `[4단계] 학생 종합 정보: ${JSON.stringify(studentData)}\n수시 6장 지원 전략을 수립하라.` },
     { key: 'roadmap', label: '3년 로드맵 생성', step: 6,
@@ -66,7 +93,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 
   for (const s of steps) {
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
-    results[s.key] = await callGPT(systemPrompt, s.prompt, 8000, apiKey);
+    results[s.key] = await callGPT(systemPrompt, s.prompt, 8000, apiKey, 'gpt', pdfDocuments);
   }
 
   onProgress?.({ step: 8, label: '분석 완료!' });

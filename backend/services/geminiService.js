@@ -5,13 +5,25 @@ const GEMINI_MODELS = {
   'gemini-pro': 'gemini-2.5-pro',
 };
 
-async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gemini') {
+async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gemini', pdfDocuments = []) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const modelId = GEMINI_MODELS[submodel] || GEMINI_MODELS['gemini'];
   const model = genAI.getGenerativeModel({ model: modelId });
-  const result = await model.generateContent(
-    `${systemPrompt}\n\n${userPrompt}`
-  );
+
+  // PDF가 있으면 inline_data로 포함
+  const parts = [];
+  for (const pdf of pdfDocuments) {
+    parts.push({
+      inlineData: {
+        mimeType: 'application/pdf',
+        data: pdf.base64,
+      },
+    });
+    parts.push({ text: `[위 PDF는 "${pdf.label}" 파일입니다. 이 내용을 반드시 읽고 분석에 활용하세요.]` });
+  }
+  parts.push({ text: `${systemPrompt}\n\n${userPrompt}` });
+
+  const result = await model.generateContent(parts);
   return result.response.text();
 }
 
@@ -41,15 +53,19 @@ ${knowledgeBase.대학별전형 || '(자료 없음)'}
 === 합격자 사례 ===
 ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 
+  const pdfNote = pdfDocuments.length > 0
+    ? `\n[중요] 첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')})를 반드시 직접 읽고 학생의 성적, 세특, 비교과 정보를 추출하여 분석에 활용하라. PDF에 있는 데이터를 무시하고 '데이터 부재'로 처리하지 마라.\n`
+    : '';
+
   const steps = [
     { key: 'caseMatching', label: 'Drive 사례 매칭 탐색', step: 1,
-      prompt: `[0단계: Drive 사례 매칭] 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급\n합격자 사례에서 가장 유사한 사례 3건을 찾아 분석하라.` },
+      prompt: `${pdfNote}[0단계: Drive 사례 매칭] 학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급\n합격자 사례에서 가장 유사한 사례 3건을 찾아 분석하라.` },
     { key: 'academic', label: '학업역량 분석', step: 2,
-      prompt: `[1단계: 학업역량 심층 분석] 학생 내신: ${studentData.gpa}등급 / 모의고사: ${studentData.mockExam || '미입력'}\n교과별 성취도와 세특 질적 수준을 합격자와 비교 분석하라.` },
+      prompt: `${pdfNote}[1단계: 학업역량 심층 분석] 학생 내신: ${studentData.gpa}등급 / 모의고사: ${studentData.mockExam || '미입력'}\n첨부 PDF에서 성적과 세특을 직접 읽고 교과별 성취도와 세특 질적 수준을 합격자와 비교 분석하라.` },
     { key: 'activity', label: '비교과 활동 분석', step: 3,
-      prompt: `[2단계: 비교과 활동 분석] 동아리: ${studentData.club} / 봉사: ${studentData.volunteer}\n비교과 활동의 진로 연계성과 깊이를 분석하라.` },
+      prompt: `${pdfNote}[2단계: 비교과 활동 분석] 동아리: ${studentData.club} / 봉사: ${studentData.volunteer}\n첨부 PDF에서 비교과 활동을 직접 읽고 진로 연계성과 깊이를 분석하라.` },
     { key: 'career', label: '진로 역량 분석', step: 4,
-      prompt: `[3단계: 진로 역량 분석] 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv}\n전공 적합성과 진로 역량을 분석하라.` },
+      prompt: `${pdfNote}[3단계: 진로 역량 분석] 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv}\n첨부 PDF에서 진로 관련 내용을 읽고 전공 적합성과 진로 역량을 분석하라.` },
     { key: 'strategy', label: '지원 전략 수립', step: 5,
       prompt: `[4단계: 지원 전략 수립] 학생 종합 정보: ${JSON.stringify(studentData)}\n수시 6장 지원 전략을 수립하라.` },
     { key: 'roadmap', label: '3년 로드맵 생성', step: 6,
@@ -62,7 +78,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 
   for (const s of steps) {
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
-    results[s.key] = await callGemini(systemPrompt, s.prompt, 8000, apiKey);
+    results[s.key] = await callGemini(systemPrompt, s.prompt, 8000, apiKey, 'gemini', pdfDocuments);
   }
 
   onProgress?.({ step: 8, label: '분석 완료!' });
