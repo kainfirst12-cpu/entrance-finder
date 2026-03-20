@@ -9,15 +9,21 @@ const MODEL_CONFIG = {
 };
 
 const SECTION_MAP = [
-  { key: 'caseMatching',   title: 'Drive 합격자 사례 매칭', icon: '🔍' },
-  { key: 'academic',       title: '학업역량 분석',          icon: '📚' },
-  { key: 'activity',       title: '비교과 활동 분석',       icon: '🏃' },
-  { key: 'career',         title: '진로 역량 분석',         icon: '🎯' },
-  { key: 'strategy',       title: '지원 전략 수립',         icon: '📋' },
-  { key: 'roadmap',        title: '3년 로드맵',             icon: '🗓️' },
-  { key: 'recordFeedback', title: '세특 개선안',            icon: '✏️' },
-  { key: 'dashboard',      title: '종합 대시보드',          icon: '☁️' },
+  { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+  { key: 'academic',       num: '1', title: '학업역량 심층 분석' },
+  { key: 'activity',       num: '2', title: '비교과 활동 분석' },
+  { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성 분석' },
+  { key: 'strategy',       num: '4', title: '지원 전략 수립' },
+  { key: 'roadmap',        num: '5', title: '3년 로드맵' },
+  { key: 'recordFeedback', num: '6', title: '세특 Before/After 개선안' },
+  { key: 'dashboard',      num: '7', title: '종합 대시보드' },
 ];
+
+// 이모지/이모티콘 제거 함수
+function stripEmojis(text) {
+  if (!text) return text;
+  return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '').replace(/\s{2,}/g, ' ');
+}
 
 export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedModel, apiKey, geminiKey, gptKey }) {
   const [downloading, setDownloading] = useState(false);
@@ -100,7 +106,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
     // 섹션 HTML
     const sectionsHTML = activeSections.map(({ key, num, title }, idx) => {
-      const content = (results[key] || '')
+      const content = stripEmojis(results[key] || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
@@ -115,7 +121,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     // 검증 결과
     let verifyHTML = '';
     if (verifyResult) {
-      const vContent = verifyResult.content
+      const vContent = stripEmojis(verifyResult.content)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
@@ -465,17 +471,17 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     }
   };
 
-  const renderSection = (title, content, icon = '📊') => {
+  const renderSection = (num, title, content) => {
     if (!content) return null;
     return (
       <div className="result-section" key={title}>
         <div className="section-header">
-          <span className="section-icon">{icon}</span>
+          <span className="section-num-badge">{num}</span>
           <h3>{title}</h3>
         </div>
         <div className="section-content">
           <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.6' }}>
-            {content}
+            {stripEmojis(content)}
           </pre>
         </div>
       </div>
@@ -570,14 +576,14 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           </div>
           <div className="verify-result-body">
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.7' }}>
-              {verifyResult.content}
+              {stripEmojis(verifyResult.content)}
             </pre>
           </div>
         </div>
       )}
 
       <div className="result-sections">
-        {SECTION_MAP.map(({ key, title, icon }) => renderSection(title, results?.[key], icon))}
+        {SECTION_MAP.map(({ key, num, title }) => renderSection(num, title, results?.[key]))}
       </div>
     </div>
   );
