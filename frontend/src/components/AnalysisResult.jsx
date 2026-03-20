@@ -19,10 +19,20 @@ const SECTION_MAP = [
   { key: 'dashboard',      num: '7', title: '종합 대시보드' },
 ];
 
-// 이모지/이모티콘 제거 함수
+// 이모지 + 마크다운 기호 제거 함수
 function stripEmojis(text) {
   if (!text) return text;
-  return text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '').replace(/\s{2,}/g, ' ');
+  return text
+    // 이모지 제거
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '')
+    // 마크다운 헤딩 (### ## #) → 제거
+    .replace(/^#{1,6}\s+/gm, '')
+    // 볼드 **text** → text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    // 이탤릭 *text* → text (단독 * 불릿은 유지)
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1')
+    // 연속 공백 정리
+    .replace(/\s{2,}/g, ' ');
 }
 
 export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedModel, apiKey, geminiKey, gptKey }) {
