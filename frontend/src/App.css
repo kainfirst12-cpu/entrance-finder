@@ -1612,10 +1612,11 @@ body {
 .cover-modal {
   background: #fff;
   border-radius: 14px;
-  width: 480px;
+  width: 560px;
   max-width: 95vw;
-  max-height: 90vh;
-  overflow-y: auto;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 20px 60px rgba(0,0,0,0.2);
 }
 .cover-modal-header {
@@ -1644,7 +1645,9 @@ body {
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+  overflow-y: auto;
+  flex: 1;
 }
 .cover-modal-field {
   display: flex;
