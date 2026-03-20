@@ -31,7 +31,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [verifyModel, setVerifyModel] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState(null);
-  const { results, studentData, pdfCount, analyzedModel } = data || {};
+  const [refining, setRefining] = useState(false);
+  const [refinedResults, setRefinedResults] = useState(null);
+  const { results: originalResults, studentData, pdfCount, analyzedModel } = data || {};
+  const results = refinedResults || originalResults;
 
   const usedModel = analyzedModel || selectedModel || 'claude';
 
@@ -471,6 +474,87 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     }
   };
 
+  const handleRefine = async () => {
+    if (!verifyResult || refining) return;
+    const refineKey = getKeyForModel(usedModel);
+    if (!refineKey) {
+      alert(`${MODEL_CONFIG[usedModel]?.label} API 키가 필요합니다.`);
+      return;
+    }
+
+    setRefining(true);
+    try {
+      const token = localStorage.getItem('ef_token');
+      const analysisText = SECTION_MAP
+        .filter(({ key }) => results?.[key])
+        .map(({ key, title }) => `## ${title}\n${results[key]}`)
+        .join('\n\n');
+
+      const res = await fetch(`${API_BASE}/api/refine`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': refineKey,
+          'x-ai-model': usedModel,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          studentData,
+          analysisText,
+          verifyText: verifyResult.content,
+        }),
+      });
+
+      const resData = await res.json();
+      if (resData.success) {
+        // AI가 전체를 하나의 텍스트로 반환 — 섹션별로 파싱
+        const refined = { ...results };
+        const replyText = resData.reply;
+
+        // 각 섹션 키워드로 분할 시도
+        for (const { key, num, title } of SECTION_MAP) {
+          const patterns = [
+            `[${num}단계] ${title}`,
+            `[${num}단계]`,
+            `## ${title}`,
+          ];
+          for (const pattern of patterns) {
+            const idx = replyText.indexOf(pattern);
+            if (idx !== -1) {
+              // 다음 섹션의 시작점 찾기
+              let endIdx = replyText.length;
+              for (const { num: nNum, title: nTitle } of SECTION_MAP) {
+                if (nNum <= num) continue;
+                const nextPatterns = [`[${nNum}단계]`, `## ${nTitle}`];
+                for (const np of nextPatterns) {
+                  const ni = replyText.indexOf(np, idx + pattern.length);
+                  if (ni !== -1 && ni < endIdx) endIdx = ni;
+                }
+              }
+              refined[key] = replyText.slice(idx + pattern.length, endIdx).trim();
+              break;
+            }
+          }
+        }
+
+        // 파싱 실패 시 전체 텍스트를 dashboard에 넣기
+        const anyParsed = SECTION_MAP.some(({ key }) => refined[key] !== results?.[key]);
+        if (!anyParsed) {
+          refined.dashboard = replyText;
+        }
+
+        setRefinedResults(refined);
+        alert('검증 결과가 반영된 최종 리포트가 생성되었습니다.');
+      } else {
+        alert('재생성 오류: ' + resData.message);
+      }
+    } catch (err) {
+      alert('재생성 요청 실패: ' + err.message);
+    } finally {
+      setRefining(false);
+    }
+  };
+
   const renderSection = (num, title, content) => {
     if (!content) return null;
     return (
@@ -578,6 +662,18 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.7' }}>
               {stripEmojis(verifyResult.content)}
             </pre>
+          </div>
+          <div className="verify-result-actions">
+            <button
+              className="btn-refine"
+              onClick={handleRefine}
+              disabled={refining}
+            >
+              {refining ? '재생성 중...' : '검증 반영 → 최종 리포트 재생성'}
+            </button>
+            {refinedResults && (
+              <span className="refine-done-badge">최종 리포트 반영 완료</span>
+            )}
           </div>
         </div>
       )}

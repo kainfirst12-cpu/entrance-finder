@@ -1397,3 +1397,42 @@ body {
   max-height: 600px;
   overflow-y: auto;
 }
+.verify-result-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+.btn-refine {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+.btn-refine:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
+}
+.btn-refine:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.refine-done-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}

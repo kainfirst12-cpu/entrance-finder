@@ -49,6 +49,76 @@ app.get('/api/drive/test', async (req, res) => {
     res.status(500).json({ success: false, error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
   }
 });
+// ── 검증 결과 반영 최종 리포트 재생성 ──────────────────────
+app.post('/api/refine', async (req, res) => {
+  const { studentData, analysisText, verifyText, sectionKey } = req.body;
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
+  if (!analysisText) return res.status(400).json({ success: false, message: '분석 데이터 없음' });
+
+  const studentName = studentData?.name || '학생';
+  const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
+아래에 기존 AI 분석 결과와 다른 AI의 검증 피드백이 제공됩니다.
+검증 피드백에서 지적된 문제점을 반영하여 기존 분석을 개선한 최종 버전을 작성하세요.
+
+[출력 형식 원칙 — 최우선 준수]
+- 이모티콘, 이모지, 유니코드 특수기호를 절대 사용하지 마라
+- 허용되는 기호: 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──), 표 구분(|)만 사용
+- 강조는 **볼드**만 사용
+- 전문 컨설팅 보고서 톤을 유지하라
+
+[개선 원칙]
+1. 검증에서 지적된 오류(전공 혼동, 근거 없는 수치, 데이터 부재 처리 등)를 반드시 수정하라
+2. 검증에서 인정한 강점은 유지하되, 지적된 약점은 보완하라
+3. 학생의 희망 전공(${studentData?.major || '미입력'})을 절대 혼동하지 마라
+4. 기존 분석의 형식과 구조를 유지하되, 내용의 정확성과 깊이를 개선하라
+5. 수정된 부분은 자연스럽게 통합하고, 수정했다는 메타 표시는 하지 마라
+
+[학생 정보]
+이름: ${studentName}
+학교: ${studentData?.school || '미입력'}
+희망 전공: ${studentData?.major || '미입력'}
+학년: ${studentData?.grade || '미입력'}`;
+
+  try {
+    let reply;
+    const userMsg = sectionKey
+      ? `아래는 [${sectionKey}] 섹션의 기존 분석 결과와 검증 피드백입니다. 이 섹션만 개선하여 재작성해 주세요.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`
+      : `아래는 전체 분석 결과와 검증 피드백입니다. 검증 피드백을 반영하여 전체를 개선한 최종 버전을 작성해 주세요.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`;
+
+    if (aiModel === 'gemini') {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
+      reply = result.response.text();
+    } else if (aiModel === 'gpt') {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey });
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o', max_tokens: 8000,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+      });
+      reply = response.choices[0].message.content;
+    } else {
+      const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
+      const client = new AnthropicSDK({ apiKey });
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6', max_tokens: 8000, system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }],
+      });
+      reply = response.content[0].text;
+    }
+
+    res.json({ success: true, reply });
+  } catch (err) {
+    console.error(`[refine/${aiModel}] 오류:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ── AI 연결 테스트 ──────────────────────────────────────
 app.post('/api/test-connection', async (req, res) => {
   const { aiModel = 'claude' } = req.body;
