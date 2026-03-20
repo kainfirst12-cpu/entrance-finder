@@ -98,6 +98,13 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [verifyResult, setVerifyResult] = useState(null);
   const [refining, setRefining] = useState(false);
   const [refinedResults, setRefinedResults] = useState(null);
+  const [showCoverModal, setShowCoverModal] = useState(false);
+  const [coverEdit, setCoverEdit] = useState({
+    reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
+    brandName: localStorage.getItem('ef_brand_name') || 'PATHFINDER EDU',
+    brandSub: localStorage.getItem('ef_brand_sub') || '패스파인더 에듀',
+    logoData: localStorage.getItem('ef_logo') || '',
+  });
   const { results: originalResults, studentData, pdfCount, analyzedModel } = data || {};
   const results = refinedResults || originalResults;
 
@@ -140,6 +147,17 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     } finally {
       setDownloading(false);
     }
+  };
+
+  // 표지 수정 모달 열기
+  const openCoverModal = () => {
+    setCoverEdit({
+      reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
+      brandName: localStorage.getItem('ef_brand_name') || 'PATHFINDER EDU',
+      brandSub: localStorage.getItem('ef_brand_sub') || '패스파인더 에듀',
+      logoData: localStorage.getItem('ef_logo') || '',
+    });
+    setShowCoverModal(true);
   };
 
   const handlePrintHTML = () => {
@@ -339,6 +357,19 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     color: var(--text3);
     font-weight: 400;
   }
+  .cover-logo-img {
+    height: 36px;
+    width: auto;
+    max-width: 120px;
+    object-fit: contain;
+    border-radius: 6px;
+  }
+  .footer-logo-icon-img {
+    height: 22px;
+    width: auto;
+    object-fit: contain;
+    border-radius: 4px;
+  }
 
   /* ── 목차 ─────────────────────────────── */
   .toc { padding: 48px 0; page-break-after: always; }
@@ -471,7 +502,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   <div class="report">
     <!-- 커버 -->
     <div class="cover">
-      <div class="cover-brand">PATHFINDER REPORT</div>
+      <div class="cover-brand">${coverEdit.reportTitle}</div>
       <div class="cover-main-title">입시 컨설팅 종합 분석 리포트</div>
       <div class="cover-sub">${entryYear}학년도 대입 대비</div>
 
@@ -491,10 +522,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           AI 빅데이터 합격 사례 분석을 통해 작성되었습니다.
         </div>
         <div class="cover-logo">
-          <div class="cover-logo-icon">P</div>
+          ${coverEdit.logoData ? `<img src="${coverEdit.logoData}" class="cover-logo-img" alt="로고">` : `<div class="cover-logo-icon">${coverEdit.brandName.charAt(0)}</div>`}
           <div>
-            <div class="cover-logo-text">PATHFINDER EDU</div>
-            <div class="cover-logo-sub">패스파인더 에듀</div>
+            <div class="cover-logo-text">${coverEdit.brandName}</div>
+            <div class="cover-logo-sub">${coverEdit.brandSub}</div>
           </div>
         </div>
       </div>
@@ -521,8 +552,8 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     <!-- 푸터 -->
     <div class="report-footer">
       <div class="footer-logo">
-        <div class="footer-logo-box">P</div>
-        <span class="footer-logo-name">PATHFINDER EDU</span>
+        ${coverEdit.logoData ? `<img src="${coverEdit.logoData}" class="footer-logo-icon-img" alt="">` : `<div class="footer-logo-box">${coverEdit.brandName.charAt(0)}</div>`}
+        <span class="footer-logo-name">${coverEdit.brandName}</span>
       </div>
       <div class="footer-copy">&copy; ${year} &mdash; ${today} 생성</div>
     </div>
@@ -709,7 +740,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           {pdfCount > 0 && <span className="pdf-badge">📎 PDF {pdfCount}건 분석 포함</span>}
         </div>
         <div className="result-actions">
-          <button className="btn-print-html" onClick={handlePrintHTML}>
+          <button className="btn-print-html" onClick={openCoverModal}>
             🖨️ HTML 리포트 / PDF 인쇄
           </button>
           <button className="btn-download-pdf" onClick={handleDownloadPDF} disabled={downloading}>
@@ -790,6 +821,66 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
       <div className="result-sections">
         {SECTION_MAP.map(({ key, num, title }) => renderSection(num, title, results?.[key]))}
       </div>
+
+      {/* 표지 수정 모달 */}
+      {showCoverModal && (
+        <div className="cover-modal-overlay" onClick={() => setShowCoverModal(false)}>
+          <div className="cover-modal" onClick={e => e.stopPropagation()}>
+            <div className="cover-modal-header">
+              <h3>리포트 표지 설정</h3>
+              <button className="cover-modal-close" onClick={() => setShowCoverModal(false)}>X</button>
+            </div>
+            <div className="cover-modal-body">
+              <div className="cover-modal-field">
+                <label>리포트 상단 타이틀</label>
+                <input
+                  type="text"
+                  value={coverEdit.reportTitle}
+                  onChange={e => setCoverEdit({ ...coverEdit, reportTitle: e.target.value })}
+                  placeholder="PATHFINDER REPORT"
+                />
+              </div>
+              <div className="cover-modal-field">
+                <label>기관 이름 (영문)</label>
+                <input
+                  type="text"
+                  value={coverEdit.brandName}
+                  onChange={e => setCoverEdit({ ...coverEdit, brandName: e.target.value })}
+                  placeholder="PATHFINDER EDU"
+                />
+              </div>
+              <div className="cover-modal-field">
+                <label>기관 이름 (한글)</label>
+                <input
+                  type="text"
+                  value={coverEdit.brandSub}
+                  onChange={e => setCoverEdit({ ...coverEdit, brandSub: e.target.value })}
+                  placeholder="패스파인더 에듀"
+                />
+              </div>
+              <div className="cover-modal-field">
+                <label>학원 로고</label>
+                {coverEdit.logoData ? (
+                  <div className="cover-modal-logo-preview">
+                    <img src={coverEdit.logoData} alt="로고" />
+                    <button onClick={() => setCoverEdit({ ...coverEdit, logoData: '' })}>삭제</button>
+                  </div>
+                ) : (
+                  <div className="cover-modal-logo-empty">
+                    <span>설정 &gt; 리포트 브랜딩에서 로고를 업로드하세요</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="cover-modal-footer">
+              <button className="btn-ghost" onClick={() => setShowCoverModal(false)}>취소</button>
+              <button className="btn-print-html" onClick={() => { setShowCoverModal(false); handlePrintHTML(); }}>
+                리포트 발행
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

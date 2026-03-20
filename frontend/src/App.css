@@ -1496,3 +1496,159 @@ body {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* ── 표지 수정 모달 ──────────────────── */
+.cover-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cover-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 480px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.cover-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.cover-modal-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.cover-modal-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text3);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.cover-modal-close:hover { background: var(--surface2); color: var(--text); }
+.cover-modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.cover-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cover-modal-field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+}
+.cover-modal-field input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+.cover-modal-field input:focus { border-color: var(--accent); }
+.cover-modal-logo-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cover-modal-logo-preview img {
+  height: 40px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+}
+.cover-modal-logo-preview button {
+  font-size: 12px;
+  color: var(--red);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.cover-modal-logo-empty {
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text3);
+  text-align: center;
+}
+.cover-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* ── 설정 페이지 브랜딩 ──────────────── */
+.settings-group {
+  margin-bottom: 28px;
+}
+.settings-group-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent);
+}
+.logo-upload-area {
+  margin-top: 4px;
+}
+.logo-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.logo-preview-img {
+  height: 48px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+}
+.logo-actions {
+  display: flex;
+  gap: 6px;
+}
+.btn-danger-text { color: var(--red) !important; }
+.logo-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 20px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.logo-dropzone:hover { border-color: var(--accent); background: var(--surface2); }
+.logo-dropzone-text { font-size: 13px; color: var(--text2); font-weight: 500; }
+.logo-dropzone-hint { font-size: 11px; color: var(--text3); }
