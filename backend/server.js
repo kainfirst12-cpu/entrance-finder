@@ -60,6 +60,16 @@ app.post('/api/refine', async (req, res) => {
   if (!analysisText) return res.status(400).json({ success: false, message: '분석 데이터 없음' });
 
   const studentName = studentData?.name || '학생';
+
+  // 지식베이스 로드 (합격자 사례 재참조를 위해)
+  let kb;
+  try {
+    kb = await getCachedKnowledgeBase();
+  } catch (e) {
+    console.warn('[refine] 지식베이스 로드 실패, 기존 분석 기반으로 진행:', e.message);
+    kb = { 대입정책: '', 대학별전형: '', 합격자사례: '' };
+  }
+
   const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
 아래에 기존 AI 분석 결과와 다른 AI의 검증 피드백이 제공됩니다.
 검증 피드백에서 지적된 문제점을 반영하여 기존 분석을 개선한 최종 버전을 작성하세요.
@@ -70,24 +80,42 @@ app.post('/api/refine', async (req, res) => {
 - 강조는 **볼드**만 사용
 - 전문 컨설팅 보고서 톤을 유지하라
 
+[섹션 구분 — 절대 준수]
+반드시 아래 8개 섹션 헤더를 정확히 사용하여 출력하라. 각 섹션은 반드시 아래 형식의 헤더로 시작해야 한다:
+[0단계] AI 드라이브 사례 매칭 분석
+[1단계] 학업역량 심층 분석
+[2단계] 비교과 활동 분석
+[3단계] 진로 역량 및 전공 적합성 분석
+[4단계] 지원 전략 수립
+[5단계] 3년 로드맵
+[6단계] 세특 Before/After 개선안
+[7단계] 종합 대시보드
+
+각 섹션 헤더는 반드시 줄의 맨 앞에 위치해야 하며, 헤더 텍스트를 변형하지 마라.
+
 [개선 원칙]
 1. 검증에서 지적된 오류(전공 혼동, 근거 없는 수치, 데이터 부재 처리 등)를 반드시 수정하라
 2. 검증에서 인정한 강점은 유지하되, 지적된 약점은 보완하라
 3. 학생의 희망 전공(${studentData?.major || '미입력'})을 절대 혼동하지 마라
 4. 기존 분석의 형식과 구조를 유지하되, 내용의 정확성과 깊이를 개선하라
 5. 수정된 부분은 자연스럽게 통합하고, 수정했다는 메타 표시는 하지 마라
+6. 유사합격사례(0단계) 관련 지적이 있으면 아래 [합격자 사례]를 다시 참조하여 매칭을 재수행하라
+7. 세특 개선안(6단계) 관련 지적이 있으면 아래 [합격자 사례]의 세특 수준을 참고하여 Before/After를 재작성하라
 
 [학생 정보]
 이름: ${studentName}
 학교: ${studentData?.school || '미입력'}
 희망 전공: ${studentData?.major || '미입력'}
-학년: ${studentData?.grade || '미입력'}`;
+학년: ${studentData?.grade || '미입력'}
+
+=== 합격자 사례 (재매칭 참조용) ===
+${kb.합격자사례 || '(자료 없음)'}`;
 
   try {
     let reply;
     const userMsg = sectionKey
       ? `아래는 [${sectionKey}] 섹션의 기존 분석 결과와 검증 피드백입니다. 이 섹션만 개선하여 재작성해 주세요.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`
-      : `아래는 전체 분석 결과와 검증 피드백입니다. 검증 피드백을 반영하여 전체를 개선한 최종 버전을 작성해 주세요.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`;
+      : `아래는 전체 분석 결과와 검증 피드백입니다. 검증 피드백을 반영하여 전체를 개선한 최종 버전을 작성해 주세요.\n모든 섹션을 [N단계] 헤더와 함께 빠짐없이 출력하라.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`;
 
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');

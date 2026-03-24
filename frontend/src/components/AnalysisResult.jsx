@@ -160,6 +160,33 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     }
   };
 
+  // JSON 내보내기
+  const handleExportJSON = () => {
+    const exportData = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      studentData,
+      results,
+      analyzedModel: usedModel,
+      pdfCount: pdfCount || 0,
+      refinedResults: refinedResults || null,
+      manualEdits: Object.keys(manualEdits).length > 0 ? manualEdits : null,
+      verifyResult: verifyResult || null,
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const name = studentData?.name || '학생';
+    const date = new Date().toISOString().slice(0, 10);
+    a.download = `${name}_입시분석_${date}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // 표지 수정 모달 열기
   const year = new Date().getFullYear();
   const openCoverModal = () => {
@@ -704,35 +731,51 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         const refined = { ...results };
         const replyText = resData.reply;
 
-        // 각 섹션 키워드로 분할 시도
-        for (const { key, num, title } of SECTION_MAP) {
-          const patterns = [
-            `[${num}단계] ${title}`,
-            `[${num}단계]`,
-            `## ${title}`,
-          ];
-          for (const pattern of patterns) {
-            const idx = replyText.indexOf(pattern);
-            if (idx !== -1) {
-              // 다음 섹션의 시작점 찾기
-              let endIdx = replyText.length;
-              for (const { num: nNum, title: nTitle } of SECTION_MAP) {
-                if (nNum <= num) continue;
-                const nextPatterns = [`[${nNum}단계]`, `## ${nTitle}`];
-                for (const np of nextPatterns) {
-                  const ni = replyText.indexOf(np, idx + pattern.length);
-                  if (ni !== -1 && ni < endIdx) endIdx = ni;
+        // 정규식으로 [N단계] 헤더 위치를 모두 찾기
+        const headerRegex = /^\[(\d)단계\]\s*.*/gm;
+        const headers = [];
+        let match;
+        while ((match = headerRegex.exec(replyText)) !== null) {
+          headers.push({ num: match[1], index: match.index, fullMatch: match[0] });
+        }
+
+        // 헤더 기반 섹션 분할
+        for (let i = 0; i < headers.length; i++) {
+          const hdr = headers[i];
+          const sectionDef = SECTION_MAP.find(s => s.num === hdr.num);
+          if (!sectionDef) continue;
+          const contentStart = hdr.index + hdr.fullMatch.length;
+          const contentEnd = i + 1 < headers.length ? headers[i + 1].index : replyText.length;
+          const content = replyText.slice(contentStart, contentEnd).trim();
+          if (content) refined[sectionDef.key] = content;
+        }
+
+        // 정규식 파싱 실패 시 기존 indexOf 방식 fallback
+        const anyParsed = SECTION_MAP.some(({ key }) => refined[key] !== results?.[key]);
+        if (!anyParsed) {
+          for (const { key, num, title } of SECTION_MAP) {
+            const patterns = [`[${num}단계] ${title}`, `[${num}단계]`, `## ${title}`];
+            for (const pattern of patterns) {
+              const idx = replyText.indexOf(pattern);
+              if (idx !== -1) {
+                let endIdx = replyText.length;
+                for (const { num: nNum, title: nTitle } of SECTION_MAP) {
+                  if (nNum <= num) continue;
+                  for (const np of [`[${nNum}단계]`, `## ${nTitle}`]) {
+                    const ni = replyText.indexOf(np, idx + pattern.length);
+                    if (ni !== -1 && ni < endIdx) endIdx = ni;
+                  }
                 }
+                refined[key] = replyText.slice(idx + pattern.length, endIdx).trim();
+                break;
               }
-              refined[key] = replyText.slice(idx + pattern.length, endIdx).trim();
-              break;
             }
           }
         }
 
-        // 파싱 실패 시 전체 텍스트를 dashboard에 넣기
-        const anyParsed = SECTION_MAP.some(({ key }) => refined[key] !== results?.[key]);
-        if (!anyParsed) {
+        // 최종 파싱 실패 시 전체 텍스트를 dashboard에 넣기
+        const finalParsed = SECTION_MAP.some(({ key }) => refined[key] !== results?.[key]);
+        if (!finalParsed) {
           refined.dashboard = replyText;
         }
 
@@ -833,6 +876,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           </button>
           <button className="btn-download-pdf" onClick={handleDownloadPDF} disabled={downloading}>
             {downloading ? '⏳ PDF 생성 중...' : '📄 PDF 다운로드'}
+          </button>
+          <button className="btn-secondary" onClick={handleExportJSON}>
+            💾 JSON 내보내기
           </button>
           <button className="btn-secondary" onClick={handleCopyAll}>
             {copied ? '✅ 복사됨!' : '📋 전체 복사'}

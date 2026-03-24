@@ -1,6 +1,6 @@
 import Settings from './components/Settings';
 import Login from './components/Login';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import StudentForm from './components/StudentForm';
 import AnalysisProgress from './components/AnalysisProgress';
 import AnalysisResult from './components/AnalysisResult';
@@ -124,6 +124,37 @@ export default function App() {
     localStorage.setItem('ef_model', model);
   };
 
+  // JSON 불러오기
+  const fileInputRef = useRef(null);
+  const handleImportJSON = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = JSON.parse(evt.target.result);
+        if (!data.results || !data.studentData) {
+          alert('유효하지 않은 분석 파일입니다. results와 studentData가 필요합니다.');
+          return;
+        }
+        setAnalysisData({
+          results: data.results,
+          studentData: data.studentData,
+          pdfCount: data.pdfCount || 0,
+          analyzedModel: data.analyzedModel || 'claude',
+        });
+        if (data.analyzedModel && modelConfig[data.analyzedModel]) {
+          setSelectedModel(data.analyzedModel);
+        }
+        setView('result');
+      } catch (err) {
+        alert('JSON 파일 파싱 오류: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   if (!isLoggedIn) {
     return <Login onLogin={() => setIsLoggedIn(true)} />;
   }
@@ -173,6 +204,16 @@ export default function App() {
           >
             <span>✨</span> 새 분석 시작
           </button>
+          <button className="nav-item" onClick={() => fileInputRef.current?.click()}>
+            <span>📂</span> 분석 불러오기
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            style={{ display: 'none' }}
+            onChange={handleImportJSON}
+          />
           <button className={`nav-item ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
             <span>💬</span> 입시 상담
           </button>
