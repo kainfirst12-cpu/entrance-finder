@@ -111,7 +111,24 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
     { key: 'career', label: '진로 역량 분석', step: 4,
       prompt: `${pdfNote}[3단계] 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv}\n첨부 PDF에서 진로 관련 내용을 읽고 전공 적합성과 진로 역량을 분석하라.` },
     { key: 'strategy', label: '지원 전략 수립', step: 5,
-      prompt: `[4단계] 학생 종합 정보: ${JSON.stringify(studentData)}\n수시 6장 지원 전략을 수립하라.` },
+      prompt: `[4단계: 지원 전략 수립] 학생: 내신 ${studentData.gpa} / 목표 ${studentData.targetUniv} / ${studentData.major}
+수시 6장 지원 전략을 수립하라.
+[출력 형식 — 절대 준수: 반드시 마크다운 표(| |)로만 출력하라. 카드 형태, 블록쿼트(>), 들여쓰기 나열 금지.]
+
+전형 유형 추천:
+| 전형 유형 | 추천도 | 근거 |
+|----------|--------|------|
+
+수시 지원 카드 6장:
+| 구분 | 대학 | 학과 | 전형 | 합격컷 | 현재 갭 | 합격 가능성 | 핵심 전략 |
+|------|------|------|------|--------|--------|-----------|----------|
+| 상향 1~2, 적정 1~2, 안정 1~2 |
+
+각 대학별 합격 조건과 핵심 전략을 간결히 서술.
+
+핵심 리스크 분석:
+| 리스크 | 심각도 | 대응 방안 |
+|--------|--------|----------|` },
     { key: 'roadmap', label: '3년 로드맵 생성', step: 6,
       prompt: `[5단계] 학생: ${studentData.name} / ${studentData.grade}학년\n고3까지의 구체적 실행 로드맵을 작성하라.` },
     { key: 'recordFeedback', label: '세특 개선안 작성', step: 7,
