@@ -98,7 +98,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [copied, setCopied] = useState(false);
   const [verifyModel, setVerifyModel] = useState('');
   const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState(null);
+  const [verifyResult, setVerifyResult] = useState(null); // raw text (legacy)
+  const [verifyItems, setVerifyItems] = useState([]); // parsed checklist items
+  const [checkedItems, setCheckedItems] = useState({}); // { index: boolean }
   const [refining, setRefining] = useState(false);
   const [refinedResults, setRefinedResults] = useState(null);
   const [editingKey, setEditingKey] = useState(null);
@@ -624,6 +626,24 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
       const data = await res.json();
       if (data.success) {
         setVerifyResult({ model: verifyModel, content: data.reply });
+        // JSON 배열 파싱 시도
+        try {
+          let raw = data.reply.trim();
+          // 마크다운 코드블록 제거
+          raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const jsonStart = raw.indexOf('[');
+          const jsonEnd = raw.lastIndexOf(']');
+          if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setVerifyItems(parsed);
+              // 기본: error는 체크, improve/add는 미체크
+              const defaults = {};
+              parsed.forEach((item, i) => { defaults[i] = item.type === 'error'; });
+              setCheckedItems(defaults);
+            }
+          }
+        } catch { /* JSON 파싱 실패 시 레거시 모드 유지 */ }
       } else {
         alert('검증 오류: ' + data.message);
       }
@@ -639,6 +659,18 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     const refineKey = getKeyForModel(usedModel);
     if (!refineKey) {
       alert(`${MODEL_CONFIG[usedModel]?.label} API 키가 필요합니다.`);
+      return;
+    }
+
+    // 체크된 항목만 필터링
+    const selectedFeedback = verifyItems.length > 0
+      ? verifyItems.filter((_, i) => checkedItems[i]).map(item =>
+          `[${item.section}] (${item.type}) ${item.title}: ${item.detail}`
+        ).join('\n')
+      : verifyResult.content;
+
+    if (verifyItems.length > 0 && !selectedFeedback.trim()) {
+      alert('반영할 항목을 1개 이상 체크해주세요.');
       return;
     }
 
@@ -662,7 +694,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         body: JSON.stringify({
           studentData,
           analysisText,
-          verifyText: verifyResult.content,
+          verifyText: selectedFeedback,
         }),
       });
 
@@ -844,7 +876,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         </div>
       </div>
 
-      {/* 검증 결과 */}
+      {/* 검증 결과 — 체크박스 리스트 */}
       {verifyResult && (
         <div className="verify-result">
           <div className="verify-result-header">
@@ -855,20 +887,62 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
               {usedCfg.icon} {usedCfg.label} 분석 → {MODEL_CONFIG[verifyResult.model]?.icon} {MODEL_CONFIG[verifyResult.model]?.label} 검증
             </span>
           </div>
-          <div
-            className="verify-result-body md-rendered"
-            dangerouslySetInnerHTML={{ __html: mdToHtml(verifyResult.content) }}
-          />
+
+          {verifyItems.length > 0 ? (
+            <>
+              <div className="verify-checklist">
+                <div className="verify-checklist-controls">
+                  <button className="btn-check-all" onClick={() => {
+                    const all = {};
+                    verifyItems.forEach((_, i) => { all[i] = true; });
+                    setCheckedItems(all);
+                  }}>전체 선택</button>
+                  <button className="btn-check-all" onClick={() => setCheckedItems({})}>전체 해제</button>
+                  <span className="verify-count">
+                    {Object.values(checkedItems).filter(Boolean).length} / {verifyItems.length}개 선택
+                  </span>
+                </div>
+                {verifyItems.map((item, i) => (
+                  <label key={i} className={`verify-item ${checkedItems[i] ? 'checked' : ''} type-${item.type} priority-${item.priority}`}>
+                    <input
+                      type="checkbox"
+                      checked={!!checkedItems[i]}
+                      onChange={e => setCheckedItems(prev => ({ ...prev, [i]: e.target.checked }))}
+                    />
+                    <div className="verify-item-content">
+                      <div className="verify-item-top">
+                        <span className={`verify-type-badge type-${item.type}`}>
+                          {item.type === 'error' ? '오류' : item.type === 'improve' ? '개선' : '추가'}
+                        </span>
+                        <span className={`verify-priority priority-${item.priority}`}>
+                          {item.priority === 'high' ? '높음' : item.priority === 'medium' ? '보통' : '낮음'}
+                        </span>
+                        <span className="verify-item-section">{item.section}</span>
+                      </div>
+                      <div className="verify-item-title">{item.title}</div>
+                      <div className="verify-item-detail">{item.detail}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div
+              className="verify-result-body md-rendered"
+              dangerouslySetInnerHTML={{ __html: mdToHtml(verifyResult.content) }}
+            />
+          )}
+
           <div className="verify-result-actions">
             <button
               className="btn-refine"
               onClick={handleRefine}
-              disabled={refining}
+              disabled={refining || (verifyItems.length > 0 && !Object.values(checkedItems).some(Boolean))}
             >
-              {refining ? '재생성 중...' : '검증 반영 → 최종 리포트 재생성'}
+              {refining ? '반영 중...' : `체크한 항목 반영 (${Object.values(checkedItems).filter(Boolean).length}개)`}
             </button>
             {refinedResults && (
-              <span className="refine-done-badge">최종 리포트 반영 완료</span>
+              <span className="refine-done-badge">반영 완료</span>
             )}
           </div>
         </div>
