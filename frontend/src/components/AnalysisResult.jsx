@@ -32,6 +32,8 @@ function stripEmojis(str) {
 function mdToHtml(raw) {
   if (!raw) return '';
   let text = stripEmojis(raw);
+  // AI가 출력한 <br> 태그를 줄바꿈으로 변환 (HTML escape 전에 처리)
+  text = text.replace(/<br\s*\/?>/gi, '\n');
   // HTML escape
   text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
