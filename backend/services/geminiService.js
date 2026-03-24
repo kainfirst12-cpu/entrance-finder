@@ -1,14 +1,13 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const GEMINI_MODELS = {
-  'gemini': 'gemini-2.5-flash',
-  'gemini-pro': 'gemini-2.5-pro',
+  'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'],
+  'gemini-pro': ['gemini-2.5-pro', 'gemini-2.5-flash'],
 };
 
 async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gemini', pdfDocuments = []) {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelId = GEMINI_MODELS[submodel] || GEMINI_MODELS['gemini'];
-  const model = genAI.getGenerativeModel({ model: modelId });
+  const modelList = GEMINI_MODELS[submodel] || GEMINI_MODELS['gemini'];
 
   // PDF가 있으면 inline_data로 포함
   const parts = [];
@@ -23,8 +22,26 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
   }
   parts.push({ text: `${systemPrompt}\n\n${userPrompt}` });
 
-  const result = await model.generateContent(parts);
-  return result.response.text();
+  // 모델 폴백 + 재시도 로직
+  for (const modelId of modelList) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelId });
+        const result = await model.generateContent(parts);
+        return result.response.text();
+      } catch (err) {
+        const status = err?.status || err?.message || '';
+        console.warn(`[Gemini] ${modelId} attempt ${attempt + 1} failed:`, String(status).slice(0, 100));
+        // 500/503 에러면 1.5초 후 재시도
+        if (String(status).includes('500') || String(status).includes('503') || String(status).includes('Internal')) {
+          await new Promise(r => setTimeout(r, 1500));
+          continue;
+        }
+        break; // 다른 에러(401, 404 등)는 재시도 불필요
+      }
+    }
+  }
+  throw new Error('모든 Gemini 모델이 실패했습니다. 잠시 후 다시 시도해주세요.');
 }
 
 export async function runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey) {
@@ -86,8 +103,17 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}`;
 }
 
 export async function testGeminiConnection(apiKey) {
+  const modelList = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'];
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const result = await model.generateContent('안녕하세요. 연결 테스트입니다. "연결성공"이라고만 답하세요.');
-  return result.response.text();
+
+  for (const modelId of modelList) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelId });
+      const result = await model.generateContent('안녕하세요. 연결 테스트입니다. "연결성공"이라고만 답하세요.');
+      return result.response.text();
+    } catch {
+      continue;
+    }
+  }
+  throw new Error('모든 Gemini 모델 연결 실패');
 }
