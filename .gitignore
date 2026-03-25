@@ -5,5 +5,6 @@ dist/
 .DS_Store
 !**/package.json
 !**/package-lock.json
+!**/vercel.json
 
 *.json

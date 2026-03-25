@@ -8,5 +8,34 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+    (function(){
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'F12') { e.preventDefault(); return false; }
+        if (e.ctrlKey && e.shiftKey && ['I','i','J','j','C','c'].includes(e.key)) { e.preventDefault(); return false; }
+        if (e.ctrlKey && ['u','U','s','S'].includes(e.key)) { e.preventDefault(); return false; }
+      }, true);
+
+      document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; }, true);
+
+      setInterval(function() {
+        if (window.outerWidth - window.innerWidth > 160 || window.outerHeight - window.innerHeight > 160) {
+          console.clear();
+        }
+      }, 1000);
+
+      console.log('%c\u26A0 \uACBD\uACE0', 'color:red;font-size:24px;font-weight:bold');
+      console.log('%c\uC774 \uBE0C\uB77C\uC6B0\uC800 \uAE30\uB2A5\uC740 \uAC1C\uBC1C\uC790\uC6A9\uC785\uB2C8\uB2E4.', 'font-size:14px');
+
+      if (!new URLSearchParams(location.search).has('debug')) {
+        console.log = () => {};
+        console.warn = () => {};
+      }
+
+      document.addEventListener('dragstart', function(e) { e.preventDefault(); });
+    })();
+    </script>
   </body>
 </html>
