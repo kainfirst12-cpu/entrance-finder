@@ -13,13 +13,13 @@ const MODEL_CONFIG = {
 
 const SECTION_MAP = [
   { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
-  { key: 'academic',       num: '1', title: '학업역량 심층 분석' },
-  { key: 'activity',       num: '2', title: '비교과 활동 분석' },
-  { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성 분석' },
-  { key: 'strategy',       num: '4', title: '지원 전략 수립' },
-  { key: 'roadmap',        num: '5', title: '3년 로드맵' },
-  { key: 'recordFeedback', num: '6', title: '세특 Before/After 개선안' },
-  { key: 'dashboard',      num: '7', title: '종합 대시보드' },
+  { key: 'academic',       num: '1', title: '학업역량 종합 분석' },
+  { key: 'activity',       num: '2', title: '비교과 활동 평가' },
+  { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성' },
+  { key: 'strategy',       num: '4', title: '수시 지원 전략 (6장 카드)' },
+  { key: 'roadmap',        num: '5', title: '핵심 리스크 및 대응 방안' },
+  { key: 'recordFeedback', num: '6', title: '실행 계획' },
+  { key: 'dashboard',      num: '7', title: '종합 평가 및 권고사항' },
 ];
 
 // 이모지 제거
@@ -28,7 +28,7 @@ function stripEmojis(str) {
   return str.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '');
 }
 
-// 마크다운 → HTML 변환 (테이블, 볼드, 헤딩 등)
+// 마크다운 → HTML 변환 (테이블, 볼드, 헤딩, 블록쿼트 등)
 function mdToHtml(raw) {
   if (!raw) return '';
   let text = stripEmojis(raw);
@@ -54,13 +54,13 @@ function mdToHtml(raw) {
       // 구분선 (|---|---| ) 제거하고 데이터 행만 추출
       const dataRows = tableLines.filter(l => !/^\s*\|[\s\-:]+\|/.test(l));
       if (dataRows.length > 0) {
-        let html = '<table class="md-table">';
+        let html = '<div class="md-table-wrap"><table class="md-table">';
         dataRows.forEach((row, ri) => {
           const cells = row.split('|').filter((_, ci, arr) => ci > 0 && ci < arr.length - 1).map(c => c.trim());
           const tag = ri === 0 ? 'th' : 'td';
           html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
         });
-        html += '</table>';
+        html += '</table></div>';
         out.push(html);
       }
       continue;
@@ -75,6 +75,15 @@ function mdToHtml(raw) {
       i++; continue;
     }
 
+    // 소제목 번호 패턴 감지 (예: 1.1, 2.3.1 등)
+    const subsectionMatch = line.match(/^(\d+\.\d+(?:\.\d+)?)\s+(.+)/);
+    if (subsectionMatch) {
+      const depth = subsectionMatch[1].split('.').length;
+      const cls = depth <= 2 ? 'md-h3' : 'md-h4';
+      out.push(`<div class="${cls}">${subsectionMatch[1]} ${subsectionMatch[2]}</div>`);
+      i++; continue;
+    }
+
     // 헤딩 ### → 소제목
     const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
     if (headingMatch) {
@@ -83,9 +92,9 @@ function mdToHtml(raw) {
       i++; continue;
     }
 
-    // 마크다운 볼드/이탤릭 → 텍스트만 남김 (AI스러운 ** 제거)
+    // 마크다운 볼드 → <strong> 태그
     let processed = line
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
       .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1');
 
     out.push(processed);

@@ -559,20 +559,20 @@ body {
 .result-content { flex: 1; padding: 28px 32px; overflow-y: auto; }
 
 .result-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid #e2e5ea;
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow);
-  margin-bottom: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04);
+  margin-bottom: 20px;
 }
 .section-num-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  background: var(--text);
+  width: 28px;
+  height: 28px;
+  background: #1e3a5f;
   color: #fff;
   border-radius: 6px;
   font-size: 12px;
@@ -649,61 +649,110 @@ body {
 
 /* ── 마크다운 렌더링 스타일 ────────────── */
 .md-rendered {
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: 13.5px;
+  line-height: 1.8;
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
-  padding: 16px 20px;
+  padding: 20px 24px;
+}
+.md-rendered p,
+.md-rendered div {
+  margin-bottom: 6px;
+}
+
+/* 테이블 — PDF 보고서 스타일 */
+.md-rendered .md-table-wrap {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
+  margin: 16px 0;
 }
 .md-rendered .md-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 12px 0;
+  margin: 0;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: normal;
 }
 .md-rendered .md-table th {
-  background: var(--text);
+  background: #1e3a5f;
   color: #fff;
   font-weight: 600;
-  padding: 10px 14px;
+  padding: 12px 16px;
   text-align: left;
-  border: 1px solid var(--text);
+  border: 1px solid #16304f;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
 }
 .md-rendered .md-table td {
-  padding: 9px 14px;
-  border: 1px solid var(--border);
+  padding: 10px 16px;
+  border: 1px solid #e2e5ea;
   vertical-align: top;
+  color: var(--text);
 }
 .md-rendered .md-table tr:nth-child(even) td {
-  background: var(--surface2);
+  background: #f7f8fa;
 }
+.md-rendered .md-table tr:nth-child(odd) td {
+  background: #fff;
+}
+.md-rendered .md-table tr:hover td {
+  background: #eef1f7;
+}
+
+/* 수평선 — 굵은 네이비 */
 .md-rendered .md-hr {
   border: none;
-  height: 1px;
-  background: var(--border);
-  margin: 16px 0;
+  height: 3px;
+  background: #1e3a5f;
+  margin: 24px 0;
+  border-radius: 2px;
 }
+
+/* 섹션 헤더 — 보고서 스타일 */
 .md-rendered .md-h1,
 .md-rendered .md-h2 {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--text);
-  margin: 20px 0 8px;
-  padding-bottom: 6px;
-  border-bottom: 2px solid var(--accent);
+  color: #1e3a5f;
+  margin: 28px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 3px solid #1e3a5f;
   white-space: normal;
+  letter-spacing: -0.01em;
+}
+.md-rendered .md-h2 {
+  font-size: 16px;
 }
 .md-rendered .md-h3,
 .md-rendered .md-h4 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text);
-  margin: 16px 0 6px;
+  color: #1e3a5f;
+  margin: 22px 0 8px;
+  padding-left: 12px;
+  border-left: 4px solid #2d5be3;
   white-space: normal;
 }
+.md-rendered .md-h4 {
+  font-size: 14px;
+}
+
+/* 인용문 — 보고서 스타일 */
+.md-rendered blockquote,
+.md-rendered .md-blockquote {
+  border-left: 4px solid #2d5be3;
+  background: #f4f6fb;
+  padding: 12px 18px;
+  margin: 14px 0;
+  border-radius: 0 8px 8px 0;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .md-rendered strong { font-weight: 700; }
 .md-rendered em { font-style: italic; }
 
@@ -711,11 +760,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface2);
+  padding: 16px 22px;
+  border-bottom: 1px solid #e2e5ea;
+  background: #f8f9fb;
 }
-.result-section-title { font-size: 15px; font-weight: 600; }
+.result-section-title { font-size: 16px; font-weight: 700; color: #1e3a5f; }
 
 .result-text {
   padding: 24px;
@@ -947,7 +996,7 @@ body {
 .report-section-num {
   width: 32px;
   height: 32px;
-  background: var(--text);
+  background: #1e3a5f;
   color: #fff;
   border-radius: 6px;
   display: flex;
