@@ -1,5 +1,6 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
+import pdfParse from 'pdf-parse';
 
 // ── System Prompt 생성 ─────────────────────────────────
 const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
@@ -53,12 +54,36 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 ${studentDriveFiles || '(없음)'}
 `;
 
+// ── PDF 텍스트 추출 (fallback용) ────────────────────────
+async function extractPdfText(pdfDocuments) {
+  const texts = [];
+  for (const pdf of pdfDocuments) {
+    try {
+      const buffer = Buffer.from(pdf.base64, 'base64');
+      const data = await pdfParse(buffer);
+      const truncated = data.text.slice(0, 20000);
+      texts.push(`[${pdf.label} 내용]\n${truncated}`);
+      console.log(`[PDF] ${pdf.label}: ${data.text.length}자 추출 성공`);
+    } catch (e) {
+      console.error(`[PDF] ${pdf.label} 텍스트 추출 실패:`, e.message);
+      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
+    }
+  }
+  return texts.join('\n\n');
+}
+
 // ── PDF 포함 메시지 빌더 ───────────────────────────────
-const buildUserMessage = (promptText, pdfDocuments = []) => {
+const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') => {
+  // PDF 텍스트 fallback이 있으면 프롬프트에 포함
+  const fullPrompt = pdfTextFallback
+    ? `${promptText}\n\n=== 첨부 PDF 내용 (반드시 읽고 분석에 활용하라) ===\n${pdfTextFallback}\n=== PDF 내용 끝 ===`
+    : promptText;
+
   if (!pdfDocuments.length) {
-    return [{ role: 'user', content: promptText }];
+    return [{ role: 'user', content: fullPrompt }];
   }
 
+  // PDF document 타입도 함께 전달 (native PDF 읽기 시도)
   const content = [];
 
   for (const pdf of pdfDocuments) {
@@ -74,7 +99,7 @@ const buildUserMessage = (promptText, pdfDocuments = []) => {
     });
   }
 
-  content.push({ type: 'text', text: promptText });
+  content.push({ type: 'text', text: fullPrompt });
 
   return [{ role: 'user', content }];
 };
@@ -87,15 +112,37 @@ const CLAUDE_MODELS = {
 
 const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null, submodel = 'claude') => {
   const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
-  const messages = buildUserMessage(userPrompt, pdfDocuments);
   const modelId = CLAUDE_MODELS[submodel] || CLAUDE_MODELS['claude'];
-  const response = await client.messages.create({
-    model: modelId,
-    max_tokens: maxTokens,
-    system: systemPrompt,
-    messages,
-  });
-  return response.content[0].text;
+
+  // PDF 텍스트를 미리 추출 (document 타입 실패 대비)
+  let pdfText = '';
+  if (pdfDocuments.length > 0) {
+    pdfText = await extractPdfText(pdfDocuments);
+    console.log(`[callClaude] PDF ${pdfDocuments.length}개, 텍스트 ${pdfText.length}자 추출`);
+  }
+
+  // 1차 시도: document 타입 + 텍스트 fallback 동시 전달
+  try {
+    const messages = buildUserMessage(userPrompt, pdfDocuments, pdfText);
+    const response = await client.messages.create({
+      model: modelId,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages,
+    });
+    return response.content[0].text;
+  } catch (err) {
+    console.error(`[callClaude] document 타입 실패, 텍스트만으로 재시도:`, err.message);
+    // 2차 시도: 텍스트만으로 재시도 (document 타입 제거)
+    const messages = buildUserMessage(userPrompt, [], pdfText);
+    const response = await client.messages.create({
+      model: modelId,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages,
+    });
+    return response.content[0].text;
+  }
 };
 
 // ══════════════════════════════════════════════════════
