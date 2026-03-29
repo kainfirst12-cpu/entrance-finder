@@ -109,7 +109,7 @@ app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
 
 app.get('/api/drive/test', async (req, res) => {
   try {
-    const kb = await loadKnowledgeBase();
+    const kb = await loadKnowledgeBase('컴퓨터공학/SW');
     const summary = {
       대입정책:  kb.대입정책.length  > 0 ? `✅ ${kb.대입정책.length}자 로딩됨`  : '❌ 파일 없음',
       대학별전형: kb.대학별전형.length > 0 ? `✅ ${kb.대학별전형.length}자 로딩됨` : '❌ 파일 없음',
@@ -144,7 +144,7 @@ app.post('/api/refine', async (req, res) => {
   // 지식베이스 로드 (합격자 사례 재참조를 위해)
   let kb;
   try {
-    kb = await getCachedKnowledgeBase();
+    kb = await getCachedKnowledgeBase(studentData?.major);
   } catch (e) {
     console.warn('[refine] 지식베이스 로드 실패, 기존 분석 기반으로 진행:', e.message);
     kb = { 대입정책: '', 대학별전형: '', 합격자사례: '' };
@@ -262,15 +262,16 @@ app.post('/api/test-connection', async (req, res) => {
   }
 });
 // ── 지식베이스 캐시 (채팅용 — 10분 TTL) ──────────────
-let kbCache = null;
-let kbCacheTime = 0;
+const kbCacheByField = {};
 const KB_TTL = 10 * 60 * 1000;
 
-async function getCachedKnowledgeBase() {
-  if (kbCache && Date.now() - kbCacheTime < KB_TTL) return kbCache;
-  kbCache = await loadKnowledgeBase();
-  kbCacheTime = Date.now();
-  return kbCache;
+async function getCachedKnowledgeBase(studentMajor) {
+  const key = studentMajor || '_default';
+  const cached = kbCacheByField[key];
+  if (cached && Date.now() - cached.time < KB_TTL) return cached.data;
+  const data = await loadKnowledgeBase(studentMajor);
+  kbCacheByField[key] = { data, time: Date.now() };
+  return data;
 }
 
 // ── 모델 ID 매핑 ──────────────────────────────────────
@@ -297,7 +298,7 @@ app.post('/api/chat', async (req, res) => {
   if (!message) return res.status(400).json({ success: false, message: '메시지 없음' });
 
   try {
-    const kb = await getCachedKnowledgeBase();
+    const kb = await getCachedKnowledgeBase(null);
 
     const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
 15년 이상의 학생부종합전형 컨설팅 경험을 보유하고 있으며 서울대·연세대·고려대 합격자를 다수 배출했습니다.
@@ -513,7 +514,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
     try {
       const driveResult = await Promise.race([
         Promise.all([
-          getCachedKnowledgeBase(),
+          getCachedKnowledgeBase(studentData.major),
           loadStudentFiles(studentData.name).catch(e => {
             console.error('[Analyze] 학생파일 오류:', e.message);
             return '';
