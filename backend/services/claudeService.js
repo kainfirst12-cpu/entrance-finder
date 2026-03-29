@@ -244,7 +244,7 @@ ${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', 
 
 **행동특성 및 종합의견:** 핵심 키워드
 `;
-  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
 };
 
 
@@ -445,7 +445,7 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
 | 안정 1 | ... | ... | XX% | ... |
 | 안정 2 | ... | ... | XX% | ... |
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -480,7 +480,7 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 |------|------------|------------|------------|
 | ... | ... | ... | ... |
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -530,7 +530,7 @@ ${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 학생의 현재 
 |----|-----|------|----------|------|
 | ... | ... | ... | ... | ... |
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey) => {
@@ -597,7 +597,7 @@ ${studentData.name} 입시 컨설팅 종합 리포트
   "즉시실행과제": ["","",""]
 }
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────
