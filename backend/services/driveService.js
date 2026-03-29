@@ -1,5 +1,9 @@
 // services/driveService.js
 import { google } from 'googleapis';
+import { execSync } from 'child_process';
+import { writeFileSync, readFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 const MAX_CHARS_PER_FILE = 15000;
 const MAX_FILES_PER_FOLDER = 50;
@@ -156,6 +160,24 @@ async function extractText(drive, fileId, mimeType, fileName) {
     const buffer = Buffer.from(res.data);
 
     if (mimeType === 'application/pdf') {
+      // 1차: pdftotext (poppler) — 한글 PDF에 강함
+      try {
+        const tmpPdf = join(tmpdir(), `drive-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+        const tmpTxt = tmpPdf.replace('.pdf', '.txt');
+        writeFileSync(tmpPdf, buffer);
+        execSync(`pdftotext -enc UTF-8 "${tmpPdf}" "${tmpTxt}"`, { timeout: PDF_TIMEOUT });
+        const text = readFileSync(tmpTxt, 'utf-8').trim();
+        try { unlinkSync(tmpPdf); unlinkSync(tmpTxt); } catch {}
+        if (text && text.length > 50) {
+          const koreanChars = (text.match(/[가-힣]/g) || []).length;
+          console.log(`[Drive] pdftotext 성공: ${fileName} → ${text.length}자 (한글 ${koreanChars}자)`);
+          return text.slice(0, MAX_CHARS_PER_FILE);
+        }
+      } catch (e) {
+        console.warn(`[Drive] pdftotext 실패 (${fileName}):`, e.message);
+      }
+
+      // 2차: pdf-parse 폴백
       try {
         const pdfParse = (await import('pdf-parse')).default;
         const parsed = await Promise.race([
@@ -164,15 +186,14 @@ async function extractText(drive, fileId, mimeType, fileName) {
         ]);
         const text = parsed.text?.trim();
         if (text && text.length > 50) {
-          console.log(`[Drive] PDF 추출 성공: ${fileName} → ${text.length}자`);
+          console.log(`[Drive] pdf-parse 성공: ${fileName} → ${text.length}자`);
           return text.slice(0, MAX_CHARS_PER_FILE);
         }
-        console.warn(`[Drive] PDF 텍스트 부족: ${fileName} (${text?.length || 0}자)`);
-        return `[PDF: ${fileName} - 텍스트 추출 불가 (한글 PDF일 수 있음)]`;
-      } catch (pdfErr) {
-        console.error(`[Drive] PDF 파싱 실패 (${fileName}):`, pdfErr.message);
-        return `[PDF: ${fileName} - 파싱 오류]`;
+      } catch (e2) {
+        console.error(`[Drive] pdf-parse도 실패 (${fileName}):`, e2.message);
       }
+
+      return `[PDF: ${fileName} - 텍스트 추출 불가]`;
     }
 
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {

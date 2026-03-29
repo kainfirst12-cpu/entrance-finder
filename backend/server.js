@@ -108,25 +108,25 @@ app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
 });
 
 app.get('/api/drive/test', async (req, res) => {
+  const major = req.query.major || '컴퓨터공학/SW';
   try {
-    const kb = await loadKnowledgeBase('컴퓨터공학/SW');
+    const kb = await loadKnowledgeBase(major);
     const summary = {
-      대입정책:  kb.대입정책.length  > 0 ? `✅ ${kb.대입정책.length}자 로딩됨`  : '❌ 파일 없음',
-      대학별전형: kb.대학별전형.length > 0 ? `✅ ${kb.대학별전형.length}자 로딩됨` : '❌ 파일 없음',
-      합격자사례: kb.합격자사례.length > 0 ? `✅ ${kb.합격자사례.length}자 로딩됨` : '❌ 파일 없음',
+      테스트계열: major,
+      대입정책:  kb.대입정책.length  > 0 ? `${kb.대입정책.length}자 로딩됨`  : '파일 없음',
+      대학별전형: kb.대학별전형.length > 0 ? `${kb.대학별전형.length}자 로딩됨` : '파일 없음',
+      합격자사례: kb.합격자사례.length > 0 ? `${kb.합격자사례.length}자 로딩됨` : '파일 없음',
+      총합: `${kb.대입정책.length + kb.대학별전형.length + kb.합격자사례.length}자`,
     };
-    res.json({
-      success: true,
-      summary,
-      env: {
-        folderId: (process.env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID || '').trim().slice(0, 10) + '...',
-        serviceAccount: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '(미설정)',
-        hasPrivateKey: !!(process.env.GOOGLE_PRIVATE_KEY),
-      },
-    });
+    // 내용 미리보기 (각 500자)
+    const preview = {
+      대입정책_preview: kb.대입정책.slice(0, 500),
+      합격자사례_preview: kb.합격자사례.slice(0, 500),
+    };
+    res.json({ success: true, summary, preview });
   } catch (err) {
     console.error('[Drive Test] 실패:', err.message);
-    res.status(500).json({ success: false, error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 // ── 검증 결과 반영 최종 리포트 재생성 ──────────────────────
