@@ -1,26 +1,68 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import pdfParse from 'pdf-parse';
 
 const GEMINI_MODELS = {
   'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'],
   'gemini-pro': ['gemini-2.5-pro', 'gemini-2.5-flash'],
 };
 
+// PDF 텍스트 추출 (대용량 PDF 대비)
+async function extractPdfTextsForGemini(pdfDocuments) {
+  const texts = [];
+  for (const pdf of pdfDocuments) {
+    try {
+      const buffer = Buffer.from(pdf.base64, 'base64');
+      const data = await pdfParse(buffer);
+      const extracted = data.text.slice(0, 25000);
+      console.log(`[Gemini PDF] ${pdf.label}: ${data.text.length}자 추출 (전달: ${extracted.length}자)`);
+      if (data.text.length < 50) {
+        console.warn(`[Gemini PDF] ${pdf.label}: 텍스트가 거의 없음! 스캔 이미지 PDF일 가능성`);
+      }
+      texts.push(`[${pdf.label} 내용]\n${extracted}`);
+    } catch (e) {
+      console.error(`[Gemini PDF] ${pdf.label} 추출 실패:`, e.message);
+      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
+    }
+  }
+  return texts.join('\n\n');
+}
+
+// 대용량 PDF 임계값 (5MB base64 = ~3.75MB 원본)
+const LARGE_PDF_THRESHOLD = 5 * 1024 * 1024;
+
 async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gemini', pdfDocuments = []) {
   const genAI = new GoogleGenerativeAI(apiKey);
   const modelList = GEMINI_MODELS[submodel] || GEMINI_MODELS['gemini'];
 
-  // PDF가 있으면 inline_data로 포함
-  const parts = [];
-  for (const pdf of pdfDocuments) {
-    parts.push({
-      inlineData: {
-        mimeType: 'application/pdf',
-        data: pdf.base64,
-      },
-    });
-    parts.push({ text: `[위 PDF는 "${pdf.label}" 파일입니다. 이 내용을 반드시 읽고 분석에 활용하세요.]` });
+  // PDF 처리: 항상 텍스트 추출 + 소형 PDF만 inlineData 사용
+  let pdfText = '';
+  if (pdfDocuments.length > 0) {
+    pdfText = await extractPdfTextsForGemini(pdfDocuments);
   }
-  parts.push({ text: `${systemPrompt}\n\n${userPrompt}` });
+
+  const parts = [];
+
+  // 소형 PDF만 inlineData로 전달 (대용량은 텍스트만)
+  for (const pdf of pdfDocuments) {
+    if (pdf.base64.length < LARGE_PDF_THRESHOLD) {
+      parts.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: pdf.base64,
+        },
+      });
+      parts.push({ text: `[위 PDF는 "${pdf.label}" 파일입니다.]` });
+      console.log(`[Gemini] ${pdf.label}: inlineData로 전달 (${(pdf.base64.length/1024/1024).toFixed(1)}MB)`);
+    } else {
+      console.log(`[Gemini] ${pdf.label}: 대용량(${(pdf.base64.length/1024/1024).toFixed(1)}MB) → 텍스트만 전달`);
+    }
+  }
+
+  // 텍스트 추출 결과를 프롬프트에 포함
+  const fullPrompt = pdfText
+    ? `${systemPrompt}\n\n=== 첨부 PDF 내용 (반드시 읽고 분석에 활용하라) ===\n${pdfText}\n=== PDF 내용 끝 ===\n\n${userPrompt}`
+    : `${systemPrompt}\n\n${userPrompt}`;
+  parts.push({ text: fullPrompt });
 
   // 모델 폴백 + 재시도 로직
   for (const modelId of modelList) {
@@ -31,13 +73,12 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
         return result.response.text();
       } catch (err) {
         const status = err?.status || err?.message || '';
-        console.warn(`[Gemini] ${modelId} attempt ${attempt + 1} failed:`, String(status).slice(0, 100));
-        // 500/503 에러면 1.5초 후 재시도
+        console.warn(`[Gemini] ${modelId} attempt ${attempt + 1} failed:`, String(status).slice(0, 200));
         if (String(status).includes('500') || String(status).includes('503') || String(status).includes('Internal')) {
           await new Promise(r => setTimeout(r, 1500));
           continue;
         }
-        break; // 다른 에러(401, 404 등)는 재시도 불필요
+        break;
       }
     }
   }
