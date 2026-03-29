@@ -5,9 +5,10 @@ import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-const MAX_CHARS_PER_FILE = 15000;
+const MAX_CHARS_PER_FILE = 10000;
 const MAX_FILES_PER_FOLDER = 50;
-const MAX_RELEVANT_FILES = 10;   // 계열 필터 후 최대 파일 수
+const MAX_RELEVANT_FILES = 5;    // 계열 필터 후 최대 파일 수
+const MAX_CHARS_PER_CATEGORY = 25000; // 카테고리당 최대 총 글자수
 const PDF_TIMEOUT = 10000;
 const TOTAL_TIMEOUT = 60000;
 const API_TIMEOUT = 10000;
@@ -294,6 +295,11 @@ export const loadKnowledgeBase = async (studentMajor) => {
         else if (n.includes('전형') || n.includes('02') || n.includes('2.')) result.대학별전형 += content;
         else if (n.includes('사례') || n.includes('03') || n.includes('3.')) result.합격자사례 += content;
       });
+
+      // 카테고리별 글자수 제한 (시스템 프롬프트 크기 제어)
+      if (result.대입정책.length > MAX_CHARS_PER_CATEGORY) result.대입정책 = result.대입정책.slice(0, MAX_CHARS_PER_CATEGORY);
+      if (result.대학별전형.length > MAX_CHARS_PER_CATEGORY) result.대학별전형 = result.대학별전형.slice(0, MAX_CHARS_PER_CATEGORY);
+      if (result.합격자사례.length > MAX_CHARS_PER_CATEGORY) result.합격자사례 = result.합격자사례.slice(0, MAX_CHARS_PER_CATEGORY);
     };
 
     await Promise.race([
