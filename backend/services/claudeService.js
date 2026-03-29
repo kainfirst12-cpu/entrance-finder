@@ -226,8 +226,25 @@ ${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', 
 | 전공 관련 활동 | ... | ... | ... | ... |
 | 세특 수준 | ... | ... | ... | ... |
 | 비교과 깊이 | ... | ... | ... | ... |
+
+### 0.4 PDF 핵심 데이터 추출 (후속 분석용 — 반드시 작성)
+
+[중요] 이 섹션은 후속 분석 단계에서 PDF 원본 대신 사용된다. PDF에서 아래 정보를 빠짐없이 추출하라.
+
+**교과 성적표:**
+| 학년-학기 | 과목 | 원점수/평균(표준편차) | 성취도(수강자수) | 석차등급 |
+|----------|------|---------------------|----------------|---------|
+| (PDF에서 모든 과목 추출) |
+
+**세부능력 및 특기사항 요약:** 과목별 핵심 키워드와 활동 요약 (각 과목 1~2문장)
+
+**창의적 체험활동:** 자율활동, 동아리활동, 진로활동의 핵심 내용 요약
+
+**수상경력/봉사활동:** 주요 항목 나열
+
+**행동특성 및 종합의견:** 핵심 키워드
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 
@@ -588,25 +605,32 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
   const results = {};
 
-  // 이미지 없는 경량 pdfDocuments (텍스트만 포함, 이미지 제거)
+  // 이미지 없는 경량 pdfDocuments (텍스트만, 이미지 제거)
   const pdfDocsLight = pdfDocuments.map(pdf => ({
     label: pdf.label,
     base64: pdf.base64,
     preExtractedText: pdf.preExtractedText,
-    // images 제거 → 텍스트/document 타입만 사용
   }));
 
-  // 단계 0~2: 이미지 포함 (PDF 원본 읽기 필요)
-  onProgress?.({ step: 0, label: 'Drive 사례 매칭 중...' });
+  // 단계 0: 이미지 포함 → PDF 데이터 추출 + 사례 매칭
+  onProgress?.({ step: 0, label: 'Drive 사례 매칭 중 (PDF 읽기)...' });
   results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
 
+  // step0에서 추출한 데이터를 이후 단계 컨텍스트로 사용
+  // 이미지 전송 없이 step0 결과 텍스트로 PDF 내용 전달
+  const step0Context = results.caseMatching || '';
+  for (const pdf of pdfDocsLight) {
+    if (pdf.preExtractedText && pdf.preExtractedText.includes('AI가 첨부 이미지에서 직접 읽어야 함')) {
+      pdf.preExtractedText = `[0단계에서 추출한 PDF 데이터]\n${step0Context.slice(-3000)}\n`;
+    }
+  }
+
   onProgress?.({ step: 1, label: '학업역량 분석 중...' });
-  results.academic = await step1_academic(systemPrompt, studentData, pdfDocuments, apiKey);
+  results.academic = await step1_academic(systemPrompt, studentData, pdfDocsLight, apiKey);
 
   onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
-  results.activity = await step2_activity(systemPrompt, studentData, pdfDocuments, apiKey);
+  results.activity = await step2_activity(systemPrompt, studentData, pdfDocsLight, apiKey);
 
-  // 단계 3~7: 이미지 제거 (이전 분석 결과 기반, 텍스트만)
   onProgress?.({ step: 3, label: '진로 역량 분석 중...' });
   results.career = await step3_career(systemPrompt, studentData, pdfDocsLight, apiKey);
 

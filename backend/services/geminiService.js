@@ -235,8 +235,8 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 
   for (const s of steps) {
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
-    // 단계 0~2: 이미지 포함, 단계 3+: 텍스트만 (메모리/타임아웃 방지)
-    const docs = s.step <= 3 ? pdfDocuments : pdfDocsLight;
+    // step 1(사례매칭)만 이미지 포함, 나머지 텍스트만 (타임아웃 방지)
+    const docs = s.step === 1 ? pdfDocuments : pdfDocsLight;
     results[s.key] = await callGemini(systemPrompt, s.prompt, 8000, apiKey, 'gemini', docs);
   }
 

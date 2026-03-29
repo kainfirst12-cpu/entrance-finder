@@ -22,7 +22,7 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
   writeFileSync(pdfPath, pdfBuffer);
 
   try {
-    execSync(`pdftoppm -png -r 150 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
+    execSync(`pdftoppm -png -r 120 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
       timeout: 60000,
     });
 
@@ -585,7 +585,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
           console.warn(`[Analyze] ${pdf.label}: 한글 부족 → 이미지 변환 시도!`);
           send({ type: 'progress', step: 0, label: `${pdf.label} 이미지 변환 중...`, total: 9 });
           try {
-            const images = await convertPdfToImages(buffer, 16);
+            const images = await convertPdfToImages(buffer, 10);
             pdf.images = images;
             console.log(`[Analyze] ${pdf.label}: ${images.length}페이지 이미지 변환 성공`);
             send({ type: 'progress', step: 0, label: `${pdf.label} ${images.length}페이지 이미지 변환 완료`, total: 9 });
