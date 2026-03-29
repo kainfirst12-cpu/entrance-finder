@@ -1,7 +1,6 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
 import pdfParse from 'pdf-parse';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // ── System Prompt 생성 ─────────────────────────────────
 const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
@@ -55,53 +54,18 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 ${studentDriveFiles || '(없음)'}
 `;
 
-// ── 향상된 PDF 텍스트 추출 (pdfjs-dist 최신 — 한글 지원 강화) ──
-async function extractPdfTextEnhanced(buffer) {
-  const doc = await getDocument({ data: new Uint8Array(buffer), useSystemFonts: true }).promise;
-  let fullText = '';
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
-    if (pageText) fullText += `[${i}페이지]\n${pageText}\n\n`;
-  }
-  await doc.destroy();
-  return fullText;
-}
-
-// ── PDF 텍스트 추출 (pdf-parse → pdfjs-dist 폴백) ──────
+// ── PDF 텍스트 추출 (pdf-parse) ──────────────────────────
 async function extractPdfText(pdfDocuments) {
   const texts = [];
   for (const pdf of pdfDocuments) {
-    const buffer = Buffer.from(pdf.base64, 'base64');
-    let text = '';
-
-    // 1차: pdf-parse
     try {
+      const buffer = Buffer.from(pdf.base64, 'base64');
       const data = await pdfParse(buffer);
-      text = data.text.slice(0, 25000);
-      console.log(`[Claude PDF] pdf-parse: ${pdf.label} → ${data.text.length}자`);
+      const truncated = data.text.slice(0, 25000);
+      texts.push(`[${pdf.label} 내용]\n${truncated}`);
     } catch (e) {
-      console.error(`[Claude PDF] pdf-parse 실패: ${pdf.label}`, e.message);
+      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
     }
-
-    // 한글 검증 → pdfjs-dist 폴백
-    const koreanChars = (text.match(/[가-힣]/g) || []).length;
-    if (koreanChars < 50) {
-      console.warn(`[Claude PDF] ${pdf.label}: 한글 ${koreanChars}자 → pdfjs-dist로 재시도`);
-      try {
-        const enhanced = await extractPdfTextEnhanced(buffer);
-        const enhancedKorean = (enhanced.match(/[가-힣]/g) || []).length;
-        if (enhancedKorean > koreanChars) {
-          text = enhanced.slice(0, 25000);
-          console.log(`[Claude PDF] pdfjs-dist 성공: ${pdf.label} → ${text.length}자 (한글 ${enhancedKorean}자)`);
-        }
-      } catch (e2) {
-        console.error(`[Claude PDF] pdfjs-dist도 실패: ${pdf.label}`, e2.message);
-      }
-    }
-
-    texts.push(text.length > 0 ? `[${pdf.label} 내용]\n${text}` : `[${pdf.label}] PDF 텍스트 추출 실패`);
   }
   return texts.join('\n\n');
 }

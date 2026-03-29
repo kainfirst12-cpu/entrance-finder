@@ -9,7 +9,6 @@ import jwt from 'jsonwebtoken';
 import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
 import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { execSync } from 'child_process';
 import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, rmdirSync } from 'fs';
 import { join } from 'path';
@@ -23,7 +22,6 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
   writeFileSync(pdfPath, pdfBuffer);
 
   try {
-    // 150 DPI로 PNG 변환 (품질과 크기 균형)
     execSync(`pdftoppm -png -r 150 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
       timeout: 60000,
     });
@@ -37,7 +35,7 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
       return imgBuffer.toString('base64');
     });
 
-    console.log(`[PDF→Image] ${images.length}페이지 변환 완료 (총 ${images.reduce((s, i) => s + i.length, 0)} base64 바이트)`);
+    console.log(`[PDF→Image] ${images.length}페이지 변환 완료`);
     return images;
   } finally {
     try {
@@ -45,25 +43,6 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
       rmdirSync(tmpDir);
     } catch {}
   }
-}
-
-// ── 향상된 PDF 텍스트 추출 (pdfjs-dist 최신 버전 — 한글 지원 강화) ──
-async function extractPdfTextEnhanced(buffer) {
-  const uint8 = new Uint8Array(buffer);
-  const doc = await getDocument({ data: uint8, useSystemFonts: true }).promise;
-  let fullText = '';
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map(item => item.str)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (pageText) fullText += `[${i}페이지]\n${pageText}\n\n`;
-  }
-  await doc.destroy();
-  return fullText;
 }
 const app = express();
 app.use(cors());
@@ -92,26 +71,23 @@ app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
     console.log(`[PDF Test] 파일: ${originalname}, 크기: ${size}, MIME: ${mimetype}`);
     const base64 = buffer.toString('base64');
 
-    // 1차: pdf-parse
-    let pdfParseText = '';
-    let pdfParseKorean = 0;
+    let extractedText = '';
+    let koreanChars = 0;
     try {
       const data = await pdfParse(buffer);
-      pdfParseText = data.text.slice(0, 3000);
-      pdfParseKorean = (pdfParseText.match(/[가-힣]/g) || []).length;
+      extractedText = data.text.slice(0, 3000);
+      koreanChars = (extractedText.match(/[가-힣]/g) || []).length;
     } catch (e) {
-      pdfParseText = `추출 실패: ${e.message}`;
+      extractedText = `추출 실패: ${e.message}`;
     }
 
-    // 2차: pdfjs-dist
-    let pdfjsText = '';
-    let pdfjsKorean = 0;
+    // 이미지 변환 테스트
+    let imageCount = 0;
     try {
-      const enhanced = await extractPdfTextEnhanced(buffer);
-      pdfjsText = enhanced.slice(0, 3000);
-      pdfjsKorean = (pdfjsText.match(/[가-힣]/g) || []).length;
+      const images = await convertPdfToImages(buffer, 3);
+      imageCount = images.length;
     } catch (e) {
-      pdfjsText = `추출 실패: ${e.message}`;
+      console.error('[PDF Test] 이미지 변환 실패:', e.message);
     }
 
     res.json({
@@ -120,17 +96,11 @@ app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
       size: `${(size / 1024).toFixed(1)}KB`,
       mimetype,
       base64Length: base64.length,
-      pdfParse: {
-        textPreview: pdfParseText.slice(0, 500),
-        textLength: pdfParseText.length,
-        koreanChars: pdfParseKorean,
-      },
-      pdfjsDist: {
-        textPreview: pdfjsText.slice(0, 500),
-        textLength: pdfjsText.length,
-        koreanChars: pdfjsKorean,
-      },
-      recommendation: pdfjsKorean > pdfParseKorean ? 'pdfjs-dist가 더 나은 결과' : 'pdf-parse가 충분',
+      textPreview: extractedText.slice(0, 500),
+      textLength: extractedText.length,
+      koreanChars,
+      imageConversion: imageCount > 0 ? `${imageCount}페이지 변환 성공` : '변환 실패',
+      willUseImages: koreanChars < 50,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -601,7 +571,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
         try {
           const data = await pdfParseFunc(buffer);
           text = data.text.slice(0, 30000);
-          console.log(`[Analyze] pdf-parse 추출: ${pdf.label} → ${data.text.length}자`);
+          console.log(`[Analyze] pdf-parse: ${pdf.label} → ${data.text.length}자`);
         } catch (e) {
           console.error(`[Analyze] pdf-parse 실패: ${pdf.label}`, e.message);
         }
@@ -610,40 +580,24 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
         const koreanChars = (text.match(/[가-힣]/g) || []).length;
         console.log(`[Analyze] ${pdf.label}: 한글 ${koreanChars}자 / 전체 ${text.length}자`);
 
-        // 2차: pdfjs-dist로 재시도
+        // 텍스트 추출 실패 → PDF를 이미지로 변환
         if (koreanChars < 50) {
-          console.warn(`[Analyze] ${pdf.label}: 한글 부족 → pdfjs-dist 시도`);
-          try {
-            const enhancedText = await extractPdfTextEnhanced(buffer);
-            const enhancedKorean = (enhancedText.match(/[가-힣]/g) || []).length;
-            console.log(`[Analyze] pdfjs-dist: ${pdf.label} → 한글 ${enhancedKorean}자`);
-            if (enhancedKorean > koreanChars) {
-              text = enhancedText.slice(0, 30000);
-            }
-          } catch (e2) {
-            console.error(`[Analyze] pdfjs-dist도 실패: ${pdf.label}`, e2.message);
-          }
-        }
-
-        // 3차: 텍스트 추출 실패 → PDF를 이미지로 변환 (핵심 폴백!)
-        const finalKorean = (text.match(/[가-힣]/g) || []).length;
-        if (finalKorean < 50) {
-          console.warn(`[Analyze] ${pdf.label}: 텍스트 추출 실패 → 이미지 변환 시도!`);
+          console.warn(`[Analyze] ${pdf.label}: 한글 부족 → 이미지 변환 시도!`);
           send({ type: 'progress', step: 0, label: `${pdf.label} 이미지 변환 중...`, total: 9 });
           try {
             const images = await convertPdfToImages(buffer, 16);
-            pdf.images = images; // base64 PNG 배열
+            pdf.images = images;
             console.log(`[Analyze] ${pdf.label}: ${images.length}페이지 이미지 변환 성공`);
             send({ type: 'progress', step: 0, label: `${pdf.label} ${images.length}페이지 이미지 변환 완료`, total: 9 });
           } catch (imgErr) {
-            console.error(`[Analyze] 이미지 변환도 실패: ${pdf.label}`, imgErr.message);
+            console.error(`[Analyze] 이미지 변환 실패: ${pdf.label}`, imgErr.message);
           }
         }
 
-        if (text.length > 0 && finalKorean >= 50) {
+        if (koreanChars >= 50) {
           preExtractedPdfText += `[${pdf.label} 내용]\n${text}\n\n`;
         } else if (pdf.images?.length > 0) {
-          preExtractedPdfText += `[${pdf.label}] 텍스트 추출 불가 — AI가 첨부 이미지에서 직접 읽어야 함\n\n`;
+          preExtractedPdfText += `[${pdf.label}] AI가 첨부 이미지에서 직접 읽어야 함\n\n`;
         } else {
           preExtractedPdfText += `[${pdf.label}] PDF 처리 실패\n\n`;
         }

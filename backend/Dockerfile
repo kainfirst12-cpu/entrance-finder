@@ -1,5 +1,5 @@
 FROM node:18-alpine
-RUN apk add --no-cache poppler-utils font-noto-cjk
+RUN apk add --no-cache poppler-utils
 WORKDIR /app
 COPY . .
 RUN npm install
