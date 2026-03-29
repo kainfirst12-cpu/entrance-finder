@@ -624,6 +624,15 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
   const results = {};
 
+  // 이미지 없는 경량 pdfDocuments (텍스트만 포함, 이미지 제거)
+  const pdfDocsLight = pdfDocuments.map(pdf => ({
+    label: pdf.label,
+    base64: pdf.base64,
+    preExtractedText: pdf.preExtractedText,
+    // images 제거 → 텍스트/document 타입만 사용
+  }));
+
+  // 단계 0~2: 이미지 포함 (PDF 원본 읽기 필요)
   onProgress?.({ step: 0, label: 'Drive 사례 매칭 중...' });
   results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
 
@@ -633,23 +642,24 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
   results.activity = await step2_activity(systemPrompt, studentData, pdfDocuments, apiKey);
 
+  // 단계 3~7: 이미지 제거 (이전 분석 결과 기반, 텍스트만)
   onProgress?.({ step: 3, label: '진로 역량 분석 중...' });
-  results.career = await step3_career(systemPrompt, studentData, pdfDocuments, apiKey);
+  results.career = await step3_career(systemPrompt, studentData, pdfDocsLight, apiKey);
 
   const prevSummary = `학업:${results.academic?.slice(0,200)}\n비교과:${results.activity?.slice(0,200)}\n진로:${results.career?.slice(0,200)}`;
 
   onProgress?.({ step: 4, label: '지원 전략 수립 중...' });
-  results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocuments, apiKey);
+  results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocsLight, apiKey);
 
   onProgress?.({ step: 5, label: '3년 로드맵 생성 중...' });
-  results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocuments, apiKey);
+  results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocsLight, apiKey);
 
   onProgress?.({ step: 6, label: '세특 개선안 작성 중...' });
-  results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocuments, apiKey);
+  results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocsLight, apiKey);
 
   const allAnalysis = Object.values(results).join('\n\n');
   onProgress?.({ step: 7, label: '종합 대시보드 생성 중...' });
-  results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey);
+  results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocsLight, apiKey);
 
   onProgress?.({ step: 8, label: '분석 완료!' });
   return results;

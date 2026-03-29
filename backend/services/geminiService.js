@@ -263,9 +263,18 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 7.1 5개 영역 평가표(학업/비교과/진로/세특/전공적합성, 10점 척도), 합격 가능성 분석. 7.2 즉시 실행 과제 3가지 + 유지 강점. 7.3 차기 상담 일정. 7.4 맺음말` },
   ];
 
+  // 이미지 없는 경량 pdfDocuments (단계 3+ 에서 사용)
+  const pdfDocsLight = pdfDocuments.map(pdf => ({
+    label: pdf.label,
+    base64: pdf.base64,
+    preExtractedText: pdf.preExtractedText,
+  }));
+
   for (const s of steps) {
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
-    results[s.key] = await callGemini(systemPrompt, s.prompt, 8000, apiKey, 'gemini', pdfDocuments);
+    // 단계 0~2: 이미지 포함, 단계 3+: 텍스트만 (메모리/타임아웃 방지)
+    const docs = s.step <= 3 ? pdfDocuments : pdfDocsLight;
+    results[s.key] = await callGemini(systemPrompt, s.prompt, 8000, apiKey, 'gemini', docs);
   }
 
   onProgress?.({ step: 8, label: '분석 완료!' });
