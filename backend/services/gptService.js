@@ -33,11 +33,15 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
   const openai = new OpenAI({ apiKey });
   const modelId = GPT_MODELS[submodel] || GPT_MODELS['gpt'];
 
-  // PDF가 있으면 텍스트 추출해서 프롬프트에 포함
+  // PDF 텍스트 (서버에서 미리 추출된 텍스트 사용, 없으면 직접 추출)
   let pdfContext = '';
-  if (pdfDocuments.length > 0) {
-    pdfContext = await extractPdfTexts(pdfDocuments);
-    pdfContext = `\n\n=== 첨부 PDF 내용 (AI가 반드시 읽고 분석할 것) ===\n${pdfContext}\n===\n\n`;
+  const preText = pdfDocuments[0]?.preExtractedText || '';
+  if (preText) {
+    pdfContext = `\n\n=== 첨부 PDF 내용 (AI가 반드시 읽고 분석할 것) ===\n${preText}\n===\n\n`;
+    console.log(`[GPT] PDF 텍스트 ${preText.length}자 사용`);
+  } else if (pdfDocuments.length > 0) {
+    const extracted = await extractPdfTexts(pdfDocuments);
+    pdfContext = `\n\n=== 첨부 PDF 내용 (AI가 반드시 읽고 분석할 것) ===\n${extracted}\n===\n\n`;
   }
 
   const response = await openai.chat.completions.create({

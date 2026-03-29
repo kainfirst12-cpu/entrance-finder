@@ -443,6 +443,11 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
 
+  // SSE keepalive: 15초마다 핑 전송 (Railway 프록시 타임아웃 방지)
+  const keepAlive = setInterval(() => {
+    try { res.write(': keepalive\n\n'); } catch {}
+  }, 15000);
+
   const send = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
     if (typeof res.flush === 'function') res.flush();
@@ -501,6 +506,30 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
       console.warn('[Analyze] 경고: PDF 파일이 하나도 수신되지 않았습니다!');
     }
 
+    // PDF 텍스트를 한 번만 추출 (매 step마다 반복 추출 방지)
+    let preExtractedPdfText = '';
+    if (pdfDocuments.length > 0) {
+      const pdfParseModule = await import('pdf-parse');
+      const pdfParseFunc = pdfParseModule.default;
+      for (const pdf of pdfDocuments) {
+        try {
+          const buffer = Buffer.from(pdf.base64, 'base64');
+          const data = await pdfParseFunc(buffer);
+          const text = data.text.slice(0, 25000);
+          preExtractedPdfText += `[${pdf.label} 내용]\n${text}\n\n`;
+          console.log(`[Analyze] PDF 텍스트 추출: ${pdf.label} → ${data.text.length}자 (전달: ${text.length}자)`);
+        } catch (e) {
+          console.error(`[Analyze] PDF 텍스트 추출 실패: ${pdf.label}`, e.message);
+          preExtractedPdfText += `[${pdf.label}] 텍스트 추출 실패\n\n`;
+        }
+      }
+      // 추출된 텍스트를 pdfDocuments에 첨부 (서비스에서 재추출 불필요)
+      for (const pdf of pdfDocuments) {
+        pdf.preExtractedText = preExtractedPdfText;
+      }
+      send({ type: 'progress', step: 0, label: `PDF 텍스트 추출 완료 (${preExtractedPdfText.length}자)`, total: 9 });
+    }
+
     send({ type: 'progress', step: 1, label: 'Drive 자료 로딩 완료!', total: 9 });
 
     const progressCb = (progress) => send({ type: 'progress', ...progress, total: 9 });
@@ -513,9 +542,11 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
       results = await runFullAnalysis(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
     }
 
+    clearInterval(keepAlive);
     send({ type: 'complete', results, notionUrl: null, message: '분석 완료!' });
     res.end();
   } catch (err) {
+    clearInterval(keepAlive);
     console.error('분석 오류:', err);
     send({ type: 'error', message: err.message });
     res.end();

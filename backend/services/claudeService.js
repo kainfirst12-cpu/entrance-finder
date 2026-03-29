@@ -114,12 +114,12 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
   const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
   const modelId = CLAUDE_MODELS[submodel] || CLAUDE_MODELS['claude'];
 
-  // PDF 텍스트를 미리 추출 (document 타입 실패 대비)
-  let pdfText = '';
-  if (pdfDocuments.length > 0) {
+  // PDF 텍스트 (서버에서 미리 추출된 텍스트 사용, 없으면 직접 추출)
+  let pdfText = pdfDocuments[0]?.preExtractedText || '';
+  if (!pdfText && pdfDocuments.length > 0) {
     pdfText = await extractPdfText(pdfDocuments);
-    console.log(`[callClaude] PDF ${pdfDocuments.length}개, 텍스트 ${pdfText.length}자 추출`);
   }
+  if (pdfText) console.log(`[callClaude] PDF 텍스트 ${pdfText.length}자 사용`);
 
   // 1차 시도: document 타입 + 텍스트 fallback 동시 전달
   try {

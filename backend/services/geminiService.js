@@ -34,11 +34,12 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
   const genAI = new GoogleGenerativeAI(apiKey);
   const modelList = GEMINI_MODELS[submodel] || GEMINI_MODELS['gemini'];
 
-  // PDF 처리: 항상 텍스트 추출 + 소형 PDF만 inlineData 사용
-  let pdfText = '';
-  if (pdfDocuments.length > 0) {
+  // PDF 텍스트 (서버에서 미리 추출된 텍스트 사용, 없으면 직접 추출)
+  let pdfText = pdfDocuments[0]?.preExtractedText || '';
+  if (!pdfText && pdfDocuments.length > 0) {
     pdfText = await extractPdfTextsForGemini(pdfDocuments);
   }
+  if (pdfText) console.log(`[Gemini] PDF 텍스트 ${pdfText.length}자 사용`);
 
   const parts = [];
 
