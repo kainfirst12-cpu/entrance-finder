@@ -1,28 +1,59 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import pdfParse from 'pdf-parse';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const GEMINI_MODELS = {
   'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'],
   'gemini-pro': ['gemini-2.5-pro', 'gemini-2.5-flash'],
 };
 
-// PDF 텍스트 추출 (대용량 PDF 대비)
+// 향상된 PDF 텍스트 추출 (pdfjs-dist 최신 — 한글 지원 강화)
+async function extractPdfTextEnhanced(buffer) {
+  const doc = await getDocument({ data: new Uint8Array(buffer), useSystemFonts: true }).promise;
+  let fullText = '';
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+    if (pageText) fullText += `[${i}페이지]\n${pageText}\n\n`;
+  }
+  await doc.destroy();
+  return fullText;
+}
+
+// PDF 텍스트 추출 (pdf-parse → pdfjs-dist 폴백)
 async function extractPdfTextsForGemini(pdfDocuments) {
   const texts = [];
   for (const pdf of pdfDocuments) {
+    const buffer = Buffer.from(pdf.base64, 'base64');
+    let text = '';
+
+    // 1차: pdf-parse
     try {
-      const buffer = Buffer.from(pdf.base64, 'base64');
       const data = await pdfParse(buffer);
-      const extracted = data.text.slice(0, 25000);
-      console.log(`[Gemini PDF] ${pdf.label}: ${data.text.length}자 추출 (전달: ${extracted.length}자)`);
-      if (data.text.length < 50) {
-        console.warn(`[Gemini PDF] ${pdf.label}: 텍스트가 거의 없음! 스캔 이미지 PDF일 가능성`);
-      }
-      texts.push(`[${pdf.label} 내용]\n${extracted}`);
+      text = data.text.slice(0, 30000);
+      console.log(`[Gemini PDF] pdf-parse: ${pdf.label} → ${data.text.length}자`);
     } catch (e) {
-      console.error(`[Gemini PDF] ${pdf.label} 추출 실패:`, e.message);
-      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
+      console.error(`[Gemini PDF] pdf-parse 실패: ${pdf.label}`, e.message);
     }
+
+    // 한글 검증 → pdfjs-dist 폴백
+    const koreanChars = (text.match(/[가-힣]/g) || []).length;
+    if (koreanChars < 50) {
+      console.warn(`[Gemini PDF] ${pdf.label}: 한글 ${koreanChars}자 → pdfjs-dist로 재시도`);
+      try {
+        const enhanced = await extractPdfTextEnhanced(buffer);
+        const enhancedKorean = (enhanced.match(/[가-힣]/g) || []).length;
+        if (enhancedKorean > koreanChars) {
+          text = enhanced.slice(0, 30000);
+          console.log(`[Gemini PDF] pdfjs-dist 성공: ${pdf.label} → ${text.length}자 (한글 ${enhancedKorean}자)`);
+        }
+      } catch (e2) {
+        console.error(`[Gemini PDF] pdfjs-dist도 실패: ${pdf.label}`, e2.message);
+      }
+    }
+
+    texts.push(text.length > 0 ? `[${pdf.label} 내용]\n${text}` : `[${pdf.label}] PDF 텍스트 추출 실패`);
   }
   return texts.join('\n\n');
 }
@@ -43,19 +74,33 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
 
   const parts = [];
 
-  // 소형 PDF만 inlineData로 전달 (대용량은 텍스트만)
-  for (const pdf of pdfDocuments) {
-    if (pdf.base64.length < LARGE_PDF_THRESHOLD) {
-      parts.push({
-        inlineData: {
-          mimeType: 'application/pdf',
-          data: pdf.base64,
-        },
-      });
-      parts.push({ text: `[위 PDF는 "${pdf.label}" 파일입니다.]` });
-      console.log(`[Gemini] ${pdf.label}: inlineData로 전달 (${(pdf.base64.length/1024/1024).toFixed(1)}MB)`);
-    } else {
-      console.log(`[Gemini] ${pdf.label}: 대용량(${(pdf.base64.length/1024/1024).toFixed(1)}MB) → 텍스트만 전달`);
+  // PDF 이미지가 있으면 이미지로 전달 (가장 신뢰성 높음)
+  const hasImages = pdfDocuments.some(pdf => pdf.images?.length > 0);
+
+  if (hasImages) {
+    for (const pdf of pdfDocuments) {
+      if (pdf.images?.length > 0) {
+        parts.push({ text: `[${pdf.label} — ${pdf.images.length}페이지 이미지]` });
+        for (const imgBase64 of pdf.images) {
+          parts.push({
+            inlineData: { mimeType: 'image/png', data: imgBase64 },
+          });
+        }
+        console.log(`[Gemini] ${pdf.label}: 이미지 ${pdf.images.length}페이지 전달`);
+      }
+    }
+  } else {
+    // 이미지 없으면 PDF inlineData로 전달
+    for (const pdf of pdfDocuments) {
+      if (pdf.base64.length < LARGE_PDF_THRESHOLD) {
+        parts.push({
+          inlineData: { mimeType: 'application/pdf', data: pdf.base64 },
+        });
+        parts.push({ text: `[위 PDF는 "${pdf.label}" 파일입니다.]` });
+        console.log(`[Gemini] ${pdf.label}: PDF inlineData (${(pdf.base64.length/1024/1024).toFixed(1)}MB)`);
+      } else {
+        console.log(`[Gemini] ${pdf.label}: 대용량 → 텍스트만 전달`);
+      }
     }
   }
 

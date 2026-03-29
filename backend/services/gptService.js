@@ -1,30 +1,58 @@
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const GPT_MODELS = {
   'gpt': 'gpt-4o',
   'gpt-mini': 'gpt-4o-mini',
 };
 
+// 향상된 PDF 텍스트 추출 (pdfjs-dist 최신 — 한글 지원 강화)
+async function extractPdfTextEnhanced(buffer) {
+  const doc = await getDocument({ data: new Uint8Array(buffer), useSystemFonts: true }).promise;
+  let fullText = '';
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+    if (pageText) fullText += `[${i}페이지]\n${pageText}\n\n`;
+  }
+  await doc.destroy();
+  return fullText;
+}
+
 async function extractPdfTexts(pdfDocuments) {
   const texts = [];
   for (const pdf of pdfDocuments) {
+    const buffer = Buffer.from(pdf.base64, 'base64');
+    let text = '';
+
+    // 1차: pdf-parse
     try {
-      const buffer = Buffer.from(pdf.base64, 'base64');
-      console.log(`[GPT PDF] ${pdf.label}: base64 ${pdf.base64.length}자, buffer ${buffer.length}바이트`);
       const data = await pdfParse(buffer);
-      const extracted = data.text.slice(0, 20000);
-      console.log(`[GPT PDF] ${pdf.label}: 텍스트 ${data.text.length}자 추출 (전달: ${extracted.length}자)`);
-      if (data.text.length < 50) {
-        console.warn(`[GPT PDF] ${pdf.label}: 텍스트가 거의 없음! 스캔 이미지 PDF일 가능성`);
-        texts.push(`[${pdf.label}] PDF에서 텍스트를 추출할 수 없었습니다. 스캔된 이미지 PDF일 수 있습니다.`);
-      } else {
-        texts.push(`[${pdf.label} 내용]\n${extracted}`);
-      }
+      text = data.text.slice(0, 25000);
+      console.log(`[GPT PDF] pdf-parse: ${pdf.label} → ${data.text.length}자`);
     } catch (e) {
-      console.error(`[GPT PDF] ${pdf.label} 추출 실패:`, e.message);
-      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패: ${e.message}`);
+      console.error(`[GPT PDF] pdf-parse 실패: ${pdf.label}`, e.message);
     }
+
+    // 한글 검증 → pdfjs-dist 폴백
+    const koreanChars = (text.match(/[가-힣]/g) || []).length;
+    if (koreanChars < 50) {
+      console.warn(`[GPT PDF] ${pdf.label}: 한글 ${koreanChars}자 → pdfjs-dist로 재시도`);
+      try {
+        const enhanced = await extractPdfTextEnhanced(buffer);
+        const enhancedKorean = (enhanced.match(/[가-힣]/g) || []).length;
+        if (enhancedKorean > koreanChars) {
+          text = enhanced.slice(0, 25000);
+          console.log(`[GPT PDF] pdfjs-dist 성공: ${pdf.label} → ${text.length}자 (한글 ${enhancedKorean}자)`);
+        }
+      } catch (e2) {
+        console.error(`[GPT PDF] pdfjs-dist도 실패: ${pdf.label}`, e2.message);
+      }
+    }
+
+    texts.push(text.length > 0 ? `[${pdf.label} 내용]\n${text}` : `[${pdf.label}] PDF 텍스트 추출 실패`);
   }
   return texts.join('\n\n');
 }
@@ -42,6 +70,36 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
   } else if (pdfDocuments.length > 0) {
     const extracted = await extractPdfTexts(pdfDocuments);
     pdfContext = `\n\n=== 첨부 PDF 내용 (AI가 반드시 읽고 분석할 것) ===\n${extracted}\n===\n\n`;
+  }
+
+  // PDF 이미지가 있으면 vision 모드로 전달
+  const hasImages = pdfDocuments.some(pdf => pdf.images?.length > 0);
+
+  if (hasImages) {
+    const contentParts = [];
+    for (const pdf of pdfDocuments) {
+      if (pdf.images?.length > 0) {
+        contentParts.push({ type: 'text', text: `[${pdf.label} — ${pdf.images.length}페이지]` });
+        for (const imgBase64 of pdf.images) {
+          contentParts.push({
+            type: 'image_url',
+            image_url: { url: `data:image/png;base64,${imgBase64}`, detail: 'high' },
+          });
+        }
+      }
+    }
+    contentParts.push({ type: 'text', text: pdfContext + userPrompt });
+    console.log(`[GPT] 이미지 모드: ${pdfDocuments.reduce((s, p) => s + (p.images?.length || 0), 0)}페이지`);
+
+    const response = await openai.chat.completions.create({
+      model: modelId,
+      max_tokens: maxTokens,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: contentParts },
+      ],
+    });
+    return response.choices[0].message.content;
   }
 
   const response = await openai.chat.completions.create({

@@ -1,6 +1,7 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
 import pdfParse from 'pdf-parse';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // ── System Prompt 생성 ─────────────────────────────────
 const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
@@ -54,27 +55,59 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 ${studentDriveFiles || '(없음)'}
 `;
 
-// ── PDF 텍스트 추출 (fallback용) ────────────────────────
+// ── 향상된 PDF 텍스트 추출 (pdfjs-dist 최신 — 한글 지원 강화) ──
+async function extractPdfTextEnhanced(buffer) {
+  const doc = await getDocument({ data: new Uint8Array(buffer), useSystemFonts: true }).promise;
+  let fullText = '';
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+    if (pageText) fullText += `[${i}페이지]\n${pageText}\n\n`;
+  }
+  await doc.destroy();
+  return fullText;
+}
+
+// ── PDF 텍스트 추출 (pdf-parse → pdfjs-dist 폴백) ──────
 async function extractPdfText(pdfDocuments) {
   const texts = [];
   for (const pdf of pdfDocuments) {
+    const buffer = Buffer.from(pdf.base64, 'base64');
+    let text = '';
+
+    // 1차: pdf-parse
     try {
-      const buffer = Buffer.from(pdf.base64, 'base64');
       const data = await pdfParse(buffer);
-      const truncated = data.text.slice(0, 20000);
-      texts.push(`[${pdf.label} 내용]\n${truncated}`);
-      console.log(`[PDF] ${pdf.label}: ${data.text.length}자 추출 성공`);
+      text = data.text.slice(0, 25000);
+      console.log(`[Claude PDF] pdf-parse: ${pdf.label} → ${data.text.length}자`);
     } catch (e) {
-      console.error(`[PDF] ${pdf.label} 텍스트 추출 실패:`, e.message);
-      texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
+      console.error(`[Claude PDF] pdf-parse 실패: ${pdf.label}`, e.message);
     }
+
+    // 한글 검증 → pdfjs-dist 폴백
+    const koreanChars = (text.match(/[가-힣]/g) || []).length;
+    if (koreanChars < 50) {
+      console.warn(`[Claude PDF] ${pdf.label}: 한글 ${koreanChars}자 → pdfjs-dist로 재시도`);
+      try {
+        const enhanced = await extractPdfTextEnhanced(buffer);
+        const enhancedKorean = (enhanced.match(/[가-힣]/g) || []).length;
+        if (enhancedKorean > koreanChars) {
+          text = enhanced.slice(0, 25000);
+          console.log(`[Claude PDF] pdfjs-dist 성공: ${pdf.label} → ${text.length}자 (한글 ${enhancedKorean}자)`);
+        }
+      } catch (e2) {
+        console.error(`[Claude PDF] pdfjs-dist도 실패: ${pdf.label}`, e2.message);
+      }
+    }
+
+    texts.push(text.length > 0 ? `[${pdf.label} 내용]\n${text}` : `[${pdf.label}] PDF 텍스트 추출 실패`);
   }
   return texts.join('\n\n');
 }
 
-// ── PDF 포함 메시지 빌더 ───────────────────────────────
+// ── PDF 포함 메시지 빌더 (이미지 폴백 지원) ─────────────
 const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') => {
-  // PDF 텍스트 fallback이 있으면 프롬프트에 포함
   const fullPrompt = pdfTextFallback
     ? `${promptText}\n\n=== 첨부 PDF 내용 (반드시 읽고 분석에 활용하라) ===\n${pdfTextFallback}\n=== PDF 내용 끝 ===`
     : promptText;
@@ -83,24 +116,45 @@ const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') =
     return [{ role: 'user', content: fullPrompt }];
   }
 
-  // PDF document 타입도 함께 전달 (native PDF 읽기 시도)
   const content = [];
 
-  for (const pdf of pdfDocuments) {
-    content.push({
-      type: 'document',
-      source: {
-        type: 'base64',
-        media_type: 'application/pdf',
-        data: pdf.base64,
-      },
-      title: pdf.label,
-      cache_control: { type: 'ephemeral' },
-    });
+  // PDF 이미지가 있으면 이미지로 전달 (가장 신뢰성 높음)
+  const hasImages = pdfDocuments.some(pdf => pdf.images?.length > 0);
+
+  if (hasImages) {
+    for (const pdf of pdfDocuments) {
+      if (pdf.images?.length > 0) {
+        content.push({ type: 'text', text: `[${pdf.label} — ${pdf.images.length}페이지 이미지]` });
+        for (const imgBase64 of pdf.images) {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: imgBase64,
+            },
+          });
+        }
+      }
+    }
+    console.log(`[buildUserMessage] 이미지 모드: ${pdfDocuments.reduce((s, p) => s + (p.images?.length || 0), 0)}페이지`);
+  } else {
+    // 이미지 없으면 PDF document 타입으로 전달
+    for (const pdf of pdfDocuments) {
+      content.push({
+        type: 'document',
+        source: {
+          type: 'base64',
+          media_type: 'application/pdf',
+          data: pdf.base64,
+        },
+        title: pdf.label,
+      });
+    }
+    console.log(`[buildUserMessage] document 모드: ${pdfDocuments.length}개 PDF`);
   }
 
   content.push({ type: 'text', text: fullPrompt });
-
   return [{ role: 'user', content }];
 };
 
@@ -119,11 +173,20 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
   if (!pdfText && pdfDocuments.length > 0) {
     pdfText = await extractPdfText(pdfDocuments);
   }
-  if (pdfText) console.log(`[callClaude] PDF 텍스트 ${pdfText.length}자 사용`);
+  if (pdfText) {
+    const koreanChars = (pdfText.match(/[가-힣]/g) || []).length;
+    console.log(`[callClaude] PDF 텍스트 ${pdfText.length}자 사용 (한글 ${koreanChars}자)`);
+    if (koreanChars < 50) {
+      console.warn(`[callClaude] 경고: PDF 텍스트에 한글이 거의 없음! PDF 원본 읽기에 의존`);
+    }
+  } else {
+    console.warn(`[callClaude] 경고: PDF 텍스트가 비어있음! PDF document 타입에 의존`);
+  }
 
   // 1차 시도: document 타입 + 텍스트 fallback 동시 전달
   try {
     const messages = buildUserMessage(userPrompt, pdfDocuments, pdfText);
+    console.log(`[callClaude] 1차 시도: document ${pdfDocuments.length}개 + 텍스트 ${pdfText.length}자`);
     const response = await client.messages.create({
       model: modelId,
       max_tokens: maxTokens,
@@ -132,16 +195,23 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
     });
     return response.content[0].text;
   } catch (err) {
-    console.error(`[callClaude] document 타입 실패, 텍스트만으로 재시도:`, err.message);
+    console.error(`[callClaude] document 타입 실패 (${err.status || 'unknown'}):`, err.message);
+
     // 2차 시도: 텍스트만으로 재시도 (document 타입 제거)
-    const messages = buildUserMessage(userPrompt, [], pdfText);
-    const response = await client.messages.create({
-      model: modelId,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages,
-    });
-    return response.content[0].text;
+    try {
+      console.log(`[callClaude] 2차 시도: 텍스트만 ${pdfText.length}자`);
+      const messages = buildUserMessage(userPrompt, [], pdfText);
+      const response = await client.messages.create({
+        model: modelId,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages,
+      });
+      return response.content[0].text;
+    } catch (err2) {
+      console.error(`[callClaude] 2차 시도도 실패:`, err2.message);
+      throw err2;
+    }
   }
 };
 
