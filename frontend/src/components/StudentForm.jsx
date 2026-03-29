@@ -22,7 +22,7 @@ const PdfUploader = ({ label, fileKey, files, onChange, hint }) => {
     const f = e.target.files[0];
     if (!f) return;
     if (f.type !== 'application/pdf') return alert('PDF 파일만 업로드 가능해요!');
-    if (f.size > 20 * 1024 * 1024) return alert('파일 크기는 20MB 이하만 가능해요!');
+    if (f.size > 50 * 1024 * 1024) return alert('파일 크기는 50MB 이하만 가능해요!');
     onChange(fileKey, f);
   };
   const remove = () => onChange(fileKey, null);
