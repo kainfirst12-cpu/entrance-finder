@@ -118,6 +118,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [editText, setEditText] = useState('');
   const [manualEdits, setManualEdits] = useState({});
   const [showCoverModal, setShowCoverModal] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
   const [coverEdit, setCoverEdit] = useState({
     reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
     brandName: localStorage.getItem('ef_brand_name') || 'PATHFINDER EDU',
@@ -791,7 +795,14 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         }
 
         setRefinedResults(refined);
-        alert('검증 결과가 반영된 최종 리포트가 생성되었습니다.');
+        // 반영된 항목 숨기기 — 체크된 항목 제거
+        const remainingItems = verifyItems.filter((_, i) => !checkedItems[i]);
+        setVerifyItems(remainingItems);
+        setCheckedItems({});
+        if (remainingItems.length === 0) {
+          setVerifyResult(null); // 모든 항목 반영 완료 → 검증 패널 닫기
+        }
+        alert('검증 결과가 반영되었습니다.' + (remainingItems.length > 0 ? ` (미반영 ${remainingItems.length}개 남음)` : ''));
       } else {
         alert('재생성 오류: ' + resData.message);
       }
@@ -799,6 +810,76 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
       alert('재생성 요청 실패: ' + err.message);
     } finally {
       setRefining(false);
+    }
+  };
+
+  // ── AI 대화 (분석 결과 수정 요청) ──────────────────────
+  const handleChatSend = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const userMsg = chatInput.trim();
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setChatLoading(true);
+
+    try {
+      const refineKey = getKeyForModel(usedModel);
+      if (!refineKey) throw new Error('API 키가 필요합니다.');
+      const token = localStorage.getItem('ef_token');
+      const analysisText = SECTION_MAP
+        .filter(({ key }) => results?.[key])
+        .map(({ key, title }) => `## ${title}\n${results[key]}`)
+        .join('\n\n');
+
+      const res = await fetch(`${API_BASE}/api/refine`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': refineKey,
+          'x-ai-model': MODEL_CONFIG[usedModel]?.group || usedModel,
+          'x-ai-submodel': usedModel,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          studentData,
+          analysisText,
+          verifyText: `[사용자 수정 요청] ${userMsg}`,
+        }),
+      });
+
+      const resData = await res.json();
+      if (resData.success) {
+        // 파싱 & 반영
+        const refined = { ...results };
+        const replyText = resData.reply;
+        const headerRegex = /^\[(\d)단계\]\s*.*/gm;
+        const headers = [];
+        let match;
+        while ((match = headerRegex.exec(replyText)) !== null) {
+          headers.push({ num: match[1], index: match.index, fullMatch: match[0] });
+        }
+        for (let i = 0; i < headers.length; i++) {
+          const hdr = headers[i];
+          const sectionDef = SECTION_MAP.find(s => s.num === hdr.num);
+          if (!sectionDef) continue;
+          const contentStart = hdr.index + hdr.fullMatch.length;
+          const contentEnd = i + 1 < headers.length ? headers[i + 1].index : replyText.length;
+          const content = replyText.slice(contentStart, contentEnd).trim();
+          if (content) refined[sectionDef.key] = content;
+        }
+        const anyParsed = SECTION_MAP.some(({ key }) => refined[key] !== results?.[key]);
+        if (anyParsed) {
+          setRefinedResults(refined);
+          setChatMessages(prev => [...prev, { role: 'ai', text: '수정이 반영되었습니다. 리포트를 확인해주세요.' }]);
+        } else {
+          setChatMessages(prev => [...prev, { role: 'ai', text: replyText.slice(0, 500) }]);
+        }
+      } else {
+        setChatMessages(prev => [...prev, { role: 'ai', text: '오류: ' + resData.message }]);
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'ai', text: '오류: ' + err.message }]);
+    } finally {
+      setChatLoading(false);
     }
   };
 
@@ -1007,6 +1088,49 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
       <div className="result-sections">
         {SECTION_MAP.map(({ key, num, title }) => renderSection(key, num, title, results?.[key]))}
+      </div>
+
+      {/* AI 대화창 (분석 결과 수정 요청) */}
+      <div className={`result-chat ${chatOpen ? 'open' : ''}`}>
+        <button className="result-chat-toggle" onClick={() => setChatOpen(v => !v)}>
+          {chatOpen ? 'X 닫기' : '💬 AI에게 수정 요청'}
+        </button>
+        {chatOpen && (
+          <div className="result-chat-panel">
+            <div className="result-chat-header">
+              <span>AI 수정 요청</span>
+              <span className="result-chat-model">{MODEL_CONFIG[usedModel]?.icon} {MODEL_CONFIG[usedModel]?.label}</span>
+            </div>
+            <div className="result-chat-messages">
+              {chatMessages.length === 0 && (
+                <div className="result-chat-hint">
+                  수정하고 싶은 내용을 자유롭게 요청하세요.<br/>
+                  예: "지원 전략에서 안정 대학을 더 추가해줘"<br/>
+                  예: "비교과 분석을 더 자세하게 해줘"
+                </div>
+              )}
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`result-chat-msg ${msg.role}`}>
+                  <div className="result-chat-msg-label">{msg.role === 'user' ? '나' : 'AI'}</div>
+                  <div className="result-chat-msg-text">{msg.text}</div>
+                </div>
+              ))}
+              {chatLoading && <div className="result-chat-msg ai"><div className="result-chat-msg-label">AI</div><div className="result-chat-msg-text">수정 중...</div></div>}
+            </div>
+            <div className="result-chat-input-row">
+              <input
+                type="text"
+                className="result-chat-input"
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleChatSend()}
+                placeholder="수정 요청을 입력하세요..."
+                disabled={chatLoading}
+              />
+              <button className="result-chat-send" onClick={handleChatSend} disabled={chatLoading || !chatInput.trim()}>전송</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 표지 수정 모달 */}
