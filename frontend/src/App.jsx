@@ -39,12 +39,13 @@ export default function App() {
       const formData = new FormData();
       formData.append('studentData', JSON.stringify(studentData));
 
-      if (files.recordPdf)   formData.append('recordPdf',   files.recordPdf);
-      if (files.gradePdf)    formData.append('gradePdf',    files.gradePdf);
-      if (files.awardsPdf)   formData.append('awardsPdf',   files.awardsPdf);
-      if (files.mockExamPdf) formData.append('mockExamPdf', files.mockExamPdf);
+      if (files.recordPdf)   { formData.append('recordPdf',   files.recordPdf);   console.log('[Upload] recordPdf:', files.recordPdf.name, files.recordPdf.size, 'bytes'); }
+      if (files.gradePdf)    { formData.append('gradePdf',    files.gradePdf);    console.log('[Upload] gradePdf:', files.gradePdf.name, files.gradePdf.size, 'bytes'); }
+      if (files.awardsPdf)   { formData.append('awardsPdf',   files.awardsPdf);   console.log('[Upload] awardsPdf:', files.awardsPdf.name, files.awardsPdf.size, 'bytes'); }
+      if (files.mockExamPdf) { formData.append('mockExamPdf', files.mockExamPdf); console.log('[Upload] mockExamPdf:', files.mockExamPdf.name, files.mockExamPdf.size, 'bytes'); }
 
       const pdfCount = Object.values(files).filter(Boolean).length;
+      console.log(`[Upload] 총 ${pdfCount}개 PDF 첨부`);
       const token = localStorage.getItem('ef_token');
 
       const response = await fetch(`${API_BASE}/api/analyze`, {

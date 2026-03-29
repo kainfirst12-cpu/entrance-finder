@@ -11,9 +11,18 @@ async function extractPdfTexts(pdfDocuments) {
   for (const pdf of pdfDocuments) {
     try {
       const buffer = Buffer.from(pdf.base64, 'base64');
+      console.log(`[GPT PDF] ${pdf.label}: base64 ${pdf.base64.length}자, buffer ${buffer.length}바이트`);
       const data = await pdfParse(buffer);
-      texts.push(`[${pdf.label} 내용]\n${data.text.slice(0, 15000)}`);
+      const extracted = data.text.slice(0, 20000);
+      console.log(`[GPT PDF] ${pdf.label}: 텍스트 ${data.text.length}자 추출 (전달: ${extracted.length}자)`);
+      if (data.text.length < 50) {
+        console.warn(`[GPT PDF] ${pdf.label}: 텍스트가 거의 없음! 스캔 이미지 PDF일 가능성`);
+        texts.push(`[${pdf.label}] PDF에서 텍스트를 추출할 수 없었습니다. 스캔된 이미지 PDF일 수 있습니다.`);
+      } else {
+        texts.push(`[${pdf.label} 내용]\n${extracted}`);
+      }
     } catch (e) {
+      console.error(`[GPT PDF] ${pdf.label} 추출 실패:`, e.message);
       texts.push(`[${pdf.label}] PDF 텍스트 추출 실패: ${e.message}`);
     }
   }

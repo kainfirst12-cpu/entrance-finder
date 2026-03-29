@@ -27,6 +27,35 @@ const pdfFields = upload.fields([
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+// ── PDF 진단 엔드포인트 ──────────────────────────────
+import pdfParse from 'pdf-parse';
+app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) return res.json({ success: false, message: 'PDF 파일이 수신되지 않았습니다' });
+    const { buffer, size, originalname, mimetype } = req.file;
+    console.log(`[PDF Test] 파일: ${originalname}, 크기: ${size}, MIME: ${mimetype}`);
+    const base64 = buffer.toString('base64');
+    let extractedText = '';
+    try {
+      const data = await pdfParse(buffer);
+      extractedText = data.text.slice(0, 2000);
+    } catch (e) {
+      extractedText = `추출 실패: ${e.message}`;
+    }
+    res.json({
+      success: true,
+      filename: originalname,
+      size: `${(size / 1024).toFixed(1)}KB`,
+      mimetype,
+      base64Length: base64.length,
+      textPreview: extractedText.slice(0, 500),
+      textLength: extractedText.length,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.get('/api/drive/test', async (req, res) => {
   try {
     const kb = await loadKnowledgeBase();
@@ -444,9 +473,11 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
       if (kbCache) knowledgeBase = kbCache;
     }
 
-    // PDF 파일들을 base64로 변환해서 Claude에게 직접 전달
+    // PDF 파일들을 base64로 변환
     const uploadedFiles = req.files || {};
     const pdfDocuments = [];
+
+    console.log('[Analyze] req.files 키:', Object.keys(uploadedFiles));
 
     const pdfLabels = {
       recordPdf: '생기부 원본',
@@ -456,11 +487,18 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
     };
 
     for (const [key, label] of Object.entries(pdfLabels)) {
-      if (uploadedFiles[key]?.[0]) {
-        const base64 = uploadedFiles[key][0].buffer.toString('base64');
+      const file = uploadedFiles[key]?.[0];
+      if (file) {
+        const base64 = file.buffer.toString('base64');
         pdfDocuments.push({ label, base64 });
-        send({ type: 'progress', step: 0, label: `${label} PDF 준비 중...`, total: 9 });
+        console.log(`[Analyze] PDF 수신: ${label} (${(file.size / 1024).toFixed(1)}KB, base64 ${base64.length}자)`);
+        send({ type: 'progress', step: 0, label: `${label} PDF 준비 완료 (${(file.size / 1024).toFixed(0)}KB)`, total: 9 });
       }
+    }
+
+    console.log(`[Analyze] 총 PDF ${pdfDocuments.length}개 준비 완료`);
+    if (pdfDocuments.length === 0) {
+      console.warn('[Analyze] 경고: PDF 파일이 하나도 수신되지 않았습니다!');
     }
 
     send({ type: 'progress', step: 1, label: 'Drive 자료 로딩 완료!', total: 9 });
