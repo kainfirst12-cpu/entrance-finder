@@ -4,6 +4,9 @@ import pdfParse from 'pdf-parse';
 const GPT_MODELS = {
   'gpt': 'gpt-4o',
   'gpt-mini': 'gpt-4o-mini',
+  'gpt-4.1': 'gpt-4.1',
+  'o3': 'o3',
+  'o4-mini': 'o4-mini',
 };
 
 async function extractPdfTexts(pdfDocuments) {
@@ -23,6 +26,7 @@ async function extractPdfTexts(pdfDocuments) {
 async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submodel = 'gpt', pdfDocuments = []) {
   const openai = new OpenAI({ apiKey });
   const modelId = GPT_MODELS[submodel] || GPT_MODELS['gpt'];
+  const isReasoningModel = modelId.startsWith('o3') || modelId.startsWith('o4');
 
   // PDF 텍스트 (서버에서 미리 추출된 텍스트 사용, 없으면 직접 추출)
   let pdfContext = '';
@@ -54,29 +58,39 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
     contentParts.push({ type: 'text', text: pdfContext + userPrompt });
     console.log(`[GPT] 이미지 모드: ${pdfDocuments.reduce((s, p) => s + (p.images?.length || 0), 0)}페이지`);
 
-    const response = await openai.chat.completions.create({
+    const imgParams = {
       model: modelId,
-      max_tokens: maxTokens,
       messages: [
-        { role: 'system', content: systemPrompt },
+        { role: isReasoningModel ? 'developer' : 'system', content: systemPrompt },
         { role: 'user', content: contentParts },
       ],
-    });
+    };
+    if (isReasoningModel) {
+      imgParams.max_completion_tokens = maxTokens;
+    } else {
+      imgParams.max_tokens = maxTokens;
+    }
+    const response = await openai.chat.completions.create(imgParams);
     return response.choices[0].message.content;
   }
 
-  const response = await openai.chat.completions.create({
+  const params = {
     model: modelId,
-    max_tokens: maxTokens,
     messages: [
-      { role: 'system', content: systemPrompt },
+      { role: isReasoningModel ? 'developer' : 'system', content: systemPrompt },
       { role: 'user', content: pdfContext + userPrompt },
     ],
-  });
+  };
+  if (isReasoningModel) {
+    params.max_completion_tokens = maxTokens;
+  } else {
+    params.max_tokens = maxTokens;
+  }
+  const response = await openai.chat.completions.create(params);
   return response.choices[0].message.content;
 }
 
-export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey) {
+export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey, submodel = 'gpt') {
   const onProgress = progressCallback;
   const results = {};
 
@@ -188,7 +202,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
     // step 1(사례매칭)만 이미지 포함, 나머지 텍스트만 (타임아웃 방지)
     const docs = s.step === 1 ? pdfDocuments : pdfDocsLight;
-    results[s.key] = await callGPT(systemPrompt, s.prompt, 8000, apiKey, 'gpt', docs);
+    results[s.key] = await callGPT(systemPrompt, s.prompt, 8000, apiKey, submodel, docs);
   }
 
   onProgress?.({ step: 8, label: '분석 완료!' });

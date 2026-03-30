@@ -617,7 +617,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
     if (aiModel === 'gemini') {
       results = await runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
     } else if (aiModel === 'gpt') {
-      results = await runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
+      results = await runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey, submodel);
     } else {
       results = await runFullAnalysis(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
     }

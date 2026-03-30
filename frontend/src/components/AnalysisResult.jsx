@@ -9,6 +9,9 @@ const MODEL_CONFIG = {
   'gemini-pro':  { icon: '🟩', label: 'Gemini Pro',    color: '#166534', group: 'gemini' },
   gpt:           { icon: '🟡', label: 'GPT-4o',        color: '#f0a500', group: 'gpt' },
   'gpt-mini':    { icon: '🟠', label: 'GPT-4o Mini',   color: '#ea580c', group: 'gpt' },
+  'gpt-4.1':    { icon: '🟤', label: 'GPT-4.1',       color: '#78350f', group: 'gpt' },
+  'o3':          { icon: '⚪', label: 'o3',             color: '#374151', group: 'gpt' },
+  'o4-mini':     { icon: '🔘', label: 'o4-mini',        color: '#6b7280', group: 'gpt' },
 };
 
 const SECTION_MAP = [
