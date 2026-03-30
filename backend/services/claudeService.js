@@ -186,16 +186,29 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
 export const step0_caseMatching = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
 [0단계: AI 드라이브 사례 매칭 분석]
-학생: ${studentData.name} / 희망전공: ${studentData.major} / 내신: ${studentData.gpa}등급 / 목표: ${studentData.targetUniv}
-${pdfDocuments.length ? `\n첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')})를 먼저 읽고 학생 정보를 파악한 후 분석하라.` : ''}
 
-[매칭 규칙 — 반드시 준수]
-1. **전공 계열 일치가 최우선이다.** 학생의 희망전공(${studentData.major})과 동일하거나 유사한 계열의 합격 사례만 매칭하라.
-2. 희망전공과 무관한 계열(예: 사범/교육 학생에게 공학/의학/경제 사례)은 절대 매칭하지 마라.
-3. 전공이 일치하는 사례가 없으면 가장 인접한 학문 계열까지 넓히되, 반드시 그 이유를 명시하라.
-4. 그래도 유사한 사례가 없으면 "합격자 사례 DB에 해당 전공 관련 사례가 부족합니다"라고 솔직히 밝혀라. 억지로 무관한 사례를 매칭하지 마라.
-5. 매칭 우선순위: 1순위-전공 계열 일치(40점), 2순위-내신 갭(30점), 3순위-전형 유형(15점), 4순위-비교과 유사성(15점)
-6. 합산 100점 만점으로 유사도 %를 산출하라. 전공 불일치 시 유사도는 최대 30%를 넘을 수 없다.
+=== 학생 핵심 정보 (모든 분석의 기준 — 절대 변경 금지) ===
+- 학생명: ${studentData.name}
+- 희망전공: **${studentData.major}**
+- 목표대학: **${studentData.targetUniv || '미입력'}**
+- 내신: ${studentData.gpa}등급
+=== 끝 ===
+
+${pdfDocuments.length ? `첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')})를 먼저 읽고 학생 정보를 파악한 후 분석하라.` : ''}
+
+[절대 규칙 — 위반 시 분석 전체 무효]
+- 이 학생의 희망전공은 "${studentData.major}"이고 목표대학은 "${studentData.targetUniv || '미입력'}"이다.
+- 매칭할 합격 사례는 반드시 "${studentData.major}" 또는 동일 계열 학과여야 한다.
+- "${studentData.targetUniv}" 합격 사례를 최우선으로 찾고, 없으면 동급 대학의 동일 학과를 찾아라.
+- 전혀 다른 전공(예: 화학 학생에게 경영학, 컴퓨터 학생에게 간호학)을 매칭하면 분석 실패이다.
+
+[매칭 규칙]
+1. **전공 일치가 최우선이다.** "${studentData.major}"과 동일하거나 직접 관련된 학과의 합격 사례만 매칭하라.
+2. 희망전공과 무관한 계열은 절대 매칭하지 마라.
+3. 동일 전공 사례가 없으면 가장 인접한 학문 계열까지만 넓히되, 반드시 그 이유를 명시하라.
+4. 그래도 유사한 사례가 없으면 "합격자 사례 DB에 ${studentData.major} 관련 사례가 부족합니다"라고 솔직히 밝혀라.
+5. 매칭 우선순위: 1순위-전공 학과 일치(50점), 2순위-대학 일치(20점), 3순위-내신 갭(20점), 4순위-전형 유형(10점)
+6. 전공 불일치 시 유사도는 최대 20%를 넘을 수 없다.
 
 [출력 형식]
 
@@ -403,6 +416,7 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
   const prompt = `
 [4단계] 수시 지원 전략 (6장 카드)
 앞선 분석 요약: ${prevAnalysis}
+[필수] 이 학생의 희망전공은 "${studentData.major}"이고 목표대학은 "${studentData.targetUniv}"입니다. 지원 카드 6장은 반드시 "${studentData.major}" 관련 학과로만 구성하십시오.
 학생: 내신 ${studentData.gpa} / 모의 ${studentData.mockExam || '미입력'} / 목표 ${studentData.targetUniv} / ${studentData.major}
 
 [출력 형식 — 절대 준수: 반드시 마크다운 표(| |)로만 출력하라. 카드 형태, 블록쿼트(>), 들여쓰기 목록 금지.]
