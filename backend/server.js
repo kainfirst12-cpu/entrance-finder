@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
 import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js';
+import { searchAdmissionCases } from './services/searchService.js';
 import { execSync } from 'child_process';
 import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, rmdirSync } from 'fs';
 import { join } from 'path';
@@ -526,8 +527,24 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
       studentDriveFiles = driveResult[1];
     } catch (driveErr) {
       console.error('[Analyze] Drive 로딩 실패, 빈 데이터로 진행:', driveErr.message);
-      // 캐시에 데이터가 있으면 그거라도 사용
-      if (kbCache) knowledgeBase = kbCache;
+      if (kbCacheByField[studentData.major]?.data) knowledgeBase = kbCacheByField[studentData.major].data;
+    }
+
+    // 합격자 사례가 부족하면 웹 검색으로 보완
+    const caseLength = knowledgeBase.합격자사례?.length || 0;
+    console.log(`[Analyze] 합격자사례: ${caseLength}자`);
+    if (caseLength < 500) {
+      console.log(`[Analyze] 합격자사례 부족 → 웹 검색 보완`);
+      send({ type: 'progress', step: 0, label: '웹에서 합격 사례 검색 중...', total: 9 });
+      try {
+        const searchResults = await searchAdmissionCases(studentData.major, studentData.targetUniv);
+        if (searchResults) {
+          knowledgeBase.합격자사례 += searchResults;
+          console.log(`[Analyze] 웹 검색 보완 완료 (${searchResults.length}자 추가)`);
+        }
+      } catch (searchErr) {
+        console.warn('[Analyze] 웹 검색 실패:', searchErr.message);
+      }
     }
 
     // PDF 파일들을 base64로 변환
