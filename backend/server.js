@@ -23,7 +23,7 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
   writeFileSync(pdfPath, pdfBuffer);
 
   try {
-    execSync(`pdftoppm -png -r 120 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
+    execSync(`pdftoppm -png -r 200 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
       timeout: 60000,
     });
 
@@ -585,25 +585,45 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
         const buffer = Buffer.from(pdf.base64, 'base64');
         let text = '';
 
-        // 1차: pdf-parse로 텍스트 추출 시도
+        // 1차: pdftotext (poppler) — 스캔 PDF가 아닌 경우 가장 정확
         try {
-          const data = await pdfParseFunc(buffer);
-          text = data.text.slice(0, 30000);
-          console.log(`[Analyze] pdf-parse: ${pdf.label} → ${data.text.length}자`);
+          const tmpPdf = join(tmpdir(), `analyze-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+          const tmpTxt = tmpPdf.replace('.pdf', '.txt');
+          writeFileSync(tmpPdf, buffer);
+          execSync(`pdftotext -enc UTF-8 "${tmpPdf}" "${tmpTxt}"`, { timeout: 10000 });
+          text = readFileSync(tmpTxt, 'utf-8').trim().slice(0, 30000);
+          try { unlinkSync(tmpPdf); unlinkSync(tmpTxt); } catch {}
+          console.log(`[Analyze] pdftotext: ${pdf.label} → ${text.length}자`);
         } catch (e) {
-          console.error(`[Analyze] pdf-parse 실패: ${pdf.label}`, e.message);
+          console.warn(`[Analyze] pdftotext 실패: ${pdf.label}`, e.message);
         }
 
-        // 한글 포함 여부 확인
-        const koreanChars = (text.match(/[가-힣]/g) || []).length;
-        console.log(`[Analyze] ${pdf.label}: 한글 ${koreanChars}자 / 전체 ${text.length}자`);
-
-        // 텍스트 추출 실패 → PDF를 이미지로 변환
-        if (koreanChars < 50) {
-          console.warn(`[Analyze] ${pdf.label}: 한글 부족 → 이미지 변환 시도!`);
-          send({ type: 'progress', step: 0, label: `${pdf.label} 이미지 변환 중...`, total: 9 });
+        // 2차: pdf-parse 폴백
+        const koreanChars1 = (text.match(/[가-힣]/g) || []).length;
+        if (koreanChars1 < 50) {
           try {
-            const images = await convertPdfToImages(buffer, 10);
+            const data = await pdfParseFunc(buffer);
+            const parsed = data.text.slice(0, 30000);
+            const koreanParsed = (parsed.match(/[가-힣]/g) || []).length;
+            if (koreanParsed > koreanChars1) {
+              text = parsed;
+              console.log(`[Analyze] pdf-parse: ${pdf.label} → ${data.text.length}자 (한글 ${koreanParsed}자)`);
+            }
+          } catch (e) {
+            console.error(`[Analyze] pdf-parse도 실패: ${pdf.label}`, e.message);
+          }
+        }
+
+        // 최종 한글 확인
+        const koreanChars = (text.match(/[가-힣]/g) || []).length;
+        console.log(`[Analyze] ${pdf.label}: 최종 한글 ${koreanChars}자 / 전체 ${text.length}자`);
+
+        // 3차: 텍스트 추출 실패 → 스캔 PDF → 이미지 변환 (200 DPI)
+        if (koreanChars < 50) {
+          console.warn(`[Analyze] ${pdf.label}: 스캔 PDF로 판단 → 이미지 변환 시도!`);
+          send({ type: 'progress', step: 0, label: `${pdf.label} 스캔 PDF 이미지 변환 중...`, total: 9 });
+          try {
+            const images = await convertPdfToImages(buffer, 12);
             pdf.images = images;
             console.log(`[Analyze] ${pdf.label}: ${images.length}페이지 이미지 변환 성공`);
             send({ type: 'progress', step: 0, label: `${pdf.label} ${images.length}페이지 이미지 변환 완료`, total: 9 });
@@ -615,7 +635,7 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
         if (koreanChars >= 50) {
           preExtractedPdfText += `[${pdf.label} 내용]\n${text}\n\n`;
         } else if (pdf.images?.length > 0) {
-          preExtractedPdfText += `[${pdf.label}] AI가 첨부 이미지에서 직접 읽어야 함\n\n`;
+          preExtractedPdfText += `[${pdf.label}] 스캔 PDF — AI가 첨부 이미지에서 직접 읽어야 함\n\n`;
         } else {
           preExtractedPdfText += `[${pdf.label}] PDF 처리 실패\n\n`;
         }

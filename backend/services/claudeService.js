@@ -459,7 +459,7 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
 | 안정 1 | ... | ... | XX% | ... |
 | 안정 2 | ... | ... | XX% | ... |
 `;
-  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 6000, pdfDocuments, apiKey);
 };
 
 export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -611,13 +611,17 @@ ${studentData.name} 입시 컨설팅 종합 리포트
   "즉시실행과제": ["","",""]
 }
 `;
-  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 6000, pdfDocuments, apiKey);
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────
 export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = [], apiKey) => {
   const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
   const results = {};
+
+  // 스캔 PDF 여부 판단
+  const isScannedPdf = pdfDocuments.some(pdf => pdf.images?.length > 0);
+  console.log(`[Analysis] 스캔 PDF: ${isScannedPdf ? '예 — 이미지 모드' : '아니오 — 텍스트 모드'}`);
 
   // 이미지 없는 경량 pdfDocuments (텍스트만, 이미지 제거)
   const pdfDocsLight = pdfDocuments.map(pdf => ({
@@ -627,20 +631,20 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   }));
 
   // 단계 0: 이미지 포함 → PDF 데이터 추출 + 사례 매칭
-  onProgress?.({ step: 0, label: 'Drive 사례 매칭 중 (PDF 읽기)...' });
+  onProgress?.({ step: 0, label: isScannedPdf ? '스캔 PDF 이미지 분석 중...' : 'Drive 사례 매칭 중...' });
   results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
 
   // step0에서 추출한 데이터를 이후 단계 컨텍스트로 사용
-  // 이미지 전송 없이 step0 결과 텍스트로 PDF 내용 전달
   const step0Context = results.caseMatching || '';
   for (const pdf of pdfDocsLight) {
-    if (pdf.preExtractedText && pdf.preExtractedText.includes('AI가 첨부 이미지에서 직접 읽어야 함')) {
-      pdf.preExtractedText = `[0단계에서 추출한 PDF 데이터]\n${step0Context.slice(-3000)}\n`;
+    if (pdf.preExtractedText && pdf.preExtractedText.includes('이미지에서 직접 읽어야 함')) {
+      pdf.preExtractedText = `[0단계에서 추출한 PDF 데이터 — 이 데이터를 기반으로 분석하십시오]\n${step0Context.slice(-4000)}\n`;
     }
   }
 
+  // 스캔 PDF면 step1(학업역량)에도 이미지 전달 — 성적표 읽기 필수
   onProgress?.({ step: 1, label: '학업역량 분석 중...' });
-  results.academic = await step1_academic(systemPrompt, studentData, pdfDocsLight, apiKey);
+  results.academic = await step1_academic(systemPrompt, studentData, isScannedPdf ? pdfDocuments : pdfDocsLight, apiKey);
 
   onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
   results.activity = await step2_activity(systemPrompt, studentData, pdfDocsLight, apiKey);
