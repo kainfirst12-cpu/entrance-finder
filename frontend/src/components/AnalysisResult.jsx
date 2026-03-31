@@ -847,7 +847,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
       const resData = await res.json();
       if (resData.success) {
-        const { explanation, changes, changedSections } = resData;
+        const { explanation, changes, changedSections, fullReply } = resData;
 
         if (changes && Object.keys(changes).length > 0) {
           // 변경된 섹션만 반영
@@ -855,12 +855,12 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           setRefinedResults(updated);
 
           // 변경 내용 상세 표시
-          const changeMsg = `**수정 완료** (${changedSections.join(', ')})\n\n${explanation}`;
+          const changeMsg = `[수정 완료] ${changedSections.join(', ')}\n\n${explanation}`;
           setChatMessages(prev => [...prev, { role: 'ai', text: changeMsg }]);
         } else {
-          // 파싱 실패 시 AI 응답 그대로 표시
-          setChatMessages(prev => [...prev, { role: 'ai', text: explanation || resData.fullReply?.slice(0, 500) || '수정할 내용을 찾지 못했습니다.' }]);
-        }
+          // 파싱 실패 — fullReply에서 변경사항 설명이라도 표시
+          const msg = explanation || (fullReply ? fullReply.slice(0, 800) : '수정할 내용을 찾지 못했습니다. 더 구체적으로 요청해 주세요. (예: "7단계 결론을 보강해줘")');
+          setChatMessages(prev => [...prev, { role: 'ai', text: msg }]);
       } else {
         setChatMessages(prev => [...prev, { role: 'ai', text: '오류: ' + resData.message }]);
       }
