@@ -236,6 +236,116 @@ ${kb.합격자사례 || '(자료 없음)'}`;
   }
 });
 
+// ── AI 채팅 수정 (대화형 — 특정 부분만 수정) ──────────────
+app.post('/api/chat-edit', async (req, res) => {
+  const { studentData, currentResults, userMessage } = req.body;
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
+
+  const systemPrompt = `당신은 입시 컨설턴트이며, 기존 분석 리포트를 사용자의 요청에 따라 부분 수정하는 역할입니다.
+
+[규칙]
+1. 사용자가 요청한 부분만 수정하고 나머지는 건드리지 마십시오.
+2. 수정한 섹션만 출력하십시오. 변경하지 않은 섹션은 출력하지 마십시오.
+3. 출력 형식: 반드시 아래처럼 수정한 섹션 헤더와 함께 출력하십시오:
+   [N단계] 섹션 제목
+   (수정된 내용)
+4. 문체는 합니다체를 사용하십시오.
+5. 이모지 사용 금지.
+6. 수정 전후 비교를 먼저 간략히 설명한 후 수정된 전체 섹션을 출력하십시오.
+
+[학생 정보]
+이름: ${studentData?.name || '미입력'} / 희망전공: ${studentData?.major || '미입력'} / 목표대학: ${studentData?.targetUniv || '미입력'}`;
+
+  // 현재 리포트 내용을 간결하게
+  const currentText = Object.entries(currentResults || {})
+    .filter(([_, v]) => v)
+    .map(([k, v]) => {
+      const sec = SECTION_MAP_SERVER.find(s => s.key === k);
+      return sec ? `[${sec.num}단계] ${sec.title}\n${v.slice(0, 1500)}` : '';
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
+  const userMsg = `=== 현재 리포트 ===\n${currentText}\n\n=== 사용자 수정 요청 ===\n${userMessage}\n\n위 요청에 해당하는 섹션만 수정해서 출력해 주세요. 수정 전후 변경 사항을 먼저 간략히 설명한 뒤, [N단계] 헤더와 함께 수정된 섹션 전체를 출력하십시오.`;
+
+  try {
+    let reply;
+    if (aiModel === 'gemini') {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
+      const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
+      reply = result.response.text();
+    } else if (aiModel === 'gpt') {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey });
+      const response = await openai.chat.completions.create({
+        model: getModelId('gpt', submodel || aiModel), max_tokens: 4000,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+      });
+      reply = response.choices[0].message.content;
+    } else {
+      const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
+      const client = new AnthropicSDK({ apiKey });
+      const response = await client.messages.create({
+        model: getModelId('claude', submodel || aiModel), max_tokens: 4000, system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }],
+      });
+      reply = response.content[0].text;
+    }
+
+    // 수정된 섹션 파싱
+    const headerRegex = /^\[(\d)단계\]\s*.*/gm;
+    const headers = [];
+    let m;
+    while ((m = headerRegex.exec(reply)) !== null) {
+      headers.push({ num: m[1], index: m.index, fullMatch: m[0] });
+    }
+
+    const changes = {};
+    for (let i = 0; i < headers.length; i++) {
+      const hdr = headers[i];
+      const sec = SECTION_MAP_SERVER.find(s => s.num === hdr.num);
+      if (!sec) continue;
+      const start = hdr.index + hdr.fullMatch.length;
+      const end = i + 1 < headers.length ? headers[i + 1].index : reply.length;
+      const content = reply.slice(start, end).trim();
+      if (content) changes[sec.key] = content;
+    }
+
+    // 헤더 앞의 설명 부분 추출
+    const explanation = headers.length > 0
+      ? reply.slice(0, headers[0].index).trim()
+      : reply.slice(0, 500);
+
+    res.json({
+      success: true,
+      explanation: explanation || '수정이 완료되었습니다.',
+      changes,
+      changedSections: Object.keys(changes).map(k => SECTION_MAP_SERVER.find(s => s.key === k)?.title).filter(Boolean),
+      fullReply: reply,
+    });
+  } catch (err) {
+    console.error(`[chat-edit/${aiModel}] 오류:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+const SECTION_MAP_SERVER = [
+  { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+  { key: 'academic',       num: '1', title: '학업역량 종합 분석' },
+  { key: 'activity',       num: '2', title: '비교과 활동 평가' },
+  { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성' },
+  { key: 'strategy',       num: '4', title: '수시 지원 전략' },
+  { key: 'roadmap',        num: '5', title: '핵심 리스크 및 대응 방안' },
+  { key: 'recordFeedback', num: '6', title: '실행 계획' },
+  { key: 'dashboard',      num: '7', title: '종합 평가 및 권고사항' },
+];
+
 // ── AI 연결 테스트 ──────────────────────────────────────
 app.post('/api/test-connection', async (req, res) => {
   const { aiModel = 'claude' } = req.body;

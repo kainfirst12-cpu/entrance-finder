@@ -828,12 +828,8 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
       const refineKey = getKeyForModel(usedModel);
       if (!refineKey) throw new Error('API 키가 필요합니다.');
       const token = localStorage.getItem('ef_token');
-      const analysisText = SECTION_MAP
-        .filter(({ key }) => results?.[key])
-        .map(({ key, title }) => `## ${title}\n${results[key]}`)
-        .join('\n\n');
 
-      const res = await fetch(`${API_BASE}/api/refine`, {
+      const res = await fetch(`${API_BASE}/api/chat-edit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -844,37 +840,26 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         },
         body: JSON.stringify({
           studentData,
-          analysisText,
-          verifyText: `[사용자 수정 요청] ${userMsg}`,
+          currentResults: results,
+          userMessage: userMsg,
         }),
       });
 
       const resData = await res.json();
       if (resData.success) {
-        // 파싱 & 반영
-        const refined = { ...results };
-        const replyText = resData.reply;
-        const headerRegex = /^\[(\d)단계\]\s*.*/gm;
-        const headers = [];
-        let match;
-        while ((match = headerRegex.exec(replyText)) !== null) {
-          headers.push({ num: match[1], index: match.index, fullMatch: match[0] });
-        }
-        for (let i = 0; i < headers.length; i++) {
-          const hdr = headers[i];
-          const sectionDef = SECTION_MAP.find(s => s.num === hdr.num);
-          if (!sectionDef) continue;
-          const contentStart = hdr.index + hdr.fullMatch.length;
-          const contentEnd = i + 1 < headers.length ? headers[i + 1].index : replyText.length;
-          const content = replyText.slice(contentStart, contentEnd).trim();
-          if (content) refined[sectionDef.key] = content;
-        }
-        const anyParsed = SECTION_MAP.some(({ key }) => refined[key] !== results?.[key]);
-        if (anyParsed) {
-          setRefinedResults(refined);
-          setChatMessages(prev => [...prev, { role: 'ai', text: '수정이 반영되었습니다. 리포트를 확인해주세요.' }]);
+        const { explanation, changes, changedSections } = resData;
+
+        if (changes && Object.keys(changes).length > 0) {
+          // 변경된 섹션만 반영
+          const updated = { ...results, ...changes };
+          setRefinedResults(updated);
+
+          // 변경 내용 상세 표시
+          const changeMsg = `**수정 완료** (${changedSections.join(', ')})\n\n${explanation}`;
+          setChatMessages(prev => [...prev, { role: 'ai', text: changeMsg }]);
         } else {
-          setChatMessages(prev => [...prev, { role: 'ai', text: replyText.slice(0, 500) }]);
+          // 파싱 실패 시 AI 응답 그대로 표시
+          setChatMessages(prev => [...prev, { role: 'ai', text: explanation || resData.fullReply?.slice(0, 500) || '수정할 내용을 찾지 못했습니다.' }]);
         }
       } else {
         setChatMessages(prev => [...prev, { role: 'ai', text: '오류: ' + resData.message }]);
@@ -1115,7 +1100,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`result-chat-msg ${msg.role}`}>
                   <div className="result-chat-msg-label">{msg.role === 'user' ? '나' : 'AI'}</div>
-                  <div className="result-chat-msg-text">{msg.text}</div>
+                  <div className="result-chat-msg-text" style={{whiteSpace:'pre-wrap'}}>{msg.text.replace(/\*\*(.*?)\*\*/g, '→ $1')}</div>
                 </div>
               ))}
               {chatLoading && <div className="result-chat-msg ai"><div className="result-chat-msg-label">AI</div><div className="result-chat-msg-text">수정 중...</div></div>}
