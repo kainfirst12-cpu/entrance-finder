@@ -861,6 +861,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           // 파싱 실패 — fullReply에서 변경사항 설명이라도 표시
           const msg = explanation || (fullReply ? fullReply.slice(0, 800) : '수정할 내용을 찾지 못했습니다. 더 구체적으로 요청해 주세요. (예: "7단계 결론을 보강해줘")');
           setChatMessages(prev => [...prev, { role: 'ai', text: msg }]);
+        }
       } else {
         setChatMessages(prev => [...prev, { role: 'ai', text: '오류: ' + resData.message }]);
       }
