@@ -293,7 +293,7 @@ app.post('/api/chat-edit', async (req, res) => {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
-        model: getModelId('gpt', submodel || aiModel), max_tokens: 4000,
+        model: getModelId('gpt', submodel || aiModel), max_tokens: 6000,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       });
       reply = response.choices[0].message.content;
@@ -301,7 +301,7 @@ app.post('/api/chat-edit', async (req, res) => {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
       const response = await client.messages.create({
-        model: getModelId('claude', submodel || aiModel), max_tokens: 4000, system: systemPrompt,
+        model: getModelId('claude', submodel || aiModel), max_tokens: 6000, system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       });
       reply = response.content[0].text;
