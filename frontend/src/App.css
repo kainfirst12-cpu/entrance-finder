@@ -2011,3 +2011,57 @@ body {
   cursor: pointer;
 }
 .result-chat-send:disabled { opacity: 0.5; cursor: default; }
+
+/* ── 전공 복수 선택 ─────────────────────────── */
+.major-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.major-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.major-tag.selected {
+  background: var(--primary, #7c6af7);
+  color: #fff;
+  font-weight: 600;
+}
+.major-tag-x { font-size: 11px; opacity: 0.8; }
+.major-tag-hint { color: #bbb; font-size: 13px; }
+.major-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.major-chip {
+  padding: 5px 12px;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.major-chip:hover { border-color: var(--primary, #7c6af7); color: var(--primary, #7c6af7); }
+.major-chip.active {
+  background: var(--primary, #7c6af7);
+  color: #fff;
+  border-color: var(--primary, #7c6af7);
+  font-weight: 600;
+}

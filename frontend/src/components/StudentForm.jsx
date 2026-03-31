@@ -51,12 +51,13 @@ const PdfUploader = ({ label, fileKey, files, onChange, hint }) => {
 export default function StudentForm({ onSubmit, onCancel }) {
   const [form, setForm] = useState({
     name:'', grade:'고1', school:'', region:'',
-    major:'컴퓨터공학/SW', targetUniv:'',
+    major:'', targetUniv:'',
     gpa:'', mockExam:'',
     club:'', volunteer:'', leadership:'',
     awards:'', talent:'', interests:'',
     specialNotes:'', subjectPlan:'',
   });
+  const [selectedMajors, setSelectedMajors] = useState([]);
   const [files, setFiles] = useState({
     recordPdf: null,
     gradePdf: null,
@@ -70,10 +71,19 @@ export default function StudentForm({ onSubmit, onCancel }) {
   const tabs = ['기본 정보','생기부 & 자료 업로드'];
   const uploadedCount = Object.values(files).filter(Boolean).length;
 
+  const toggleMajor = (m) => {
+    setSelectedMajors(prev => {
+      if (prev.includes(m)) return prev.filter(x => x !== m);
+      if (prev.length >= 3) { alert('최대 3개까지 선택 가능합니다.'); return prev; }
+      return [...prev, m];
+    });
+  };
+
   const handleSubmit = () => {
     if (!form.name) return alert('학생 이름을 입력해주세요.');
     if (!form.targetUniv) return alert('목표 대학을 입력해주세요.');
-    onSubmit(form, files);
+    if (selectedMajors.length === 0) return alert('희망 전공을 1개 이상 선택해주세요.');
+    onSubmit({ ...form, major: selectedMajors.join(', ') }, files);
   };
 
   return (
@@ -105,10 +115,27 @@ export default function StudentForm({ onSubmit, onCancel }) {
             </div>
             <div className="field"><label>학교명</label><input placeholder="OO고등학교" {...input('school')} /></div>
             <div className="field"><label>지역</label><input placeholder="부천 / 서울 / 경기" {...input('region')} /></div>
-            <div className="field full"><label>희망 전공 계열</label>
-              <select value={form.major} onChange={e=>set('major',e.target.value)}>
-                {MAJORS.map(m=><option key={m}>{m}</option>)}
-              </select>
+            <div className="field full"><label>희망 전공 계열 (최대 3개)</label>
+              <div className="major-tags">
+                {selectedMajors.map(m => (
+                  <span key={m} className="major-tag selected" onClick={() => toggleMajor(m)}>
+                    {m} <span className="major-tag-x">X</span>
+                  </span>
+                ))}
+                {selectedMajors.length === 0 && <span className="major-tag-hint">아래에서 선택하세요</span>}
+              </div>
+              <div className="major-grid">
+                {MAJORS.map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`major-chip ${selectedMajors.includes(m) ? 'active' : ''}`}
+                    onClick={() => toggleMajor(m)}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="field full"><label>목표 대학 (상향 기준) *</label>
               <input placeholder="예: 서울대학교 / 연세대학교 / KAIST" {...input('targetUniv')} />
