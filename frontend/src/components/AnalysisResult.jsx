@@ -125,6 +125,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [regeneratingKey, setRegeneratingKey] = useState(null);
   const [coverEdit, setCoverEdit] = useState({
     reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
     brandName: localStorage.getItem('ef_brand_name') || 'PATHFINDER EDU',
@@ -872,6 +873,43 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     }
   };
 
+  // ── 개별 섹션 재생성 ────────────────────────────────
+  const handleRegenerateSection = async (key, num, title) => {
+    if (regeneratingKey) return;
+    setRegeneratingKey(key);
+    try {
+      const refineKey = getKeyForModel(usedModel);
+      if (!refineKey) throw new Error('API 키가 필요합니다.');
+      const token = localStorage.getItem('ef_token');
+      const res = await fetch(`${API_BASE}/api/chat-edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': refineKey,
+          'x-ai-model': MODEL_CONFIG[usedModel]?.group || usedModel,
+          'x-ai-submodel': usedModel,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          studentData,
+          currentResults: results,
+          userMessage: `[${num}단계] ${title} 섹션의 내용이 불완전하거나 잘렸습니다. 이 섹션을 처음부터 끝까지 완전하게 다시 작성해 주세요. 기존 내용을 참고하되 더 풍부하고 구체적으로 작성하십시오. 반드시 끝까지 마무리하십시오.`,
+        }),
+      });
+      const resData = await res.json();
+      if (resData.success && resData.changes?.[key]) {
+        setRefinedResults(prev => ({ ...(prev || results), ...resData.changes }));
+        alert(`[${num}단계] ${title} 재생성 완료`);
+      } else {
+        alert('재생성 실패: ' + (resData.message || '파싱 오류'));
+      }
+    } catch (err) {
+      alert('재생성 오류: ' + err.message);
+    } finally {
+      setRegeneratingKey(null);
+    }
+  };
+
   const startEdit = (key, content) => {
     setEditingKey(key);
     setEditText(content || '');
@@ -899,7 +937,17 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           <div className="section-header-actions">
             {manualEdits[key] && <span className="edit-badge">수정됨</span>}
             {!isEditing ? (
-              <button className="btn-edit-section" onClick={() => startEdit(key, content)}>수정</button>
+              <>
+                <button className="btn-edit-section" onClick={() => startEdit(key, content)}>수정</button>
+                <button
+                  className="btn-edit-section"
+                  style={{marginLeft:4, opacity: regeneratingKey === key ? 0.5 : 1}}
+                  onClick={() => handleRegenerateSection(key, num, title)}
+                  disabled={!!regeneratingKey}
+                >
+                  {regeneratingKey === key ? '재생성 중...' : '재생성'}
+                </button>
+              </>
             ) : (
               <>
                 <button className="btn-save-section" onClick={() => saveEdit(key)}>저장</button>
