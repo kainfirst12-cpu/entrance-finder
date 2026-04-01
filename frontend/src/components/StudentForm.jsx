@@ -58,10 +58,19 @@ export default function StudentForm({ onSubmit, onCancel }) {
     specialNotes:'', subjectPlan:'',
   });
   const [selectedMajors, setSelectedMajors] = useState([]);
-  const [mockScoreType, setMockScoreType] = useState('grade'); // grade | raw | standard
-  const [mockScores, setMockScores] = useState({ korean:'', math:'', english:'', tamgu1:'', tamgu2:'', tamgu1Name:'', tamgu2Name:'' });
   const [mockExamName, setMockExamName] = useState('');
-  const [expectedGrade, setExpectedGrade] = useState(''); // 예상 등급 (정확한 등급 모를 때)
+  // 과목별 점수: { score: 원점수, grade: 등급, gradeType: 'confirmed'|'expected' }
+  const DEFAULT_MOCK = { score:'', grade:'', gradeType:'confirmed' };
+  const [mockSubjects, setMockSubjects] = useState({
+    korean:  { ...DEFAULT_MOCK, label: '국어', max: 100 },
+    math:    { ...DEFAULT_MOCK, label: '수학', max: 100 },
+    english: { ...DEFAULT_MOCK, label: '영어', max: 100 },
+    history: { ...DEFAULT_MOCK, label: '한국사', max: 50 },
+  });
+  const [mockElectives, setMockElectives] = useState([
+    // 선택/탐구 과목 (사용자가 추가)
+    // { id, name, score, grade, gradeType, max }
+  ]);
   const [files, setFiles] = useState({
     recordPdf: null,
     gradePdf: null,
@@ -83,21 +92,39 @@ export default function StudentForm({ onSubmit, onCancel }) {
     });
   };
 
-  // 모의고사 점수를 텍스트로 변환
+  const addElective = () => {
+    setMockElectives(prev => [...prev, {
+      id: Date.now(), name: '', score: '', grade: '', gradeType: 'confirmed', max: 50
+    }]);
+  };
+  const removeElective = (id) => setMockElectives(prev => prev.filter(e => e.id !== id));
+  const updateElective = (id, field, value) => {
+    setMockElectives(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
+  };
+  const updateMockSubject = (key, field, value) => {
+    setMockSubjects(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  };
+
+  // 모의고사 점수를 AI에 전달할 텍스트로 변환
   const buildMockExamText = () => {
-    const s = mockScores;
-    const hasAny = s.korean || s.math || s.english || s.tamgu1;
-    if (!hasAny) return form.mockExam || '';
-    const typeLabel = mockScoreType === 'raw' ? '원점수' : mockScoreType === 'standard' ? '표준점수' : '등급';
     const parts = [];
-    if (s.korean) parts.push(`국어 ${s.korean}`);
-    if (s.math) parts.push(`수학 ${s.math}`);
-    if (s.english) parts.push(`영어 ${s.english}`);
-    if (s.tamgu1) parts.push(`${s.tamgu1Name || '탐구1'} ${s.tamgu1}`);
-    if (s.tamgu2) parts.push(`${s.tamgu2Name || '탐구2'} ${s.tamgu2}`);
-    const exam = mockExamName ? `(${mockExamName}) ` : '';
-    const expected = expectedGrade ? ` / 예상종합등급: ${expectedGrade}등급` : '';
-    return `${exam}[${typeLabel}] ${parts.join(' / ')}${expected}`;
+    for (const [, sub] of Object.entries(mockSubjects)) {
+      if (!sub.score && !sub.grade) continue;
+      const gradeLabel = sub.gradeType === 'expected' ? '예상' : '확정';
+      const scoreStr = sub.score ? `원점수 ${sub.score}/${sub.max}` : '';
+      const gradeStr = sub.grade ? `${gradeLabel}${sub.grade}등급` : '';
+      parts.push(`${sub.label}: ${[scoreStr, gradeStr].filter(Boolean).join(', ')}`);
+    }
+    for (const el of mockElectives) {
+      if (!el.name || (!el.score && !el.grade)) continue;
+      const gradeLabel = el.gradeType === 'expected' ? '예상' : '확정';
+      const scoreStr = el.score ? `원점수 ${el.score}/${el.max}` : '';
+      const gradeStr = el.grade ? `${gradeLabel}${el.grade}등급` : '';
+      parts.push(`${el.name}: ${[scoreStr, gradeStr].filter(Boolean).join(', ')}`);
+    }
+    if (parts.length === 0) return form.mockExam || '';
+    const exam = mockExamName ? `[${mockExamName}] ` : '';
+    return `${exam}${parts.join(' / ')}`;
   };
 
   const handleSubmit = () => {
@@ -168,56 +195,86 @@ export default function StudentForm({ onSubmit, onCancel }) {
             <div className="field full">
               <label>모의고사 성적</label>
               <div className="mock-exam-block">
-                <div className="mock-exam-top">
-                  <input
-                    className="mock-exam-name"
-                    placeholder="시험명 (예: 2026년 3월 모의고사)"
-                    value={mockExamName}
-                    onChange={e => setMockExamName(e.target.value)}
-                  />
-                  <div className="mock-score-type-btns">
-                    {[['grade','등급'],['raw','원점수'],['standard','표준점수']].map(([val, label]) => (
-                      <button
-                        key={val}
-                        type="button"
-                        className={`mock-type-btn ${mockScoreType === val ? 'active' : ''}`}
-                        onClick={() => setMockScoreType(val)}
-                      >{label}</button>
+                <input
+                  className="mock-exam-name"
+                  placeholder="시험명 (예: 2026년 6월 모의고사)"
+                  value={mockExamName}
+                  onChange={e => setMockExamName(e.target.value)}
+                  style={{marginBottom:12, width:'100%'}}
+                />
+
+                <div className="mock-section-label">주요 과목 (만점 기준 자동 적용)</div>
+                <table className="mock-table">
+                  <thead>
+                    <tr>
+                      <th>과목</th>
+                      <th>만점</th>
+                      <th>원점수</th>
+                      <th>등급</th>
+                      <th>구분</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(mockSubjects).map(([key, sub]) => (
+                      <tr key={key}>
+                        <td className="mock-subj-name">{sub.label}</td>
+                        <td className="mock-max">{sub.max}점</td>
+                        <td><input type="number" min="0" max={sub.max} placeholder={`0~${sub.max}`} value={sub.score} onChange={e => updateMockSubject(key, 'score', e.target.value)} /></td>
+                        <td><input type="number" min="1" max="9" placeholder="1~9" value={sub.grade} onChange={e => updateMockSubject(key, 'grade', e.target.value)} /></td>
+                        <td>
+                          <select value={sub.gradeType} onChange={e => updateMockSubject(key, 'gradeType', e.target.value)}>
+                            <option value="confirmed">확정</option>
+                            <option value="expected">예상</option>
+                          </select>
+                        </td>
+                      </tr>
                     ))}
-                  </div>
+                  </tbody>
+                </table>
+
+                <div className="mock-section-label" style={{marginTop:12}}>
+                  선택/탐구 과목
+                  <button type="button" className="mock-add-btn" onClick={addElective}>+ 과목 추가</button>
                 </div>
-                <div className="mock-score-grid">
-                  <div className="mock-score-field">
-                    <span>국어</span>
-                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.korean} onChange={e => setMockScores(s => ({...s, korean: e.target.value}))} />
-                  </div>
-                  <div className="mock-score-field">
-                    <span>수학</span>
-                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.math} onChange={e => setMockScores(s => ({...s, math: e.target.value}))} />
-                  </div>
-                  <div className="mock-score-field">
-                    <span>영어</span>
-                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.english} onChange={e => setMockScores(s => ({...s, english: e.target.value}))} />
-                  </div>
-                  <div className="mock-score-field tamgu">
-                    <input className="tamgu-name" placeholder="탐구1 과목명" value={mockScores.tamgu1Name} onChange={e => setMockScores(s => ({...s, tamgu1Name: e.target.value}))} />
-                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.tamgu1} onChange={e => setMockScores(s => ({...s, tamgu1: e.target.value}))} />
-                  </div>
-                  <div className="mock-score-field tamgu">
-                    <input className="tamgu-name" placeholder="탐구2 과목명" value={mockScores.tamgu2Name} onChange={e => setMockScores(s => ({...s, tamgu2Name: e.target.value}))} />
-                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.tamgu2} onChange={e => setMockScores(s => ({...s, tamgu2: e.target.value}))} />
-                  </div>
-                </div>
-                <div className="mock-score-hint">
-                  {mockScoreType === 'grade' && '등급 (1~9등급)을 입력하세요'}
-                  {mockScoreType === 'raw' && '원점수 (0~100)를 입력하세요'}
-                  {mockScoreType === 'standard' && '표준점수를 입력하세요 (국어/수학: ~150, 탐구: ~70)'}
-                </div>
-                <div className="mock-expected-grade">
-                  <label>예상 종합등급 (선택)</label>
-                  <input type="number" min="1" max="9" step="0.1" placeholder="예: 2.3" value={expectedGrade} onChange={e => setExpectedGrade(e.target.value)} />
-                  <span style={{fontSize:'11px',color:'#999'}}>정확한 등급을 모를 때 예상치를 입력하면 더 정확한 분석이 가능합니다</span>
-                </div>
+                {mockElectives.length > 0 && (
+                  <table className="mock-table">
+                    <thead>
+                      <tr>
+                        <th>과목명</th>
+                        <th>만점</th>
+                        <th>원점수</th>
+                        <th>등급</th>
+                        <th>구분</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mockElectives.map(el => (
+                        <tr key={el.id}>
+                          <td><input className="mock-el-name" placeholder="예: 생명과학I" value={el.name} onChange={e => updateElective(el.id, 'name', e.target.value)} /></td>
+                          <td>
+                            <select value={el.max} onChange={e => updateElective(el.id, 'max', Number(e.target.value))}>
+                              <option value={50}>50점</option>
+                              <option value={100}>100점</option>
+                            </select>
+                          </td>
+                          <td><input type="number" min="0" max={el.max} placeholder={`0~${el.max}`} value={el.score} onChange={e => updateElective(el.id, 'score', e.target.value)} /></td>
+                          <td><input type="number" min="1" max="9" placeholder="1~9" value={el.grade} onChange={e => updateElective(el.id, 'grade', e.target.value)} /></td>
+                          <td>
+                            <select value={el.gradeType} onChange={e => updateElective(el.id, 'gradeType', e.target.value)}>
+                              <option value="confirmed">확정</option>
+                              <option value="expected">예상</option>
+                            </select>
+                          </td>
+                          <td><button type="button" className="mock-remove-btn" onClick={() => removeElective(el.id)}>X</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {mockElectives.length === 0 && (
+                  <div className="mock-score-hint">선택/탐구 과목을 추가하려면 위 버튼을 클릭하세요 (예: 사회탐구, 과학탐구, 공통사회, 공통과학 등)</div>
+                )}
               </div>
             </div>
           </div>
