@@ -257,7 +257,7 @@ ${pdfDocuments.length ? `첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')
 
 **행동특성 및 종합의견:** 핵심 키워드
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 6000, pdfDocuments, apiKey);
 };
 
 
@@ -315,7 +315,7 @@ ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})�
 | 자기주도성 | ... | ... | ... |
 | 성장 서사 | ... | ... | ... |
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
 };
 
 export const step2_activity = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -363,7 +363,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽�
 - 스토리 일관성: X/10
 - 강점 / 약점 / 개선 방향을 각각 서술하라
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
 };
 
 export const step3_career = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -409,7 +409,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 
 2. 현황 / 목표 / 구체적 보완 방법
 3. 현황 / 목표 / 구체적 보완 방법
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
 };
 
 export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pdfDocuments, apiKey) => {
