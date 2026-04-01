@@ -58,6 +58,10 @@ export default function StudentForm({ onSubmit, onCancel }) {
     specialNotes:'', subjectPlan:'',
   });
   const [selectedMajors, setSelectedMajors] = useState([]);
+  const [mockScoreType, setMockScoreType] = useState('grade'); // grade | raw | standard
+  const [mockScores, setMockScores] = useState({ korean:'', math:'', english:'', tamgu1:'', tamgu2:'', tamgu1Name:'', tamgu2Name:'' });
+  const [mockExamName, setMockExamName] = useState('');
+  const [expectedGrade, setExpectedGrade] = useState(''); // 예상 등급 (정확한 등급 모를 때)
   const [files, setFiles] = useState({
     recordPdf: null,
     gradePdf: null,
@@ -79,11 +83,29 @@ export default function StudentForm({ onSubmit, onCancel }) {
     });
   };
 
+  // 모의고사 점수를 텍스트로 변환
+  const buildMockExamText = () => {
+    const s = mockScores;
+    const hasAny = s.korean || s.math || s.english || s.tamgu1;
+    if (!hasAny) return form.mockExam || '';
+    const typeLabel = mockScoreType === 'raw' ? '원점수' : mockScoreType === 'standard' ? '표준점수' : '등급';
+    const parts = [];
+    if (s.korean) parts.push(`국어 ${s.korean}`);
+    if (s.math) parts.push(`수학 ${s.math}`);
+    if (s.english) parts.push(`영어 ${s.english}`);
+    if (s.tamgu1) parts.push(`${s.tamgu1Name || '탐구1'} ${s.tamgu1}`);
+    if (s.tamgu2) parts.push(`${s.tamgu2Name || '탐구2'} ${s.tamgu2}`);
+    const exam = mockExamName ? `(${mockExamName}) ` : '';
+    const expected = expectedGrade ? ` / 예상종합등급: ${expectedGrade}등급` : '';
+    return `${exam}[${typeLabel}] ${parts.join(' / ')}${expected}`;
+  };
+
   const handleSubmit = () => {
     if (!form.name) return alert('학생 이름을 입력해주세요.');
     if (!form.targetUniv) return alert('목표 대학을 입력해주세요.');
     if (selectedMajors.length === 0) return alert('희망 전공을 1개 이상 선택해주세요.');
-    onSubmit({ ...form, major: selectedMajors.join(', ') }, files);
+    const mockExamText = buildMockExamText();
+    onSubmit({ ...form, major: selectedMajors.join(', '), mockExam: mockExamText }, files);
   };
 
   return (
@@ -140,11 +162,63 @@ export default function StudentForm({ onSubmit, onCancel }) {
             <div className="field full"><label>목표 대학 (상향 기준) *</label>
               <input placeholder="예: 서울대학교 / 연세대학교 / KAIST" {...input('targetUniv')} />
             </div>
-            <div className="field"><label>내신 평균 등급</label>
+            <div className="field full"><label>내신 평균 등급</label>
               <input type="number" min="1" max="9" step="0.1" placeholder="예: 1.8" {...input('gpa')} />
             </div>
-            <div className="field"><label>모의고사 등급 (국/수/영/탐)</label>
-              <input placeholder="예: 1/1/2/1" {...input('mockExam')} />
+            <div className="field full">
+              <label>모의고사 성적</label>
+              <div className="mock-exam-block">
+                <div className="mock-exam-top">
+                  <input
+                    className="mock-exam-name"
+                    placeholder="시험명 (예: 2026년 3월 모의고사)"
+                    value={mockExamName}
+                    onChange={e => setMockExamName(e.target.value)}
+                  />
+                  <div className="mock-score-type-btns">
+                    {[['grade','등급'],['raw','원점수'],['standard','표준점수']].map(([val, label]) => (
+                      <button
+                        key={val}
+                        type="button"
+                        className={`mock-type-btn ${mockScoreType === val ? 'active' : ''}`}
+                        onClick={() => setMockScoreType(val)}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mock-score-grid">
+                  <div className="mock-score-field">
+                    <span>국어</span>
+                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.korean} onChange={e => setMockScores(s => ({...s, korean: e.target.value}))} />
+                  </div>
+                  <div className="mock-score-field">
+                    <span>수학</span>
+                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.math} onChange={e => setMockScores(s => ({...s, math: e.target.value}))} />
+                  </div>
+                  <div className="mock-score-field">
+                    <span>영어</span>
+                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.english} onChange={e => setMockScores(s => ({...s, english: e.target.value}))} />
+                  </div>
+                  <div className="mock-score-field tamgu">
+                    <input className="tamgu-name" placeholder="탐구1 과목명" value={mockScores.tamgu1Name} onChange={e => setMockScores(s => ({...s, tamgu1Name: e.target.value}))} />
+                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.tamgu1} onChange={e => setMockScores(s => ({...s, tamgu1: e.target.value}))} />
+                  </div>
+                  <div className="mock-score-field tamgu">
+                    <input className="tamgu-name" placeholder="탐구2 과목명" value={mockScores.tamgu2Name} onChange={e => setMockScores(s => ({...s, tamgu2Name: e.target.value}))} />
+                    <input type="number" placeholder={mockScoreType === 'grade' ? '1~9' : '0~100'} value={mockScores.tamgu2} onChange={e => setMockScores(s => ({...s, tamgu2: e.target.value}))} />
+                  </div>
+                </div>
+                <div className="mock-score-hint">
+                  {mockScoreType === 'grade' && '등급 (1~9등급)을 입력하세요'}
+                  {mockScoreType === 'raw' && '원점수 (0~100)를 입력하세요'}
+                  {mockScoreType === 'standard' && '표준점수를 입력하세요 (국어/수학: ~150, 탐구: ~70)'}
+                </div>
+                <div className="mock-expected-grade">
+                  <label>예상 종합등급 (선택)</label>
+                  <input type="number" min="1" max="9" step="0.1" placeholder="예: 2.3" value={expectedGrade} onChange={e => setExpectedGrade(e.target.value)} />
+                  <span style={{fontSize:'11px',color:'#999'}}>정확한 등급을 모를 때 예상치를 입력하면 더 정확한 분석이 가능합니다</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
