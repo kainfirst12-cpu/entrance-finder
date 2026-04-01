@@ -499,58 +499,38 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 
 export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
-[6단계] 3학년 실행 계획
-${pdfDocuments.length ? `첨부 생기부 PDF를 직접 읽고 학생의 현재 상태를 파악한 후 실행 계획을 수립하라.` : `세특 내용: ${studentData.specialNotes || '(미입력)'}`}
-수상: ${studentData.awards} / 관심분야: ${studentData.interests}
+[6단계] 실행 계획
+${pdfDocuments.length ? `생기부 PDF 기반으로 작성하십시오.` : ''}
+학생: ${studentData.name} / ${studentData.grade} / 희망전공: ${studentData.major}
 
-### 6.1 월별 세부 실행 계획
+### 6.1 월별 핵심 실행 계획 (3월~8월)
 
-각 월별(3월~8월)로 다음을 작성하라:
+| 월 | 학업 목표 | 비교과/세특 과제 | 핵심 체크포인트 |
+|----|----------|---------------|--------------|
+| 3월 | ... | ... | ... |
+| 4월 | ... | ... | ... |
+| 5월 | ... | ... | ... |
+| 6월 | ... | ... | ... |
+| 7월 | ... | ... | ... |
+| 8월 | ... | ... | ... |
 
-**[3월] 주요 과제**: ...
-
-| 주차 | 과제 | 담당 | 마감일 |
-|------|------|------|--------|
-| 1주차 | ... | ... | ... |
-| 2주차 | ... | ... | ... |
-| 3주차 | ... | ... | ... |
-| 4주차 | ... | ... | ... |
-
-위 형식을 4월~8월까지 각각 작성하라.
-
-### 6.2 성적 목표 및 관리 전략
-
-**목표 성적**
+### 6.2 성적 목표
 
 | 과목 | 현재 등급 | 목표 등급 | 전략 |
 |------|----------|----------|------|
-| ... | ... | ... | ... |
 
-**일일 학습 시간 배분**
+### 6.3 비교과 및 독서 계획
 
-| 시간대 | 과목/활동 | 시간 |
-|--------|----------|------|
-| ... | ... | ... |
-
-### 6.3 비교과 활동 체계화 계획
-- 활동 운영 방식을 구체적으로 서술하라
-- 성과 기록 방식을 구체적으로 서술하라
-
-### 6.4 독서 및 탐구 계획
-
-**필수 독서 목록**
-
-| 월 | 책 | 저자 | 핵심 내용 | 활용 |
-|----|-----|------|----------|------|
-| ... | ... | ... | ... | ... |
+| 활동/독서 | 내용 | 시기 | 세특 연계 |
+|----------|------|------|----------|
 `;
-  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 3000, pdfDocuments, apiKey);
 };
 
 export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey) => {
   const prompt = `
 [7단계] 종합 평가 및 권고사항
-지금까지 분석: ${allAnalysis.slice(0, 6000)}
+지금까지 분석 요약: ${allAnalysis.slice(0, 3000)}
 
 ──────────────────────────────────────
 ${studentData.name} 입시 컨설팅 종합 리포트
@@ -602,7 +582,7 @@ ${studentData.name} 입시 컨설팅 종합 리포트
 
 [필수] 7.4 맺음말까지 반드시 끝까지 작성하십시오. 중간에 끊기거나 생략하지 마십시오.
 `;
-  return callClaude(systemPrompt, prompt, 8000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────

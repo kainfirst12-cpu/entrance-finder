@@ -621,10 +621,10 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
 
-  // SSE keepalive: 15초마다 핑 전송 (Railway 프록시 타임아웃 방지)
+  // SSE keepalive: 8초마다 핑 전송 (Railway 프록시 타임아웃 방지)
   const keepAlive = setInterval(() => {
     try { res.write(': keepalive\n\n'); } catch {}
-  }, 15000);
+  }, 8000);
 
   const send = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
