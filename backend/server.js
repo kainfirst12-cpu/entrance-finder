@@ -253,7 +253,7 @@ app.post('/api/chat-edit', async (req, res) => {
 - 잘린 내용을 완전하게 복원/재작성할 수 있습니다.
 - 기존 분석의 오류를 발견하면 바로 수정할 수 있습니다.
 
-[출력 규칙]
+[출력 형식 — 반드시 준수]
 1. 수정한 섹션만 출력하십시오. 변경하지 않은 섹션은 출력하지 마십시오.
 2. 반드시 아래 8개 헤더 중에서만 사용하십시오 (0~7만 존재, 8 이상 금지):
    [0단계] AI 드라이브 사례 매칭 분석
@@ -265,20 +265,31 @@ app.post('/api/chat-edit', async (req, res) => {
    [6단계] 실행 계획
    [7단계] 종합 평가 및 권고사항
 3. 새로운 내용 추가 시 가장 적절한 기존 섹션(0~7)에 포함시키십시오.
-   예: 면접 Q&A → [5단계], 결론 보강 → [7단계], 성적 분석 보강 → [1단계]
-4. 출력 순서: 먼저 "=== 변경 사항 ===" 에서 무엇을 바꿨는지 2~3줄로 설명 → [N단계] 헤더 + 수정된 전체 섹션
-5. 문체: 합니다체. 이모지 금지.
-6. **섹션을 재작성할 때는 반드시 처음부터 끝까지 완전하게 작성하십시오. 중간에 끊기거나 생략하지 마십시오.**
+4. **출력 순서 (필수):**
+   (1) 먼저 "=== 변경 사항 ===" 줄을 쓰고, 그 아래 무엇을 바꿨는지 2~3줄로 설명
+   (2) 그 다음 반드시 수정된 섹션의 헤더를 줄 맨 앞에 쓰십시오. 예시:
+       [1단계] 학업역량 종합 분석
+       (수정된 전체 내용...)
+5. **[중요] 헤더 형식 규칙:**
+   - 헤더는 반드시 줄의 맨 앞에 "[N단계]"로 시작해야 합니다.
+   - 헤더 앞에 #, **, 공백 등 어떤 문자도 붙이지 마십시오.
+   - 올바른 예: [1단계] 학업역량 종합 분석
+   - 잘못된 예: ## [1단계], **[1단계]**, # [1단계]
+6. **[중요] 설명만 하지 마십시오. 반드시 수정된 섹션 본문을 전부 출력하십시오.**
+   - "~를 수정하였습니다"라고만 쓰고 끝내면 안 됩니다.
+   - 수정된 내용이 포함된 전체 섹션을 [N단계] 헤더 아래에 작성해야 합니다.
+7. 문체: 합니다체. 이모지 금지.
+8. **섹션을 재작성할 때는 반드시 처음부터 끝까지 완전하게 작성하십시오. 중간에 끊기거나 생략하지 마십시오.**
 
 [학생 정보]
 이름: ${studentData?.name || '미입력'} / 희망전공: ${studentData?.major || '미입력'} / 목표대학: ${studentData?.targetUniv || '미입력'}`;
 
-  // 현재 리포트 내용을 간결하게
+  // 현재 리포트 내용을 전달 (수정 대상 섹션은 충분히 보내야 정확한 수정 가능)
   const currentText = Object.entries(currentResults || {})
     .filter(([_, v]) => v)
     .map(([k, v]) => {
       const sec = SECTION_MAP_SERVER.find(s => s.key === k);
-      return sec ? `[${sec.num}단계] ${sec.title}\n${v.slice(0, 1500)}` : '';
+      return sec ? `[${sec.num}단계] ${sec.title}\n${v.slice(0, 4000)}` : '';
     })
     .filter(Boolean)
     .join('\n\n');
@@ -292,14 +303,14 @@ app.post('/api/chat-edit', async (req, res) => {
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
+      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel), generationConfig: { maxOutputTokens: 16000 } });
       const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
       reply = result.response.text();
     } else if (aiModel === 'gpt') {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
-        model: getModelId('gpt', submodel || aiModel), max_tokens: 6000,
+        model: getModelId('gpt', submodel || aiModel), max_tokens: 16000,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       });
       reply = response.choices[0].message.content;
@@ -307,19 +318,23 @@ app.post('/api/chat-edit', async (req, res) => {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
       const response = await client.messages.create({
-        model: getModelId('claude', submodel || aiModel), max_tokens: 6000, system: systemPrompt,
+        model: getModelId('claude', submodel || aiModel), max_tokens: 16000, system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       });
       reply = response.content[0].text;
     }
 
-    // 수정된 섹션 파싱
+    // 수정된 섹션 파싱 (마크다운 장식 허용: ##, **, 공백 등)
+    // 먼저 마크다운 장식을 제거한 정규화 버전에서 파싱
+    const cleanReply = reply.replace(/^(#{1,4}\s*|\*{1,2})\[(\d)단계\]/gm, '[$2단계]');
     const headerRegex = /^\[(\d)단계\]\s*.*/gm;
     const headers = [];
     let m;
-    while ((m = headerRegex.exec(reply)) !== null) {
+    while ((m = headerRegex.exec(cleanReply)) !== null) {
       headers.push({ num: m[1], index: m.index, fullMatch: m[0] });
     }
+    // cleanReply 기반으로 파싱하므로 이후도 cleanReply 사용
+    const parseTarget = cleanReply;
 
     const changes = {};
     for (let i = 0; i < headers.length; i++) {
@@ -327,15 +342,17 @@ app.post('/api/chat-edit', async (req, res) => {
       const sec = SECTION_MAP_SERVER.find(s => s.num === hdr.num);
       if (!sec) continue;
       const start = hdr.index + hdr.fullMatch.length;
-      const end = i + 1 < headers.length ? headers[i + 1].index : reply.length;
-      const content = reply.slice(start, end).trim();
+      const end = i + 1 < headers.length ? headers[i + 1].index : parseTarget.length;
+      const content = parseTarget.slice(start, end).trim();
       if (content) changes[sec.key] = content;
     }
 
     // 헤더 앞의 설명 부분 추출
     const explanation = headers.length > 0
-      ? reply.slice(0, headers[0].index).trim()
-      : reply.slice(0, 500);
+      ? parseTarget.slice(0, headers[0].index).trim()
+      : parseTarget.slice(0, 500);
+
+    console.log(`[chat-edit] 파싱 결과: ${headers.length}개 헤더 발견, 변경 섹션: ${Object.keys(changes).join(', ') || '없음'}`);
 
     res.json({
       success: true,

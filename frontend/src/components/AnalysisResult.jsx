@@ -859,8 +859,11 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           const changeMsg = `[수정 완료] ${changedSections.join(', ')}\n\n${explanation}`;
           setChatMessages(prev => [...prev, { role: 'ai', text: changeMsg }]);
         } else {
-          // 파싱 실패 — fullReply에서 변경사항 설명이라도 표시
-          const msg = explanation || (fullReply ? fullReply.slice(0, 800) : '수정할 내용을 찾지 못했습니다. 더 구체적으로 요청해 주세요. (예: "7단계 결론을 보강해줘")');
+          // 파싱 실패 — AI가 설명만 하고 섹션을 출력하지 않은 경우
+          const msg = '[반영 실패] AI가 수정 설명만 하고 실제 섹션 내용을 출력하지 않았습니다.\n\n'
+            + '다시 시도하시거나, 더 구체적으로 요청해 주세요.\n'
+            + '(예: "1단계의 모의고사 점수를 수학 65점, 영어 76점으로 수정해줘")\n\n'
+            + (explanation || (fullReply ? fullReply.slice(0, 600) : ''));
           setChatMessages(prev => [...prev, { role: 'ai', text: msg }]);
         }
       } else {
