@@ -591,7 +591,7 @@ priority 설명:
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel || aiModel),
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
@@ -604,7 +604,7 @@ priority 설명:
       const client = new AnthropicSDK({ apiKey });
       const response = await client.messages.create({
         model: getModelId('claude', submodel || aiModel),
-        max_tokens: 4000,
+        max_tokens: 8000,
         system: systemPrompt,
         messages: [
           { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
@@ -620,17 +620,36 @@ priority 설명:
       // 마크다운 코드블록 제거
       const codeBlockMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
       if (codeBlockMatch) cleaned = codeBlockMatch[1].trim();
+      // 1차: 전체 JSON 배열 파싱
       const jsonStart = cleaned.indexOf('[');
       const jsonEnd = cleaned.lastIndexOf(']');
       if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        let jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
-        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
-        const arr = JSON.parse(jsonStr);
-        if (Array.isArray(arr) && arr.length > 0) parsedItems = arr;
+        try {
+          let jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
+          jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+          const arr = JSON.parse(jsonStr);
+          if (Array.isArray(arr) && arr.length > 0) parsedItems = arr;
+        } catch { /* 전체 파싱 실패 → 개별 객체 추출 */ }
+      }
+      // 2차: 전체 파싱 실패 시 개별 JSON 객체를 하나씩 추출 (잘린 JSON 대응)
+      if (!parsedItems) {
+        const objectRegex = /\{[^{}]*"section"\s*:\s*"[^"]*"[^{}]*"type"\s*:\s*"[^"]*"[^{}]*\}/g;
+        const matches = cleaned.match(objectRegex);
+        if (matches && matches.length > 0) {
+          const items = [];
+          for (const m of matches) {
+            try {
+              const obj = JSON.parse(m);
+              if (obj.section && obj.type) items.push(obj);
+            } catch { /* skip */ }
+          }
+          if (items.length > 0) parsedItems = items;
+        }
       }
     } catch (e) {
       console.warn('[verify] JSON 파싱 실패:', e.message);
     }
+    console.log(`[verify] 파싱 결과: ${parsedItems ? parsedItems.length + '개 항목' : '실패'}`);
 
     res.json({ success: true, reply, parsedItems });
   } catch (err) {

@@ -689,18 +689,37 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
             } else {
               raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
             }
+            let parsed = null;
+            // 1차: 전체 JSON 배열 파싱
             const jsonStart = raw.indexOf('[');
             const jsonEnd = raw.lastIndexOf(']');
             if (jsonStart >= 0 && jsonEnd > jsonStart) {
-              let jsonStr = raw.slice(jsonStart, jsonEnd + 1);
-              jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
-              const parsed = JSON.parse(jsonStr);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                setVerifyItems(parsed);
-                const defaults = {};
-                parsed.forEach((item, i) => { defaults[i] = item.type === 'error'; });
-                setCheckedItems(defaults);
+              try {
+                let jsonStr = raw.slice(jsonStart, jsonEnd + 1);
+                jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+                parsed = JSON.parse(jsonStr);
+              } catch { /* 전체 파싱 실패 → 개별 객체 추출 시도 */ }
+            }
+            // 2차: 전체 파싱 실패 시 개별 JSON 객체를 하나씩 추출
+            if (!parsed) {
+              const objectRegex = /\{[^{}]*"section"\s*:\s*"[^"]*"[^{}]*"type"\s*:\s*"[^"]*"[^{}]*\}/g;
+              const matches = raw.match(objectRegex);
+              if (matches && matches.length > 0) {
+                const items = [];
+                for (const m of matches) {
+                  try {
+                    const obj = JSON.parse(m);
+                    if (obj.section && obj.type) items.push(obj);
+                  } catch { /* 개별 객체 파싱 실패 무시 */ }
+                }
+                if (items.length > 0) parsed = items;
               }
+            }
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setVerifyItems(parsed);
+              const defaults = {};
+              parsed.forEach((item, i) => { defaults[i] = item.type === 'error'; });
+              setCheckedItems(defaults);
             }
           } catch (parseErr) {
             console.warn('[검증] JSON 파싱 실패, 레거시 모드 사용:', parseErr.message);
