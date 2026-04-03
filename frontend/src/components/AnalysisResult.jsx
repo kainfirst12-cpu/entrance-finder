@@ -672,24 +672,40 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
       const data = await res.json();
       if (data.success) {
         setVerifyResult({ model: verifyModel, content: data.reply });
-        // JSON 배열 파싱 시도
-        try {
-          let raw = data.reply.trim();
-          // 마크다운 코드블록 제거
-          raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const jsonStart = raw.indexOf('[');
-          const jsonEnd = raw.lastIndexOf(']');
-          if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd + 1));
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setVerifyItems(parsed);
-              // 기본: error는 체크, improve/add는 미체크
-              const defaults = {};
-              parsed.forEach((item, i) => { defaults[i] = item.type === 'error'; });
-              setCheckedItems(defaults);
+        // 백엔드에서 파싱된 결과가 있으면 우선 사용
+        const items = data.parsedItems || null;
+        if (items && Array.isArray(items) && items.length > 0) {
+          setVerifyItems(items);
+          const defaults = {};
+          items.forEach((item, i) => { defaults[i] = item.type === 'error'; });
+          setCheckedItems(defaults);
+        } else {
+          // 백엔드 파싱 실패 시 프론트엔드에서 재시도
+          try {
+            let raw = data.reply.trim();
+            const codeBlockMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+            if (codeBlockMatch) {
+              raw = codeBlockMatch[1].trim();
+            } else {
+              raw = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
             }
+            const jsonStart = raw.indexOf('[');
+            const jsonEnd = raw.lastIndexOf(']');
+            if (jsonStart >= 0 && jsonEnd > jsonStart) {
+              let jsonStr = raw.slice(jsonStart, jsonEnd + 1);
+              jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+              const parsed = JSON.parse(jsonStr);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setVerifyItems(parsed);
+                const defaults = {};
+                parsed.forEach((item, i) => { defaults[i] = item.type === 'error'; });
+                setCheckedItems(defaults);
+              }
+            }
+          } catch (parseErr) {
+            console.warn('[검증] JSON 파싱 실패, 레거시 모드 사용:', parseErr.message);
           }
-        } catch { /* JSON 파싱 실패 시 레거시 모드 유지 */ }
+        }
       } else {
         alert('검증 오류: ' + data.message);
       }

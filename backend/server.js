@@ -613,7 +613,26 @@ priority 설명:
       reply = response.content[0].text;
     }
 
-    res.json({ success: true, reply });
+    // 서버에서 JSON 파싱 시도 → 프론트엔드 파싱 실패 방지
+    let parsedItems = null;
+    try {
+      let cleaned = reply.trim();
+      // 마크다운 코드블록 제거
+      const codeBlockMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+      if (codeBlockMatch) cleaned = codeBlockMatch[1].trim();
+      const jsonStart = cleaned.indexOf('[');
+      const jsonEnd = cleaned.lastIndexOf(']');
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        let jsonStr = cleaned.slice(jsonStart, jsonEnd + 1);
+        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+        const arr = JSON.parse(jsonStr);
+        if (Array.isArray(arr) && arr.length > 0) parsedItems = arr;
+      }
+    } catch (e) {
+      console.warn('[verify] JSON 파싱 실패:', e.message);
+    }
+
+    res.json({ success: true, reply, parsedItems });
   } catch (err) {
     console.error(`[verify/${aiModel}] 오류:`, err.message);
     res.status(500).json({ success: false, message: err.message });
