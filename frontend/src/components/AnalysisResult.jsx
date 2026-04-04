@@ -125,7 +125,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [regeneratingKey, setRegeneratingKey] = useState(null);
+  const [regeneratingKeys, setRegeneratingKeys] = useState(new Set());
   const [coverEdit, setCoverEdit] = useState({
     reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
     brandName: localStorage.getItem('ef_brand_name') || 'PATHFINDER EDU',
@@ -913,8 +913,8 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
 
   // ── 개별 섹션 재생성 ────────────────────────────────
   const handleRegenerateSection = async (key, num, title) => {
-    if (regeneratingKey) return;
-    setRegeneratingKey(key);
+    if (regeneratingKeys.has(key)) return;
+    setRegeneratingKeys(prev => new Set([...prev, key]));
     try {
       const refineKey = getKeyForModel(usedModel);
       if (!refineKey) throw new Error('API 키가 필요합니다.');
@@ -944,7 +944,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     } catch (err) {
       alert('재생성 오류: ' + err.message);
     } finally {
-      setRegeneratingKey(null);
+      setRegeneratingKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
     }
   };
 
@@ -979,11 +979,11 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
                 <button className="btn-edit-section" onClick={() => startEdit(key, content)}>수정</button>
                 <button
                   className="btn-edit-section"
-                  style={{marginLeft:4, opacity: regeneratingKey === key ? 0.5 : 1}}
+                  style={{marginLeft:4, opacity: regeneratingKeys.has(key) ? 0.5 : 1}}
                   onClick={() => handleRegenerateSection(key, num, title)}
-                  disabled={!!regeneratingKey}
+                  disabled={regeneratingKeys.has(key)}
                 >
-                  {regeneratingKey === key ? '재생성 중...' : '재생성'}
+                  {regeneratingKeys.has(key) ? '재생성 중...' : '재생성'}
                 </button>
               </>
             ) : (
