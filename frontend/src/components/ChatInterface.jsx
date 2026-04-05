@@ -2,12 +2,29 @@ import { useState, useRef, useEffect } from 'react';
 
 const API_BASE = 'https://entrance-finder-production.up.railway.app';
 
-// 마크다운 → HTML 변환 (채팅 인쇄용)
+const SECTION_MAP = [
+  { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+  { key: 'academic',       num: '1', title: '학업역량 종합 분석' },
+  { key: 'activity',       num: '2', title: '비교과 활동 평가' },
+  { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성' },
+  { key: 'strategy',       num: '4', title: '수시 지원 전략' },
+  { key: 'roadmap',        num: '5', title: '핵심 리스크 및 대응 방안' },
+  { key: 'recordFeedback', num: '6', title: '실행 계획' },
+  { key: 'dashboard',      num: '7', title: '종합 평가 및 권고사항' },
+];
+
+const MODEL_CFG = {
+  claude:       { icon: '●', label: 'Claude Sonnet', color: '#7c6af7', group: 'claude' },
+  'claude-opus':{ icon: '◆', label: 'Claude Opus',   color: '#5b21b6', group: 'claude' },
+  gemini:       { icon: '●', label: 'Gemini Flash',  color: '#4caf50', group: 'gemini' },
+  'gemini-pro': { icon: '■', label: 'Gemini Pro',    color: '#166534', group: 'gemini' },
+  gpt:          { icon: '●', label: 'GPT-4o',        color: '#f0a500', group: 'gpt' },
+  'gpt-mini':   { icon: '●', label: 'GPT-4o Mini',   color: '#ea580c', group: 'gpt' },
+};
+
 function chatMdToHtml(raw) {
   if (!raw) return '';
-  // 이모지 제거
   let text = raw.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '');
-  // HTML escape
   text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const lines = text.split('\n');
   const out = [];
@@ -42,18 +59,10 @@ function chatMdToHtml(raw) {
   return out.join('\n');
 }
 
-const MODEL_CFG = {
-  claude:       { icon: '🔵', label: 'Claude Sonnet', color: '#7c6af7', group: 'claude' },
-  'claude-opus':{ icon: '🔷', label: 'Claude Opus',   color: '#5b21b6', group: 'claude' },
-  gemini:       { icon: '🟢', label: 'Gemini Flash',  color: '#4caf50', group: 'gemini' },
-  'gemini-pro': { icon: '🟩', label: 'Gemini Pro',    color: '#166534', group: 'gemini' },
-  gpt:          { icon: '🟡', label: 'GPT-4o',        color: '#f0a500', group: 'gpt' },
-  'gpt-mini':   { icon: '🟠', label: 'GPT-4o Mini',   color: '#ea580c', group: 'gpt' },
-};
-
-export default function ChatInterface({ getActiveKey, selectedModel }) {
+export default function ChatInterface({ getActiveKey, selectedModel, analysisData }) {
+  // 기존 상태
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: '안녕하세요! 입시 전문 컨설턴트입니다.\n생기부, 세특, 입시 전략 등 궁금한 점을 자유롭게 질문해 주세요.' },
+    { role: 'assistant', content: '안녕하세요! 입시 전문 컨설턴트입니다.\n생기부, 세특, 입시 전략 등 궁금한 점을 자유롭게 질문해 주세요.\n\nJSON 분석 파일, PDF, 이미지를 첨부하면 해당 내용을 기반으로 상담할 수 있습니다.' },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -62,13 +71,119 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  // 새 기능 상태
+  const [attachedFiles, setAttachedFiles] = useState([]); // {name, type, preview, data, text}
+  const [analysisContext, setAnalysisContext] = useState(null); // 로드된 JSON 분석 데이터
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
+  const [editingIdx, setEditingIdx] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [showReportPreview, setShowReportPreview] = useState(false);
+  const [reportInclude, setReportInclude] = useState({}); // 리포트에 포함할 메시지 인덱스
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  const fileInputRef = useRef(null);
+  const jsonInputRef = useRef(null);
+  const chatImportRef = useRef(null);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // analysisData prop이 바뀌면 자동으로 컨텍스트 설정
+  useEffect(() => {
+    if (analysisData?.results) {
+      setAnalysisContext(analysisData);
+      setContextPanelOpen(true);
+    }
+  }, [analysisData]);
+
+  const modelLabels = { claude: 'Claude', 'claude-opus': 'Claude Opus', gemini: 'Gemini', 'gemini-pro': 'Gemini Pro', gpt: 'GPT-4o', 'gpt-mini': 'GPT-4o Mini' };
+
+  // ── 파일 첨부 ──────────────────────────────────
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    e.target.value = '';
+
+    setUploadingFiles(true);
+    const newFiles = [];
+
+    for (const file of files) {
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf';
+      const isJson = file.name.endsWith('.json');
+
+      if (isJson) {
+        // JSON 파일은 분석 컨텍스트로 로드
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (data.results && data.studentData) {
+            setAnalysisContext(data);
+            setContextPanelOpen(true);
+            setMessages(prev => [...prev, {
+              role: 'assistant',
+              content: `[분석 데이터 로드 완료]\n학생: ${data.studentData?.name || '미입력'}\n전공: ${data.studentData?.major || '미입력'}\n목표: ${data.studentData?.targetUniv || '미입력'}\n\n${SECTION_MAP.filter(s => data.results?.[s.key]).map(s => `- [${s.num}단계] ${s.title}`).join('\n')}\n\n위 분석 데이터에 대해 질문하거나, 수정을 요청할 수 있습니다.`,
+              isSystem: true,
+            }]);
+          } else {
+            alert('유효하지 않은 분석 파일입니다. results와 studentData가 필요합니다.');
+          }
+        } catch (err) {
+          alert('JSON 파싱 오류: ' + err.message);
+        }
+        continue;
+      }
+
+      if (isImage) {
+        const base64 = await fileToBase64(file);
+        const preview = URL.createObjectURL(file);
+        newFiles.push({ name: file.name, type: 'image', mimeType: file.type, base64, preview });
+      } else if (isPdf) {
+        // PDF는 서버로 보내서 텍스트 추출
+        try {
+          const formData = new FormData();
+          formData.append('files', file);
+          const token = localStorage.getItem('ef_token');
+          const res = await fetch(`${API_BASE}/api/chat-upload`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: formData,
+          });
+          const data = await res.json();
+          if (data.success && data.files?.[0]) {
+            newFiles.push({ name: file.name, type: 'pdf', text: data.files[0].text });
+          }
+        } catch (err) {
+          newFiles.push({ name: file.name, type: 'pdf', text: `[PDF 추출 실패: ${err.message}]` });
+        }
+      }
+    }
+
+    if (newFiles.length > 0) {
+      setAttachedFiles(prev => [...prev, ...newFiles]);
+    }
+    setUploadingFiles(false);
+  };
+
+  const fileToBase64 = (file) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.readAsDataURL(file);
+  });
+
+  const removeFile = (idx) => {
+    setAttachedFiles(prev => {
+      const f = prev[idx];
+      if (f?.preview) URL.revokeObjectURL(f.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  // ── 메시지 전송 ──────────────────────────────────
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if ((!text && attachedFiles.length === 0) || loading) return;
 
     const apiKey = getActiveKey();
     if (!apiKey) {
@@ -76,14 +191,34 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
       return;
     }
 
-    const userMsg = { role: 'user', content: text };
+    // 사용자 메시지 구성
+    const userMsg = {
+      role: 'user',
+      content: text || '(첨부 파일 분석 요청)',
+      files: attachedFiles.length > 0 ? attachedFiles.map(f => ({ name: f.name, type: f.type })) : undefined,
+    };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    const filesToSend = [...attachedFiles];
+    setAttachedFiles([]);
     setLoading(true);
 
     try {
-      const history = messages.filter(m => m.role !== 'system').slice(-10);
+      const history = messages.filter(m => m.role !== 'system' && !m.isSystem).slice(-10);
       const token = localStorage.getItem('ef_token');
+
+      // 파일 컨텍스트 구성
+      const fileContents = filesToSend.filter(f => f.type === 'pdf').map(f => ({ name: f.name, text: f.text }));
+      const imageData = filesToSend.filter(f => f.type === 'image').map(f => ({ mimeType: f.mimeType, base64: f.base64 }));
+
+      const body = {
+        message: text || '첨부된 파일을 분석해 주세요.',
+        history: history.map(h => ({ role: h.role, content: h.content })),
+      };
+
+      if (analysisContext) body.analysisContext = { studentData: analysisContext.studentData, results: analysisContext.results };
+      if (fileContents.length > 0) body.fileContents = fileContents;
+      if (imageData.length > 0) body.imageData = imageData;
 
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
@@ -94,7 +229,7 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
           'x-ai-submodel': selectedModel,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -112,12 +247,29 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
+  // ── 메시지 편집 (인간 수정) ──────────────────────
+  const startEdit = (idx) => {
+    setEditingIdx(idx);
+    setEditText(messages[idx].content);
+  };
+
+  const saveEdit = (idx) => {
+    setMessages(prev => prev.map((m, i) => i === idx ? { ...m, content: editText, edited: true } : m));
+    setEditingIdx(null);
+    setEditText('');
+  };
+
+  const cancelEdit = () => { setEditingIdx(null); setEditText(''); };
+
+  const deleteMessage = (idx) => {
+    if (!confirm('이 메시지를 삭제하시겠습니까?')) return;
+    setMessages(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // ── 복사 ──────────────────────────────────
   const copyMessage = async (content, idx) => {
     await navigator.clipboard.writeText(content);
     setCopiedIdx(idx);
@@ -125,34 +277,26 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
   };
 
   const copyAllChat = async () => {
-    const text = messages
-      .map(m => `[${m.role === 'user' ? '나' : 'AI 컨설턴트'}]\n${m.content}`)
-      .join('\n\n---\n\n');
+    const text = messages.map(m => `[${m.role === 'user' ? '나' : 'AI 컨설턴트'}]\n${m.content}`).join('\n\n---\n\n');
     await navigator.clipboard.writeText(text);
     setCopiedIdx('all');
     setTimeout(() => setCopiedIdx(null), 2000);
   };
 
-  // 다른 AI로 교차 검증
+  // ── 교차 검증 ──────────────────────────────────
   const verifyChatMessage = async (msgIdx, verifyModel) => {
     const msg = messages[msgIdx];
     if (!msg || msg.role !== 'assistant') return;
-    // 해당 답변 바로 위의 사용자 질문 찾기
     let userQuestion = '';
     for (let j = msgIdx - 1; j >= 0; j--) {
       if (messages[j].role === 'user') { userQuestion = messages[j].content; break; }
     }
+    const group = MODEL_CFG[verifyModel]?.group || verifyModel;
+    const vKey = group === 'claude' ? localStorage.getItem('ef_apikey')
+      : group === 'gemini' ? localStorage.getItem('ef_geminikey')
+      : localStorage.getItem('ef_gptkey');
 
-    const vKey = verifyModel === 'claude'
-      ? localStorage.getItem('ef_apikey')
-      : verifyModel === 'gemini'
-        ? localStorage.getItem('ef_geminikey')
-        : localStorage.getItem('ef_gptkey');
-
-    if (!vKey) {
-      alert(`${MODEL_CFG[verifyModel]?.label} API 키가 설정되지 않았습니다.`);
-      return;
-    }
+    if (!vKey) { alert(`${MODEL_CFG[verifyModel]?.label} API 키가 설정되지 않았습니다.`); return; }
 
     setVerifyingIdx(msgIdx);
     try {
@@ -162,303 +306,346 @@ export default function ChatInterface({ getActiveKey, selectedModel }) {
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': vKey,
-          'x-ai-model': verifyModel,
+          'x-ai-model': group,
+          'x-ai-submodel': verifyModel,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          studentData: { name: '상담 학생' },
+          studentData: analysisContext?.studentData || { name: '상담 학생' },
           analysisText: `[질문]\n${userQuestion}\n\n[${modelLabels[selectedModel]} 답변]\n${msg.content}`,
           originalModel: modelLabels[selectedModel] || 'AI',
         }),
       });
       const data = await res.json();
       if (data.success) {
-        const verifyMsg = {
-          role: 'assistant',
-          content: `[${MODEL_CFG[verifyModel]?.label} 교차 검증]\n${data.reply}`,
-          isVerify: true,
-          verifyModel,
-        };
         setMessages(prev => {
           const copy = [...prev];
-          copy.splice(msgIdx + 1, 0, verifyMsg);
+          copy.splice(msgIdx + 1, 0, { role: 'assistant', content: `[${MODEL_CFG[verifyModel]?.label} 교차 검증]\n${data.reply}`, isVerify: true, verifyModel });
           return copy;
         });
-      } else {
-        alert('검증 오류: ' + data.message);
+      } else { alert('검증 오류: ' + data.message); }
+    } catch (err) { alert('검증 실패: ' + err.message); }
+    finally { setVerifyingIdx(null); }
+  };
+
+  // ── 분석 컨텍스트: 단계 클릭 → 질문 ──────────────
+  const askAboutStage = (sec) => {
+    if (!analysisContext?.results?.[sec.key]) return;
+    setInput(`[${sec.num}단계] ${sec.title}에 대해 상세히 설명해 주세요. 개선점이나 보완할 점이 있다면 알려주세요.`);
+    inputRef.current?.focus();
+  };
+
+  // 개별 단계 JSON 내보내기
+  const exportStageJSON = (sec) => {
+    if (!analysisContext?.results?.[sec.key]) return;
+    const data = { stage: sec.num, title: sec.title, key: sec.key, content: analysisContext.results[sec.key], studentData: analysisContext.studentData, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `${analysisContext.studentData?.name || '학생'}_${sec.num}단계_${sec.title}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  // 개별 단계 JSON 가져오기
+  const importStageJSON = async (file, sec) => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.content) {
+        setAnalysisContext(prev => ({ ...prev, results: { ...prev.results, [sec.key]: data.content } }));
+        setMessages(prev => [...prev, { role: 'assistant', content: `[${sec.num}단계] ${sec.title} 데이터가 업데이트되었습니다.`, isSystem: true }]);
       }
-    } catch (err) {
-      alert('검증 요청 실패: ' + err.message);
-    } finally {
-      setVerifyingIdx(null);
-    }
+    } catch (err) { alert('JSON 파싱 오류: ' + err.message); }
   };
 
+  // ── 채팅 내보내기 / 불러오기 ──────────────────────
+  const exportChat = () => {
+    const data = { version: 1, exportedAt: new Date().toISOString(), messages, analysisContext, model: selectedModel };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `입시상담_${new Date().toLocaleDateString('ko-KR')}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  const importChat = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.messages) {
+        setMessages(data.messages);
+        if (data.analysisContext) { setAnalysisContext(data.analysisContext); setContextPanelOpen(true); }
+      } else { alert('유효하지 않은 채팅 파일입니다.'); }
+    } catch (err) { alert('파일 오류: ' + err.message); }
+  };
+
+  // ── 초기화 ──────────────────────────────────
   const clearChat = () => {
-    setMessages([
-      { role: 'assistant', content: '대화가 초기화되었습니다. 새로운 질문을 해주세요!' },
-    ]);
+    setMessages([{ role: 'assistant', content: '대화가 초기화되었습니다. 새로운 질문을 해주세요!' }]);
+    setAnalysisContext(null);
+    setContextPanelOpen(false);
+    setAttachedFiles([]);
   };
 
-  const handlePrintChat = () => {
+  // ── 리포트 미리보기 & 생성 ──────────────────────
+  const openReportPreview = () => {
+    const defaults = {};
+    messages.forEach((m, i) => { if (!m.isSystem && !m.isVerify) defaults[i] = true; });
+    setReportInclude(defaults);
+    setShowReportPreview(true);
+  };
+
+  const generateReport = () => {
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     const modelLabel = modelLabels[selectedModel] || 'AI';
+    const includedMessages = messages.filter((_, i) => reportInclude[i]);
 
-    const messagesHTML = messages.map((msg) => {
+    const messagesHTML = includedMessages.map((msg) => {
       const content = chatMdToHtml(msg.content);
       const isUser = msg.role === 'user';
-      return `
-        <div class="msg ${isUser ? 'user' : 'ai'}">
-          <div class="msg-label">${isUser ? '나' : `AI 컨설턴트 (${modelLabel})`}</div>
-          <div class="msg-content">${content}</div>
-        </div>`;
+      return `<div class="msg ${isUser ? 'user' : 'ai'}">
+        <div class="msg-label">${isUser ? '질문' : `AI 컨설턴트 (${modelLabel})`}${msg.edited ? ' <span style="color:#f59e0b;font-size:11px;">[수정됨]</span>' : ''}</div>
+        <div class="msg-content">${content}</div>
+      </div>`;
     }).join('');
 
-    const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>입시 상담 기록 - 패스파인더 에듀</title>
+    const studentInfo = analysisContext?.studentData
+      ? `<strong>학생:</strong> ${analysisContext.studentData.name || '-'}<br><strong>전공:</strong> ${analysisContext.studentData.major || '-'}<br><strong>목표:</strong> ${analysisContext.studentData.targetUniv || '-'}<br>`
+      : '';
+
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<title>입시 상담 리포트 - 패스파인더 에듀</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Noto Sans KR', sans-serif;
-    color: #1a1916;
-    background: #fff;
-    font-size: 13px;
-    line-height: 1.8;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-  .print-bar {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    background: #1a2744;
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 10px 24px;
-    z-index: 100;
-    font-size: 14px;
-    font-weight: 500;
-  }
-  .print-bar button {
-    padding: 8px 24px;
-    background: #2563eb;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .print-bar button:hover { background: #1d4ed8; }
-  .print-bar .close-btn {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.3);
-    padding: 8px 16px;
-  }
-  .print-bar .close-btn:hover { background: rgba(255,255,255,0.1); }
-  .report {
-    max-width: 800px;
-    margin: 70px auto 60px;
-    padding: 0 24px;
-  }
-  .cover {
-    background: #1a2744;
-    color: #fff;
-    padding: 40px 44px;
-    border-radius: 12px;
-    margin-bottom: 32px;
-    page-break-after: always;
-  }
-  .cover-logo {
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    color: rgba(255,255,255,0.45);
-    margin-bottom: 12px;
-    text-transform: uppercase;
-  }
-  .cover-title {
-    font-size: 22px;
-    font-weight: 700;
-    margin-bottom: 20px;
-    line-height: 1.4;
-  }
-  .cover-info {
-    font-size: 14px;
-    color: rgba(255,255,255,0.7);
-    line-height: 1.8;
-  }
-  .cover-info strong { color: #fff; }
-  .messages { display: flex; flex-direction: column; gap: 20px; }
-  .msg {
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    overflow: hidden;
-    page-break-inside: avoid;
-  }
-  .msg-label {
-    padding: 10px 18px;
-    font-size: 12px;
-    font-weight: 600;
-    border-bottom: 1px solid #e5e7eb;
-  }
-  .msg.user .msg-label { background: #eff6ff; color: #2563eb; }
-  .msg.ai .msg-label { background: #f8f9fa; color: #1a2744; }
-  .msg-content {
-    padding: 16px 20px;
-    font-size: 13px;
-    line-height: 1.9;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #333;
-  }
-  .report-footer {
-    text-align: center;
-    padding: 24px 0;
-    font-size: 11px;
-    color: #999;
-    border-top: 1px solid #e5e7eb;
-    margin-top: 24px;
-  }
-  @media print {
-    .print-bar { display: none !important; }
-    .report { margin-top: 0; }
-    .cover { border-radius: 0; margin: 0 -24px 0; }
-    .msg { break-inside: avoid; }
-    body { font-size: 12px; }
-  }
-  @page { size: A4; margin: 20mm 15mm; }
-</style>
-</head>
-<body>
-  <div class="print-bar">
-    <span>상담 기록이 준비되었습니다.</span>
-    <button onclick="window.print()">PDF로 인쇄 / 저장</button>
-    <button class="close-btn" onclick="window.close()">닫기</button>
-  </div>
-  <div class="report">
-    <div class="cover">
-      <div class="cover-logo">PATHFINDER EDU</div>
-      <div class="cover-title">입시 상담 기록</div>
-      <div class="cover-info">
-        <strong>AI 모델:</strong> ${modelLabel}<br>
-        <strong>상담일:</strong> ${today}<br>
-        <strong>메시지:</strong> ${messages.length}건
-      </div>
-    </div>
-    <div class="messages">
-      ${messagesHTML}
-    </div>
-    <div class="report-footer">
-      패스파인더 에듀 · 입시-Finder &copy; ${new Date().getFullYear()} &mdash; ${today} 생성
-    </div>
-  </div>
-</body>
-</html>`;
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-size:13px;line-height:1.8;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.print-bar{position:fixed;top:0;left:0;right:0;background:#1a2744;color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 24px;z-index:100;font-size:14px;font-weight:500}
+.print-bar button{padding:8px 24px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.print-bar button:hover{background:#1d4ed8}
+.print-bar .close-btn{background:transparent;border:1px solid rgba(255,255,255,0.3);padding:8px 16px}
+.report{max-width:800px;margin:70px auto 60px;padding:0 24px}
+.cover{background:#1a2744;color:#fff;padding:40px 44px;border-radius:12px;margin-bottom:32px;page-break-after:always}
+.cover-logo{font-size:11px;letter-spacing:0.2em;color:rgba(255,255,255,0.45);margin-bottom:12px;text-transform:uppercase}
+.cover-title{font-size:22px;font-weight:700;margin-bottom:20px;line-height:1.4}
+.cover-info{font-size:14px;color:rgba(255,255,255,0.7);line-height:1.8}
+.cover-info strong{color:#fff}
+.messages{display:flex;flex-direction:column;gap:20px}
+.msg{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;page-break-inside:avoid}
+.msg-label{padding:10px 18px;font-size:12px;font-weight:600;border-bottom:1px solid #e5e7eb}
+.msg.user .msg-label{background:#eff6ff;color:#2563eb}
+.msg.ai .msg-label{background:#f8f9fa;color:#1a2744}
+.msg-content{padding:16px 20px;font-size:13px;line-height:1.9;white-space:pre-wrap;word-break:break-word;color:#333}
+.report-footer{text-align:center;padding:24px 0;font-size:11px;color:#999;border-top:1px solid #e5e7eb;margin-top:24px}
+@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 0}.msg{break-inside:avoid}body{font-size:12px}}
+@page{size:A4;margin:20mm 15mm}
+</style></head><body>
+<div class="print-bar"><span>리포트가 준비되었습니다.</span><button onclick="window.print()">PDF로 인쇄 / 저장</button><button class="close-btn" onclick="window.close()">닫기</button></div>
+<div class="report">
+<div class="cover"><div class="cover-logo">PATHFINDER EDU</div><div class="cover-title">입시 상담 리포트</div>
+<div class="cover-info">${studentInfo}<strong>AI 모델:</strong> ${modelLabel}<br><strong>상담일:</strong> ${today}<br><strong>메시지:</strong> ${includedMessages.length}건</div></div>
+<div class="messages">${messagesHTML}</div>
+<div class="report-footer">패스파인더 에듀 &middot; 입시-Finder &copy; ${new Date().getFullYear()} &mdash; ${today} 생성</div>
+</div></body></html>`;
 
     const w = window.open('', '_blank');
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-    } else {
-      alert('팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.');
-    }
+    if (w) { w.document.write(html); w.document.close(); }
+    else alert('팝업이 차단되었습니다.');
+    setShowReportPreview(false);
   };
 
-  const modelLabels = { claude: 'Claude', gemini: 'Gemini', gpt: 'GPT-4o' };
-
+  // ── 렌더링 ──────────────────────────────────────
   return (
-    <div className="chat-container">
-      <div className="chat-header">
-        <h2>입시 상담 채팅</h2>
-        <div className="chat-header-right">
-          <span className="chat-model-badge">{modelLabels[selectedModel] || 'Claude'}</span>
-          <button className="btn-print-html-sm" onClick={handlePrintChat}>
-            🖨️ PDF 인쇄
+    <div className="chat-container" style={{ display: 'flex', gap: 0 }}>
+      {/* 분석 컨텍스트 패널 */}
+      {contextPanelOpen && analysisContext && (
+        <div className="chat-context-panel">
+          <div className="context-panel-header">
+            <strong>분석 데이터</strong>
+            <button className="btn-ghost-sm" onClick={() => setContextPanelOpen(false)}>닫기</button>
+          </div>
+          <div className="context-student-info">
+            <div><strong>{analysisContext.studentData?.name || '학생'}</strong></div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>{analysisContext.studentData?.major || ''} / {analysisContext.studentData?.targetUniv || ''}</div>
+          </div>
+          <div className="context-stages">
+            {SECTION_MAP.map(sec => {
+              const hasData = !!analysisContext.results?.[sec.key];
+              return (
+                <div key={sec.key} className={`context-stage-item ${hasData ? '' : 'disabled'}`}>
+                  <span className="stage-num-badge">{sec.num}</span>
+                  <span className="stage-title" onClick={() => hasData && askAboutStage(sec)} style={{ cursor: hasData ? 'pointer' : 'default' }}>
+                    {sec.title}
+                  </span>
+                  {hasData && (
+                    <div className="stage-actions">
+                      <button title="JSON 내보내기" onClick={() => exportStageJSON(sec)}>↓</button>
+                      <label title="JSON 가져오기" style={{ cursor: 'pointer' }}>
+                        ↑<input type="file" accept=".json" style={{ display: 'none' }} onChange={(e) => { if (e.target.files?.[0]) importStageJSON(e.target.files[0], sec); e.target.value = ''; }} />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button className="btn-ghost-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => { setAnalysisContext(null); setContextPanelOpen(false); }}>
+            컨텍스트 해제
           </button>
-          <button className="btn-ghost chat-clear-btn" onClick={copyAllChat}>
-            {copiedIdx === 'all' ? '복사됨!' : '전체 복사'}
+        </div>
+      )}
+
+      {/* 메인 채팅 영역 */}
+      <div className="chat-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* 헤더 */}
+        <div className="chat-header">
+          <h2>입시 상담 채팅</h2>
+          <div className="chat-header-right">
+            <span className="chat-model-badge">{modelLabels[selectedModel] || 'Claude'}</span>
+
+            {/* 분석 JSON 불러오기 */}
+            <button className="btn-ghost chat-clear-btn" onClick={() => jsonInputRef.current?.click()}>
+              JSON 불러오기
+            </button>
+            <input ref={jsonInputRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleFileSelect} />
+
+            {/* 채팅 내보내기/불러오기 */}
+            <button className="btn-ghost chat-clear-btn" onClick={exportChat}>채팅 저장</button>
+            <button className="btn-ghost chat-clear-btn" onClick={() => chatImportRef.current?.click()}>채팅 불러오기</button>
+            <input ref={chatImportRef} type="file" accept=".json" style={{ display: 'none' }} onChange={importChat} />
+
+            {/* 리포트 */}
+            <button className="btn-print-html-sm" onClick={openReportPreview}>리포트 생성</button>
+
+            {/* 분석 컨텍스트 토글 */}
+            {analysisContext && !contextPanelOpen && (
+              <button className="btn-ghost chat-clear-btn" onClick={() => setContextPanelOpen(true)} style={{ color: '#2563eb' }}>
+                분석 패널
+              </button>
+            )}
+
+            <button className="btn-ghost chat-clear-btn" onClick={copyAllChat}>{copiedIdx === 'all' ? '복사됨!' : '전체 복사'}</button>
+            <button className="btn-ghost chat-clear-btn" onClick={clearChat}>초기화</button>
+          </div>
+        </div>
+
+        {/* 메시지 영역 */}
+        <div className="chat-messages">
+          {messages.map((msg, i) => (
+            <div key={i} className={`chat-bubble ${msg.role} ${msg.isVerify ? 'verify' : ''} ${msg.isSystem ? 'system-msg' : ''}`}>
+              <div className="chat-bubble-label">
+                {msg.role === 'user' ? '나' : msg.isVerify ? `${MODEL_CFG[msg.verifyModel]?.label || 'AI'} 교차 검증` : msg.isSystem ? '시스템' : 'AI 컨설턴트'}
+                {msg.edited && <span style={{ marginLeft: 6, color: '#f59e0b', fontSize: 11 }}>[수정됨]</span>}
+                {msg.files && <span style={{ marginLeft: 6, color: '#64748b', fontSize: 11 }}>[{msg.files.map(f => f.name).join(', ')}]</span>}
+              </div>
+
+              {editingIdx === i ? (
+                <div className="chat-edit-area">
+                  <textarea className="chat-edit-textarea" value={editText} onChange={e => setEditText(e.target.value)} rows={8} />
+                  <div className="chat-edit-actions">
+                    <button className="btn-save-sm" onClick={() => saveEdit(i)}>저장</button>
+                    <button className="btn-ghost-sm" onClick={cancelEdit}>취소</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="chat-bubble-content">
+                  {msg.content.split('\n').map((line, j) => <span key={j}>{line}<br /></span>)}
+                </div>
+              )}
+
+              {editingIdx !== i && (
+                <div className="chat-bubble-actions">
+                  <button className="chat-copy-btn" onClick={() => copyMessage(msg.content, i)}>{copiedIdx === i ? '복사됨!' : '복사'}</button>
+                  <button className="chat-copy-btn" onClick={() => startEdit(i)}>수정</button>
+                  <button className="chat-copy-btn" onClick={() => deleteMessage(i)} style={{ color: '#ef4444' }}>삭제</button>
+
+                  {msg.role === 'assistant' && !msg.isVerify && !msg.isSystem && (
+                    <span className="chat-verify-group">
+                      {Object.entries(MODEL_CFG)
+                        .filter(([key]) => key !== selectedModel)
+                        .map(([key, cfg]) => (
+                          <button key={key} className="chat-verify-btn" style={{ borderColor: cfg.color, color: cfg.color }}
+                            onClick={() => verifyChatMessage(i, key)} disabled={verifyingIdx === i}>
+                            {verifyingIdx === i ? '...' : `${cfg.label} 검증`}
+                          </button>
+                        ))}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {loading && (
+            <div className="chat-bubble assistant">
+              <div className="chat-bubble-label">AI 컨설턴트</div>
+              <div className="chat-bubble-content chat-typing"><span></span><span></span><span></span></div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* 첨부 파일 미리보기 */}
+        {attachedFiles.length > 0 && (
+          <div className="chat-attached-files">
+            {attachedFiles.map((f, i) => (
+              <div key={i} className="attached-file-chip">
+                {f.type === 'image' && f.preview && <img src={f.preview} alt="" className="attached-thumb" />}
+                <span className="attached-file-icon">{f.type === 'pdf' ? 'PDF' : 'IMG'}</span>
+                <span className="attached-file-name">{f.name}</span>
+                <button className="attached-file-remove" onClick={() => removeFile(i)}>x</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 입력 영역 */}
+        <div className="chat-input-area">
+          <button className="chat-file-btn" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles} title="파일 첨부 (PDF, 이미지, JSON)">
+            {uploadingFiles ? '...' : '+'}
           </button>
-          <button className="btn-ghost chat-clear-btn" onClick={clearChat}>초기화</button>
+          <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.json" multiple style={{ display: 'none' }} onChange={handleFileSelect} />
+
+          <textarea ref={inputRef} className="chat-input" value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={handleKeyDown} placeholder="질문을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈) | + 버튼으로 파일 첨부" rows={2} disabled={loading} />
+
+          <button className="btn-primary chat-send-btn" onClick={sendMessage} disabled={loading || (!input.trim() && attachedFiles.length === 0)}>
+            {loading ? '답변 중...' : '전송'}
+          </button>
         </div>
       </div>
 
-      <div className="chat-messages">
-        {messages.map((msg, i) => (
-          <div key={i} className={`chat-bubble ${msg.role} ${msg.isVerify ? 'verify' : ''}`}>
-            <div className="chat-bubble-label">
-              {msg.role === 'user' ? '나' : msg.isVerify ? `${MODEL_CFG[msg.verifyModel]?.label || 'AI'} 교차 검증` : 'AI 컨설턴트'}
+      {/* 리포트 미리보기 모달 */}
+      {showReportPreview && (
+        <div className="report-preview-overlay" onClick={() => setShowReportPreview(false)}>
+          <div className="report-preview-modal" onClick={e => e.stopPropagation()}>
+            <div className="report-preview-header">
+              <h3>리포트 미리보기</h3>
+              <button className="btn-ghost-sm" onClick={() => setShowReportPreview(false)}>닫기</button>
             </div>
-            <div className="chat-bubble-content">
-              {msg.content.split('\n').map((line, j) => (
-                <span key={j}>{line}<br /></span>
-              ))}
-            </div>
-            {msg.role === 'assistant' && (
-              <div className="chat-bubble-actions">
-                <button
-                  className="chat-copy-btn"
-                  onClick={() => copyMessage(msg.content, i)}
-                >
-                  {copiedIdx === i ? '복사됨!' : '복사'}
-                </button>
-                {!msg.isVerify && (
-                  <span className="chat-verify-group">
-                    {Object.entries(MODEL_CFG)
-                      .filter(([key]) => key !== selectedModel)
-                      .map(([key, cfg]) => (
-                        <button
-                          key={key}
-                          className="chat-verify-btn"
-                          style={{ borderColor: cfg.color, color: cfg.color }}
-                          onClick={() => verifyChatMessage(i, key)}
-                          disabled={verifyingIdx === i}
-                        >
-                          {verifyingIdx === i ? '...' : `${cfg.icon} ${cfg.label} 검증`}
-                        </button>
-                      ))}
-                  </span>
-                )}
+            <div className="report-preview-body">
+              <p style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>리포트에 포함할 메시지를 선택하세요. 체크 해제하면 해당 메시지가 리포트에서 제외됩니다.</p>
+              <div className="report-preview-controls">
+                <button className="btn-ghost-sm" onClick={() => { const all = {}; messages.forEach((_, i) => { all[i] = true; }); setReportInclude(all); }}>전체 선택</button>
+                <button className="btn-ghost-sm" onClick={() => setReportInclude({})}>전체 해제</button>
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>{Object.values(reportInclude).filter(Boolean).length}개 선택</span>
               </div>
-            )}
-          </div>
-        ))}
-        {loading && (
-          <div className="chat-bubble assistant">
-            <div className="chat-bubble-label">AI 컨설턴트</div>
-            <div className="chat-bubble-content chat-typing">
-              <span></span><span></span><span></span>
+              <div className="report-preview-list">
+                {messages.map((msg, i) => (
+                  <label key={i} className={`report-preview-item ${reportInclude[i] ? 'included' : ''}`}>
+                    <input type="checkbox" checked={!!reportInclude[i]} onChange={e => setReportInclude(prev => ({ ...prev, [i]: e.target.checked }))} />
+                    <span className={`preview-role ${msg.role}`}>{msg.role === 'user' ? '질문' : msg.isSystem ? '시스템' : 'AI'}</span>
+                    <span className="preview-text">{msg.content.slice(0, 100)}{msg.content.length > 100 ? '...' : ''}</span>
+                    {msg.edited && <span style={{ color: '#f59e0b', fontSize: 11 }}>[수정됨]</span>}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="report-preview-footer">
+              <button className="btn-primary" onClick={generateReport}>PDF 리포트 생성 ({Object.values(reportInclude).filter(Boolean).length}개 메시지)</button>
             </div>
           </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      <div className="chat-input-area">
-        <textarea
-          ref={inputRef}
-          className="chat-input"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="생기부, 세특, 입시 전략 등 질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
-          rows={2}
-          disabled={loading}
-        />
-        <button
-          className="btn-primary chat-send-btn"
-          onClick={sendMessage}
-          disabled={loading || !input.trim()}
-        >
-          {loading ? '답변 중...' : '전송'}
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

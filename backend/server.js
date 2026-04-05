@@ -430,9 +430,34 @@ function getModelId(group, submodel) {
   return MODEL_IDS[submodel] || MODEL_IDS[group] || MODEL_IDS.claude;
 }
 
-// ── 채팅 엔드포인트 ──────────────────────────────────
+// ── 채팅 파일 업로드 (PDF 텍스트 추출 / 이미지 base64 변환) ──
+const chatUpload = upload.array('files', 5);
+app.post('/api/chat-upload', chatUpload, async (req, res) => {
+  try {
+    const files = req.files || [];
+    const results = [];
+    for (const file of files) {
+      if (file.mimetype === 'application/pdf') {
+        try {
+          const parsed = await pdfParse(file.buffer);
+          results.push({ name: file.originalname, type: 'pdf', text: parsed.text.slice(0, 8000) });
+        } catch (e) {
+          results.push({ name: file.originalname, type: 'pdf', text: `[PDF 추출 실패: ${e.message}]` });
+        }
+      } else if (file.mimetype.startsWith('image/')) {
+        const base64 = file.buffer.toString('base64');
+        results.push({ name: file.originalname, type: 'image', mimeType: file.mimetype, base64 });
+      }
+    }
+    res.json({ success: true, files: results });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── 채팅 엔드포인트 (파일 컨텍스트 + 분석 컨텍스트 지원) ──
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [] } = req.body;
+  const { message, history = [], analysisContext, fileContents, imageData } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
@@ -442,6 +467,25 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     const kb = await getCachedKnowledgeBase(null);
+
+    // 분석 컨텍스트가 있으면 시스템 프롬프트에 포함
+    let analysisSection = '';
+    if (analysisContext) {
+      const { studentData, results } = analysisContext;
+      analysisSection = `\n=== 현재 로드된 분석 데이터 ===
+학생: ${studentData?.name || '미입력'} / 전공: ${studentData?.major || '미입력'} / 목표: ${studentData?.targetUniv || '미입력'}
+${Object.entries(results || {}).filter(([_, v]) => v).map(([k, v]) => `[${k}] ${v.slice(0, 2000)}`).join('\n\n')}
+=== 분석 데이터 끝 ===
+사용자가 위 분석 데이터에 대해 질문하면 해당 내용을 참고하여 답변하라.`;
+    }
+
+    // 파일 컨텍스트 (PDF 텍스트)
+    let fileSection = '';
+    if (fileContents && fileContents.length > 0) {
+      fileSection = '\n=== 사용자가 첨부한 파일 내용 ===\n' +
+        fileContents.map(f => `[${f.name}]\n${f.text}`).join('\n\n') +
+        '\n=== 첨부 파일 끝 ===\n위 파일 내용을 참고하여 답변하라.';
+    }
 
     const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
 15년 이상의 학생부종합전형 컨설팅 경험을 보유하고 있으며 서울대·연세대·고려대 합격자를 다수 배출했습니다.
@@ -463,9 +507,12 @@ ${kb.대입정책 || '(자료 없음)'}
 ${kb.대학별전형 || '(자료 없음)'}
 
 === 합격자 사례 ===
-${kb.합격자사례 || '(자료 없음)'}`;
+${kb.합격자사례 || '(자료 없음)'}${analysisSection}${fileSection}`;
 
     let reply;
+
+    // 이미지가 포함된 경우 멀티모달 메시지 구성
+    const hasImages = imageData && imageData.length > 0;
 
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -482,16 +529,25 @@ ${kb.합격자사례 || '(자료 없음)'}`;
           ...chatHistory,
         ],
       });
-      const result = await chat.sendMessage(message);
+      const parts = [{ text: message }];
+      if (hasImages) {
+        for (const img of imageData) {
+          parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+        }
+      }
+      const result = await chat.sendMessage(parts);
       reply = result.response.text();
 
     } else if (aiModel === 'gpt') {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
+      const userContent = hasImages
+        ? [{ type: 'text', text: message }, ...imageData.map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } }))]
+        : message;
       const messages = [
         { role: 'system', content: systemPrompt },
         ...history.map(h => ({ role: h.role, content: h.content })),
-        { role: 'user', content: message },
+        { role: 'user', content: userContent },
       ];
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel),
@@ -503,9 +559,12 @@ ${kb.합격자사례 || '(자료 없음)'}`;
     } else {
       const Anthropic = (await import('@anthropic-ai/sdk')).default;
       const client = new Anthropic({ apiKey });
+      const userContent = hasImages
+        ? [...imageData.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.base64 } })), { type: 'text', text: message }]
+        : message;
       const messages = [
         ...history.map(h => ({ role: h.role, content: h.content })),
-        { role: 'user', content: message },
+        { role: 'user', content: userContent },
       ];
       const response = await client.messages.create({
         model: getModelId('claude', submodel),

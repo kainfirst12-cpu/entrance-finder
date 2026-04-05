@@ -254,7 +254,7 @@ export default function App() {
           />
         )}
         {view === 'chat' && (
-          <ChatInterface getActiveKey={getActiveKey} selectedModel={selectedModel} />
+          <ChatInterface getActiveKey={getActiveKey} selectedModel={selectedModel} analysisData={analysisData} />
         )}
         {view === 'settings' && (
           <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />

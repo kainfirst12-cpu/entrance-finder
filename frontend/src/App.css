@@ -1505,6 +1505,224 @@ body {
 }
 .btn-print-html-sm:hover { opacity: 0.85; }
 
+/* ── 채팅: 분석 컨텍스트 패널 ──────────────────── */
+.chat-context-panel {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+  overflow-y: auto;
+  max-height: calc(100vh - 40px);
+}
+.context-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.context-panel-header strong { font-size: 14px; color: var(--text); }
+.context-student-info {
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
+.context-stages { display: flex; flex-direction: column; gap: 4px; }
+.context-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.context-stage-item.disabled { opacity: 0.4; }
+.context-stage-item .stage-num-badge {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
+}
+.context-stage-item .stage-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-stage-item .stage-title:hover { color: var(--accent); }
+.stage-actions {
+  display: flex; gap: 2px;
+}
+.stage-actions button, .stage-actions label {
+  background: none; border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px;
+  font-size: 11px; cursor: pointer; color: var(--text2);
+}
+.stage-actions button:hover, .stage-actions label:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── 채팅: 파일 첨부 버튼 ──────────────────── */
+.chat-file-btn {
+  width: 40px; height: 40px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.chat-file-btn:hover { border-color: var(--accent); color: var(--accent); }
+.chat-file-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── 채팅: 첨부 파일 미리보기 ──────────────── */
+.chat-attached-files {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.attached-file-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+}
+.attached-thumb { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; }
+.attached-file-icon {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.attached-file-name { color: var(--text); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attached-file-remove {
+  background: none; border: none; color: var(--text3); cursor: pointer;
+  font-size: 14px; padding: 0 2px;
+}
+.attached-file-remove:hover { color: #ef4444; }
+
+/* ── 채팅: 메시지 편집 ────────────────────── */
+.chat-edit-area { margin-top: 8px; }
+.chat-edit-textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px;
+  font-size: 13px;
+  font-family: 'Noto Sans KR', sans-serif;
+  line-height: 1.6;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.chat-edit-actions { display: flex; gap: 6px; margin-top: 6px; }
+.btn-save-sm {
+  padding: 4px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-ghost-sm {
+  padding: 4px 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text2);
+}
+.btn-ghost-sm:hover { border-color: var(--text2); }
+
+/* ── 채팅: 시스템 메시지 ──────────────────── */
+.chat-bubble.system-msg {
+  align-self: center;
+  max-width: 90%;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 13px;
+}
+.chat-bubble.system-msg .chat-bubble-label { color: #15803d; }
+
+/* ── 리포트 미리보기 모달 ─────────────────── */
+.report-preview-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.report-preview-modal {
+  background: var(--bg);
+  border-radius: 12px;
+  width: 600px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.report-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.report-preview-header h3 { font-size: 16px; margin: 0; color: var(--text); }
+.report-preview-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.report-preview-controls { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.report-preview-list { display: flex; flex-direction: column; gap: 4px; }
+.report-preview-item {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.1s;
+}
+.report-preview-item.included { background: #eff6ff; border-color: #93c5fd; }
+.report-preview-item input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+.preview-role {
+  font-size: 11px; font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.preview-role.user { background: #dbeafe; color: #2563eb; }
+.preview-role.assistant { background: #f1f5f9; color: #475569; }
+.preview-text { color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-preview-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* ── AI 모델 배지 (인라인) ───────────────────── */
 .model-badge-inline {
   display: inline-block;
