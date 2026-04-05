@@ -99,12 +99,9 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
 
   const modelLabels = { claude: 'Claude', 'claude-opus': 'Claude Opus', gemini: 'Gemini', 'gemini-pro': 'Gemini Pro', gpt: 'GPT-4o', 'gpt-mini': 'GPT-4o Mini' };
 
-  // ── 파일 첨부 ──────────────────────────────────
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
+  // ── 파일 처리 (공통) ──────────────────────────────
+  const processFiles = async (files) => {
     if (!files.length) return;
-    e.target.value = '';
-
     setUploadingFiles(true);
     const newFiles = [];
 
@@ -114,7 +111,6 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
       const isJson = file.name.endsWith('.json');
 
       if (isJson) {
-        // JSON 파일은 분석 컨텍스트로 로드
         try {
           const text = await file.text();
           const data = JSON.parse(text);
@@ -138,9 +134,8 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
       if (isImage) {
         const base64 = await fileToBase64(file);
         const preview = URL.createObjectURL(file);
-        newFiles.push({ name: file.name, type: 'image', mimeType: file.type, base64, preview });
+        newFiles.push({ name: file.name || `image_${Date.now()}.png`, type: 'image', mimeType: file.type || 'image/png', base64, preview });
       } else if (isPdf) {
-        // PDF는 서버로 보내서 텍스트 추출
         try {
           const formData = new FormData();
           formData.append('files', file);
@@ -164,6 +159,41 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
       setAttachedFiles(prev => [...prev, ...newFiles]);
     }
     setUploadingFiles(false);
+  };
+
+  // 파일 선택 (input)
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    processFiles(files);
+  };
+
+  // Ctrl+V 붙여넣기 (이미지 캡쳐)
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files = [];
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      processFiles(files);
+    }
+  };
+
+  // 드래그앤드롭
+  const [dragging, setDragging] = useState(false);
+  const handleDragOver = (e) => { e.preventDefault(); setDragging(true); };
+  const handleDragLeave = () => setDragging(false);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) processFiles(files);
   };
 
   const fileToBase64 = (file) => new Promise((resolve) => {
@@ -497,7 +527,8 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
       )}
 
       {/* 메인 채팅 영역 */}
-      <div className="chat-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div className={`chat-main ${dragging ? 'drag-over' : ''}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}
+        onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
         {/* 헤더 */}
         <div className="chat-header">
           <h2>입시 상담 채팅</h2>
@@ -607,7 +638,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
           <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.json" multiple style={{ display: 'none' }} onChange={handleFileSelect} />
 
           <textarea ref={inputRef} className="chat-input" value={input} onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown} placeholder="질문을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈) | + 버튼으로 파일 첨부" rows={2} disabled={loading} />
+            onKeyDown={handleKeyDown} onPaste={handlePaste} placeholder="질문을 입력하세요... (Enter 전송, Shift+Enter 줄바꿈) | Ctrl+V로 이미지 붙여넣기 | 파일 드래그앤드롭" rows={2} disabled={loading} />
 
           <button className="btn-primary chat-send-btn" onClick={sendMessage} disabled={loading || (!input.trim() && attachedFiles.length === 0)}>
             {loading ? '답변 중...' : '전송'}
