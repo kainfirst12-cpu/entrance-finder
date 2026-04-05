@@ -1342,20 +1342,33 @@ body {
 }
 
 .chat-copy-btn {
-  background: none;
-  border: 1px solid rgba(255,255,255,0.15);
-  color: rgba(255,255,255,0.4);
+  background: var(--surface, #f8f9fa);
+  border: 1px solid var(--border, #d1d5db);
+  color: var(--text2, #64748b);
   font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
   cursor: pointer;
   margin-top: 4px;
   align-self: flex-start;
-  transition: all 0.2s;
+  transition: all 0.15s;
+  font-family: inherit;
+  font-weight: 500;
 }
 .chat-copy-btn:hover {
-  color: rgba(255,255,255,0.8);
+  color: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  background: var(--accent-bg, #eff6ff);
+}
+.chat-bubble.user .chat-copy-btn {
+  background: rgba(255,255,255,0.15);
   border-color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.8);
+}
+.chat-bubble.user .chat-copy-btn:hover {
+  background: rgba(255,255,255,0.25);
+  border-color: rgba(255,255,255,0.5);
+  color: #fff;
 }
 
 /* 채팅 버블 액션 (복사 + 검증) */
