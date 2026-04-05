@@ -425,10 +425,11 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 .print-bar button:hover{background:#1d4ed8}
 .print-bar .close-btn{background:transparent;border:1px solid rgba(255,255,255,0.3);padding:8px 16px}
 .report{max-width:800px;margin:70px auto 60px;padding:0 24px}
-.cover{background:#1a2744;color:#fff;padding:40px 44px;border-radius:12px;margin-bottom:32px;page-break-after:always}
-.cover-logo{font-size:11px;letter-spacing:0.2em;color:rgba(255,255,255,0.45);margin-bottom:12px;text-transform:uppercase}
-.cover-title{font-size:22px;font-weight:700;margin-bottom:20px;line-height:1.4}
-.cover-info{font-size:14px;color:rgba(255,255,255,0.7);line-height:1.8}
+.cover{background:#1a2744;color:#fff;padding:24px 32px;border-radius:10px;margin-bottom:24px;display:flex;align-items:center;gap:24px}
+.cover-left{flex:1}
+.cover-logo{font-size:10px;letter-spacing:0.2em;color:rgba(255,255,255,0.4);margin-bottom:4px;text-transform:uppercase}
+.cover-title{font-size:18px;font-weight:700;margin-bottom:0;line-height:1.3}
+.cover-info{font-size:12px;color:rgba(255,255,255,0.65);line-height:1.7;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}
 .cover-info strong{color:#fff}
 .messages{display:flex;flex-direction:column;gap:20px}
 .msg{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;page-break-inside:avoid}
@@ -437,12 +438,12 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 .msg.ai .msg-label{background:#f8f9fa;color:#1a2744}
 .msg-content{padding:16px 20px;font-size:13px;line-height:1.9;white-space:pre-wrap;word-break:break-word;color:#333}
 .report-footer{text-align:center;padding:24px 0;font-size:11px;color:#999;border-top:1px solid #e5e7eb;margin-top:24px}
-@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 0}.msg{break-inside:avoid}body{font-size:12px}}
+@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 24px;padding:20px 32px}.msg{break-inside:avoid}body{font-size:12px}}
 @page{size:A4;margin:20mm 15mm}
 </style></head><body>
 <div class="print-bar"><span>리포트가 준비되었습니다.</span><button onclick="window.print()">PDF로 인쇄 / 저장</button><button class="close-btn" onclick="window.close()">닫기</button></div>
 <div class="report">
-<div class="cover"><div class="cover-logo">PATHFINDER EDU</div><div class="cover-title">입시 상담 리포트</div>
+<div class="cover"><div class="cover-left"><div class="cover-logo">PATHFINDER EDU</div><div class="cover-title">입시 상담 리포트</div></div>
 <div class="cover-info">${studentInfo}<strong>AI 모델:</strong> ${modelLabel}<br><strong>상담일:</strong> ${today}<br><strong>메시지:</strong> ${includedMessages.length}건</div></div>
 <div class="messages">${messagesHTML}</div>
 <div class="report-footer">패스파인더 에듀 &middot; 입시-Finder &copy; ${new Date().getFullYear()} &mdash; ${today} 생성</div>
