@@ -202,7 +202,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
     // step 1(사례매칭)만 이미지 포함, 나머지 텍스트만 (타임아웃 방지)
     const docs = s.step === 1 ? pdfDocuments : pdfDocsLight;
-    results[s.key] = await callGPT(systemPrompt, s.prompt, 8000, apiKey, submodel, docs);
+    results[s.key] = await callGPT(systemPrompt, s.prompt, 16000, apiKey, submodel, docs);
   }
 
   onProgress?.({ step: 8, label: '분석 완료!' });

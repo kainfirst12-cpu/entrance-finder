@@ -258,7 +258,7 @@ ${pdfDocuments.length ? `첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')
 
 **행동특성 및 종합의견:** 핵심 키워드
 `;
-  return callClaude(systemPrompt, prompt, 6000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 16000, pdfDocuments, apiKey);
 };
 
 
@@ -316,7 +316,7 @@ ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})�
 | 자기주도성 | ... | ... | ... |
 | 성장 서사 | ... | ... | ... |
 `;
-  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 export const step2_activity = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -364,7 +364,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽�
 - 스토리 일관성: X/10
 - 강점 / 약점 / 개선 방향을 각각 서술하라
 `;
-  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 export const step3_career = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -410,7 +410,7 @@ ${pdfDocuments.length ? `첨부 PDF에서 진로 관련 내용을 직접 읽고 
 2. 현황 / 목표 / 구체적 보완 방법
 3. 현황 / 목표 / 구체적 보완 방법
 `;
-  return callClaude(systemPrompt, prompt, 5000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pdfDocuments, apiKey) => {
@@ -460,7 +460,7 @@ export const step4_strategy = async (systemPrompt, studentData, prevAnalysis, pd
 | 안정 1 | ... | ... | XX% | ... |
 | 안정 2 | ... | ... | XX% | ... |
 `;
-  return callClaude(systemPrompt, prompt, 6000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 16000, pdfDocuments, apiKey);
 };
 
 export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -495,7 +495,7 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 |------|------------|------------|------------|
 | ... | ... | ... | ... |
 `;
-  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
@@ -525,7 +525,7 @@ ${pdfDocuments.length ? `생기부 PDF 기반으로 작성하십시오.` : ''}
 | 활동/독서 | 내용 | 시기 | 세특 연계 |
 |----------|------|------|----------|
 `;
-  return callClaude(systemPrompt, prompt, 3000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 export const step7_dashboard = async (systemPrompt, studentData, allAnalysis, pdfDocuments, apiKey) => {
@@ -583,7 +583,7 @@ ${studentData.name} 입시 컨설팅 종합 리포트
 
 [필수] 7.4 맺음말까지 반드시 끝까지 작성하십시오. 중간에 끊기거나 생략하지 마십시오.
 `;
-  return callClaude(systemPrompt, prompt, 4000, pdfDocuments, apiKey);
+  return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────
