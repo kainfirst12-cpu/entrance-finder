@@ -1342,32 +1342,32 @@ body {
 }
 
 .chat-copy-btn {
-  background: var(--surface, #f8f9fa);
-  border: 1px solid var(--border, #d1d5db);
-  color: var(--text2, #64748b);
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
   font-size: 11px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 6px;
   cursor: pointer;
   margin-top: 4px;
   align-self: flex-start;
   transition: all 0.15s;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
 }
 .chat-copy-btn:hover {
-  color: var(--accent, #2563eb);
-  border-color: var(--accent, #2563eb);
-  background: var(--accent-bg, #eff6ff);
+  color: #2563eb;
+  border-color: #2563eb;
+  background: #eff6ff;
 }
 .chat-bubble.user .chat-copy-btn {
-  background: rgba(255,255,255,0.15);
-  border-color: rgba(255,255,255,0.3);
-  color: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.2);
+  border-color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.9);
 }
 .chat-bubble.user .chat-copy-btn:hover {
-  background: rgba(255,255,255,0.25);
-  border-color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.3);
+  border-color: rgba(255,255,255,0.6);
   color: #fff;
 }
 
