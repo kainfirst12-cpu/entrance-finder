@@ -1422,6 +1422,9 @@ body {
   line-height: 1.6;
   font-size: 14px;
 }
+.chat-bubble:has(.chat-edit-area) {
+  max-width: 100%;
+}
 .chat-bubble.user {
   align-self: flex-end;
   background: var(--accent);
@@ -1651,13 +1654,14 @@ body {
 .chat-edit-area { margin-top: 8px; }
 .chat-edit-textarea {
   width: 100%;
+  min-height: 400px;
   resize: vertical;
-  border: 1px solid var(--accent);
+  border: 2px solid var(--accent);
   border-radius: var(--radius);
-  padding: 10px;
-  font-size: 13px;
+  padding: 14px;
+  font-size: 14px;
   font-family: 'Noto Sans KR', sans-serif;
-  line-height: 1.6;
+  line-height: 1.7;
   background: var(--bg);
   color: var(--text);
   outline: none;
