@@ -581,7 +581,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
         <div className="chat-messages">
           {messages.map((msg, i) => (
             <div key={i} className={`chat-bubble ${msg.role} ${msg.isVerify ? 'verify' : ''} ${msg.isSystem ? 'system-msg' : ''}`}
-              style={editingIdx === i ? { maxWidth: '100%', alignSelf: 'stretch' } : undefined}>
+              style={editingIdx === i ? { maxWidth: '100%', width: '100%', alignSelf: 'stretch' } : undefined}>
               <div className="chat-bubble-label">
                 {msg.role === 'user' ? '나' : msg.isVerify ? `${MODEL_CFG[msg.verifyModel]?.label || 'AI'} 교차 검증` : msg.isSystem ? '시스템' : 'AI 컨설턴트'}
                 {msg.edited && <span style={{ marginLeft: 6, color: '#f59e0b', fontSize: 11 }}>[수정됨]</span>}

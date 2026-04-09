@@ -1424,8 +1424,9 @@ body {
 }
 .chat-bubble.editing,
 .chat-bubble:has(.chat-edit-area) {
-  max-width: 100%;
-  align-self: stretch;
+  max-width: 100% !important;
+  width: 100% !important;
+  align-self: stretch !important;
 }
 .chat-bubble.user {
   align-self: flex-end;
