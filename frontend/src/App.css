@@ -1422,8 +1422,10 @@ body {
   line-height: 1.6;
   font-size: 14px;
 }
+.chat-bubble.editing,
 .chat-bubble:has(.chat-edit-area) {
   max-width: 100%;
+  align-self: stretch;
 }
 .chat-bubble.user {
   align-self: flex-end;
