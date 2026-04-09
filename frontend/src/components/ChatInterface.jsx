@@ -454,16 +454,16 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 .print-bar button:hover{background:#1d4ed8}
 .print-bar .close-btn{background:transparent;border:1px solid rgba(255,255,255,0.3);padding:8px 16px}
 .report{max-width:800px;margin:70px auto 60px;padding:0 24px}
-.cover{background:linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);color:#fff;padding:48px 44px 40px;border-radius:0;margin:0 -24px 32px;page-break-after:always;position:relative;overflow:hidden;min-height:280px}
+.cover{background:linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);color:#fff;padding:28px 32px 24px;border-radius:10px;margin:0 0 24px;position:relative;overflow:hidden}
 .cover::before{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;border:1px solid rgba(255,255,255,0.06);border-radius:50%}
 .cover::after{content:'';position:absolute;bottom:-60px;left:-30px;width:260px;height:260px;border:1px solid rgba(255,255,255,0.04);border-radius:50%}
-.cover-brand{font-size:10px;letter-spacing:0.25em;color:rgba(255,255,255,0.35);text-transform:uppercase;margin-bottom:6px}
-.cover-title{font-size:26px;font-weight:700;line-height:1.3;margin-bottom:6px}
-.cover-subtitle{font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:28px;font-weight:400}
-.cover-divider{width:48px;height:2px;background:rgba(255,255,255,0.2);margin-bottom:24px}
-.cover-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;font-size:13px;color:rgba(255,255,255,0.6);line-height:1.7}
+.cover-brand{font-size:9px;letter-spacing:0.2em;color:rgba(255,255,255,0.3);text-transform:uppercase;margin-bottom:2px}
+.cover-title{font-size:18px;font-weight:700;line-height:1.3;margin-bottom:2px}
+.cover-subtitle{font-size:12px;color:rgba(255,255,255,0.45);margin-bottom:14px;font-weight:400}
+.cover-divider{width:36px;height:2px;background:rgba(255,255,255,0.15);margin-bottom:12px}
+.cover-meta{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:11px;color:rgba(255,255,255,0.55);line-height:1.6}
 .cover-meta strong{color:#fff;font-weight:600}
-.cover-footer{position:absolute;bottom:20px;right:44px;font-size:10px;color:rgba(255,255,255,0.25);letter-spacing:0.1em}
+.cover-footer{display:none}
 .messages{display:flex;flex-direction:column;gap:20px}
 .msg{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;page-break-inside:avoid}
 .msg-label{padding:10px 18px;font-size:12px;font-weight:600;border-bottom:1px solid #e5e7eb}
@@ -471,7 +471,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 .msg.ai .msg-label{background:#f8fafc;color:#0f172a}
 .msg-content{padding:16px 20px;font-size:13px;line-height:1.9;white-space:pre-wrap;word-break:break-word;color:#333}
 .report-footer{text-align:center;padding:24px 0;font-size:11px;color:#999;border-top:1px solid #e5e7eb;margin-top:24px}
-@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{margin:0 -24px 0;min-height:auto;padding:40px 44px 36px}.msg{break-inside:avoid}body{font-size:12px}}
+@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 20px}.msg{break-inside:avoid}body{font-size:12px}}
 @page{size:A4;margin:20mm 15mm}
 </style></head><body>
 <div class="print-bar"><span>리포트가 준비되었습니다.</span><button onclick="window.print()">PDF로 인쇄 / 저장</button><button class="close-btn" onclick="window.close()">닫기</button></div>
