@@ -465,13 +465,13 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 .cover-meta strong{color:#fff;font-weight:600}
 .cover-footer{display:none}
 .messages{display:flex;flex-direction:column;gap:20px}
-.msg{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;page-break-inside:avoid}
+.msg{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden}
 .msg-label{padding:10px 18px;font-size:12px;font-weight:600;border-bottom:1px solid #e5e7eb}
 .msg.user .msg-label{background:#eff6ff;color:#2563eb}
 .msg.ai .msg-label{background:#f8fafc;color:#0f172a}
 .msg-content{padding:16px 20px;font-size:13px;line-height:1.9;white-space:pre-wrap;word-break:break-word;color:#333}
 .report-footer{text-align:center;padding:24px 0;font-size:11px;color:#999;border-top:1px solid #e5e7eb;margin-top:24px}
-@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 20px}.msg{break-inside:avoid}body{font-size:12px}}
+@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 16px}body{font-size:12px}}
 @page{size:A4;margin:20mm 15mm}
 </style></head><body>
 <div class="print-bar"><span>리포트가 준비되었습니다.</span><button onclick="window.print()">PDF로 인쇄 / 저장</button><button class="close-btn" onclick="window.close()">닫기</button></div>
