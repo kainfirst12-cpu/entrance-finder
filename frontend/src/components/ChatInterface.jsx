@@ -428,21 +428,20 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
 
   const generateReport = () => {
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
-    const modelLabel = modelLabels[selectedModel] || 'AI';
     const includedMessages = messages.filter((_, i) => reportInclude[i]);
 
     const messagesHTML = includedMessages.map((msg) => {
       const content = chatMdToHtml(msg.content);
       const isUser = msg.role === 'user';
       return `<div class="msg ${isUser ? 'user' : 'ai'}">
-        <div class="msg-label">${isUser ? '질문' : `AI 컨설턴트 (${modelLabel})`}${msg.edited ? ' <span style="color:#f59e0b;font-size:11px;">[수정됨]</span>' : ''}</div>
+        <div class="msg-label">${isUser ? '질문' : '패스파인더 입시분석팀'}${msg.edited ? ' <span style="color:#f59e0b;font-size:11px;">[수정됨]</span>' : ''}</div>
         <div class="msg-content">${content}</div>
       </div>`;
     }).join('');
 
-    const studentInfo = analysisContext?.studentData
-      ? `<strong>학생:</strong> ${analysisContext.studentData.name || '-'}<br><strong>전공:</strong> ${analysisContext.studentData.major || '-'}<br><strong>목표:</strong> ${analysisContext.studentData.targetUniv || '-'}<br>`
-      : '';
+    const studentName = analysisContext?.studentData?.name || '';
+    const studentMajor = analysisContext?.studentData?.major || '';
+    const studentTarget = analysisContext?.studentData?.targetUniv || '';
 
     const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
 <title>입시 상담 리포트 - 패스파인더 에듀</title>
@@ -455,28 +454,45 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 .print-bar button:hover{background:#1d4ed8}
 .print-bar .close-btn{background:transparent;border:1px solid rgba(255,255,255,0.3);padding:8px 16px}
 .report{max-width:800px;margin:70px auto 60px;padding:0 24px}
-.cover{background:#1a2744;color:#fff;padding:24px 32px;border-radius:10px;margin-bottom:24px;display:flex;align-items:center;gap:24px}
-.cover-left{flex:1}
-.cover-logo{font-size:10px;letter-spacing:0.2em;color:rgba(255,255,255,0.4);margin-bottom:4px;text-transform:uppercase}
-.cover-title{font-size:18px;font-weight:700;margin-bottom:0;line-height:1.3}
-.cover-info{font-size:12px;color:rgba(255,255,255,0.65);line-height:1.7;display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}
-.cover-info strong{color:#fff}
+.cover{background:linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);color:#fff;padding:48px 44px 40px;border-radius:0;margin:0 -24px 32px;page-break-after:always;position:relative;overflow:hidden;min-height:280px}
+.cover::before{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;border:1px solid rgba(255,255,255,0.06);border-radius:50%}
+.cover::after{content:'';position:absolute;bottom:-60px;left:-30px;width:260px;height:260px;border:1px solid rgba(255,255,255,0.04);border-radius:50%}
+.cover-brand{font-size:10px;letter-spacing:0.25em;color:rgba(255,255,255,0.35);text-transform:uppercase;margin-bottom:6px}
+.cover-title{font-size:26px;font-weight:700;line-height:1.3;margin-bottom:6px}
+.cover-subtitle{font-size:14px;color:rgba(255,255,255,0.5);margin-bottom:28px;font-weight:400}
+.cover-divider{width:48px;height:2px;background:rgba(255,255,255,0.2);margin-bottom:24px}
+.cover-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px;font-size:13px;color:rgba(255,255,255,0.6);line-height:1.7}
+.cover-meta strong{color:#fff;font-weight:600}
+.cover-footer{position:absolute;bottom:20px;right:44px;font-size:10px;color:rgba(255,255,255,0.25);letter-spacing:0.1em}
 .messages{display:flex;flex-direction:column;gap:20px}
 .msg{border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;page-break-inside:avoid}
 .msg-label{padding:10px 18px;font-size:12px;font-weight:600;border-bottom:1px solid #e5e7eb}
 .msg.user .msg-label{background:#eff6ff;color:#2563eb}
-.msg.ai .msg-label{background:#f8f9fa;color:#1a2744}
+.msg.ai .msg-label{background:#f8fafc;color:#0f172a}
 .msg-content{padding:16px 20px;font-size:13px;line-height:1.9;white-space:pre-wrap;word-break:break-word;color:#333}
 .report-footer{text-align:center;padding:24px 0;font-size:11px;color:#999;border-top:1px solid #e5e7eb;margin-top:24px}
-@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{border-radius:0;margin:0 -24px 24px;padding:20px 32px}.msg{break-inside:avoid}body{font-size:12px}}
+@media print{.print-bar{display:none!important}.report{margin-top:0}.cover{margin:0 -24px 0;min-height:auto;padding:40px 44px 36px}.msg{break-inside:avoid}body{font-size:12px}}
 @page{size:A4;margin:20mm 15mm}
 </style></head><body>
 <div class="print-bar"><span>리포트가 준비되었습니다.</span><button onclick="window.print()">PDF로 인쇄 / 저장</button><button class="close-btn" onclick="window.close()">닫기</button></div>
 <div class="report">
-<div class="cover"><div class="cover-left"><div class="cover-logo">PATHFINDER EDU</div><div class="cover-title">입시 상담 리포트</div></div>
-<div class="cover-info">${studentInfo}<strong>AI 모델:</strong> ${modelLabel}<br><strong>상담일:</strong> ${today}<br><strong>메시지:</strong> ${includedMessages.length}건</div></div>
+<div class="cover">
+  <div class="cover-brand">PATHFINDER EDU</div>
+  <div class="cover-title">${studentName ? `${studentName} 학생` : '입시'} 상담 분석 리포트</div>
+  <div class="cover-subtitle">패스파인더 입시분석팀 &middot; ${today}</div>
+  <div class="cover-divider"></div>
+  <div class="cover-meta">
+    ${studentName ? `<div><strong>대상 학생</strong> ${studentName}</div>` : ''}
+    ${studentMajor ? `<div><strong>희망 전공</strong> ${studentMajor}</div>` : ''}
+    ${studentTarget ? `<div><strong>목표 대학</strong> ${studentTarget}</div>` : ''}
+    <div><strong>작성일</strong> ${today}</div>
+    <div><strong>분석 항목</strong> ${includedMessages.length}건</div>
+    <div><strong>작성</strong> 패스파인더 입시분석팀</div>
+  </div>
+  <div class="cover-footer">PATHFINDER ADMISSIONS CONSULTING</div>
+</div>
 <div class="messages">${messagesHTML}</div>
-<div class="report-footer">패스파인더 에듀 &middot; 입시-Finder &copy; ${new Date().getFullYear()} &mdash; ${today} 생성</div>
+<div class="report-footer">패스파인더 에듀 &middot; 입시분석팀 &copy; ${new Date().getFullYear()} &mdash; 본 리포트는 패스파인더 입시분석팀이 작성하였습니다.</div>
 </div></body></html>`;
 
     const w = window.open('', '_blank');
