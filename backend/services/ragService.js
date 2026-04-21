@@ -1,15 +1,16 @@
 // services/ragService.js — 벡터 기반 RAG 지식베이스 검색
 // 로컬 개발: ipsi-finder의 vectors.json 공유
-// 프로덕션 (Railway): Google Drive에서 다운로드 → /tmp에 캐시
+// 프로덕션 (Railway): GitHub Releases에서 다운로드 → /tmp에 캐시
 import fs from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
 import OpenAI from 'openai';
-import { downloadFileById } from './driveService.js';
 
 const LOCAL_VECTORS_PATH =
   'C:/Users/kainf/OneDrive/바탕 화면/ipsi-finder/data/vectors.json';
 const PRODUCTION_CACHE_PATH = path.join(tmpdir(), 'ipsi-finder-vectors.json');
+const DEFAULT_VECTORS_URL =
+  'https://github.com/kainfirst12-cpu/entrance-finder/releases/download/v1.0-vectors/vectors.json';
 const EMBED_MODEL = 'text-embedding-3-small';
 
 let vectorsCache = null;
@@ -41,23 +42,28 @@ async function ensureVectorsFile() {
     return PRODUCTION_CACHE_PATH;
   }
 
-  // 4. Drive에서 다운로드
-  const driveFileId = process.env.VECTORS_DRIVE_FILE_ID;
-  if (!driveFileId) {
-    throw new Error(
-      'vectors.json 없음 — 로컬 경로 확인 또는 VECTORS_DRIVE_FILE_ID env 설정 필요'
-    );
-  }
-
-  console.log(`[RAG] Drive에서 벡터 다운로드 중... (fileId: ${driveFileId})`);
+  // 4. URL에서 다운로드 (기본: GitHub Releases)
+  const url = process.env.VECTORS_URL || DEFAULT_VECTORS_URL;
+  console.log(`[RAG] URL에서 벡터 다운로드 중... ${url}`);
   const t0 = Date.now();
-  await downloadFileById(driveFileId, PRODUCTION_CACHE_PATH);
+  await downloadFromUrl(url, PRODUCTION_CACHE_PATH);
   const sizeMB = (fs.statSync(PRODUCTION_CACHE_PATH).size / 1024 / 1024).toFixed(1);
   console.log(
     `[RAG] 다운로드 완료: ${PRODUCTION_CACHE_PATH} (${sizeMB}MB, ${Date.now() - t0}ms)`
   );
   resolvedPath = PRODUCTION_CACHE_PATH;
   return PRODUCTION_CACHE_PATH;
+}
+
+async function downloadFromUrl(url, destPath) {
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) {
+    throw new Error(`벡터 다운로드 실패 ${res.status}: ${url}`);
+  }
+  const { Readable } = await import('stream');
+  const { pipeline } = await import('stream/promises');
+  const ws = fs.createWriteStream(destPath);
+  await pipeline(Readable.fromWeb(res.body), ws);
 }
 
 async function loadVectors() {
@@ -159,10 +165,10 @@ export async function loadKnowledgeBaseRAG(studentData, opts = {}) {
   };
 }
 
-// health check - 로컬이든 Drive든 사용 가능한지
+// health check - 로컬 또는 URL 다운로드 가능한지
 export function ragAvailable() {
   if (fs.existsSync(LOCAL_VECTORS_PATH)) return true;
   if (fs.existsSync(PRODUCTION_CACHE_PATH)) return true;
   if (process.env.VECTORS_PATH && fs.existsSync(process.env.VECTORS_PATH)) return true;
-  return !!process.env.VECTORS_DRIVE_FILE_ID;
+  return true; // URL 다운로드 항상 가능 (기본값이 GitHub Releases)
 }
