@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
-
-const API_BASE = 'https://entrance-finder-production.up.railway.app';
+import { API_BASE } from '../apiBase';
 
 export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
   const [keys, setKeys] = useState({

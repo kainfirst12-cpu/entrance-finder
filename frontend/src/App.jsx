@@ -6,9 +6,8 @@ import AnalysisProgress from './components/AnalysisProgress';
 import AnalysisResult from './components/AnalysisResult';
 import StudentList from './components/StudentList';
 import ChatInterface from './components/ChatInterface';
+import { API_BASE } from './apiBase';
 import './App.css';
-
-const API_BASE = 'https://entrance-finder-production.up.railway.app';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn]   = useState(!!localStorage.getItem('ef_token'));

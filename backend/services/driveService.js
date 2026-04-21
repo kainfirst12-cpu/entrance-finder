@@ -83,6 +83,24 @@ function parsePrivateKey(raw) {
   return key;
 }
 
+export async function downloadFileById(fileId, destPath) {
+  const drive = await getDrive();
+  const res = await drive.files.get(
+    { fileId, alt: 'media' },
+    { responseType: 'stream' }
+  );
+  const { createWriteStream } = await import('fs');
+  await new Promise((resolve, reject) => {
+    const ws = createWriteStream(destPath);
+    res.data
+      .on('end', resolve)
+      .on('error', reject)
+      .pipe(ws)
+      .on('error', reject);
+  });
+  return destPath;
+}
+
 async function getDrive() {
   if (driveClient) return driveClient;
 

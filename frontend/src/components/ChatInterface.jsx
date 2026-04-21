@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-
-const API_BASE = 'https://entrance-finder-production.up.railway.app';
+import { API_BASE } from '../apiBase';
 
 const SECTION_MAP = [
   { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },

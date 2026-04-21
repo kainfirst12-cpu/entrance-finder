@@ -6,6 +6,44 @@ import { Client } from '@notionhq/client';
 const notion = new Client({ auth: process.env.NOTION_API_KEY });
 const DATABASE_ID = process.env.NOTION_DATABASE_ID;
 
+// ── Notion DB에서 학생 목록 조회 ──────────────────────
+export const listStudents = async () => {
+  const pages = [];
+  let cursor = undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: DATABASE_ID,
+      start_cursor: cursor,
+      page_size: 100,
+      sorts: [{ property: '분석일자', direction: 'descending' }],
+    });
+    pages.push(...res.results);
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+
+  return pages.map((p) => {
+    const props = p.properties || {};
+    const nameProp = props['학생 이름'];
+    const name =
+      nameProp?.title?.map((t) => t.plain_text).join('') || '(이름 없음)';
+    const targetUniv =
+      props['희망 대학']?.rich_text?.map((t) => t.plain_text).join('') || '';
+    const analysisDate = props['분석일자']?.date?.start || null;
+    const status = props['분석상태']?.select?.name || null;
+    const summary =
+      props['분석결과']?.rich_text?.map((t) => t.plain_text).join('') || '';
+    return {
+      id: p.id,
+      name,
+      targetUniv,
+      analysisDate,
+      status,
+      summary,
+      url: `https://notion.so/${p.id.replace(/-/g, '')}`,
+    };
+  });
+};
+
 // ── 학생 페이지 찾기 또는 생성 ────────────────────────
 const findOrCreateStudent = async (studentName) => {
   // 기존 DB에서 학생 찾기

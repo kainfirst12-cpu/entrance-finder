@@ -3,6 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import 'dotenv/config';
 import { loadKnowledgeBase, loadStudentFiles } from './services/driveService.js';
+import { loadKnowledgeBaseRAG, ragAvailable } from './services/ragService.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
@@ -746,27 +747,62 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   };
 
   try {
-    send({ type: 'progress', step: 0, label: 'Google Drive 지식베이스 로딩 중...', total: 9 });
+    const useRAG = ragAvailable();
+    send({
+      type: 'progress',
+      step: 0,
+      label: useRAG
+        ? 'RAG 벡터 검색으로 지식베이스 로딩 중...'
+        : 'Google Drive 지식베이스 로딩 중...',
+      total: 9,
+    });
 
-    // 전체 Drive 로딩을 20초 타임아웃으로 감싸기
     let knowledgeBase = { 대입정책: '', 대학별전형: '', 합격자사례: '' };
     let studentDriveFiles = '';
-    try {
-      const driveResult = await Promise.race([
-        Promise.all([
-          getCachedKnowledgeBase(studentData.major),
+
+    if (useRAG) {
+      // RAG: 벡터 검색으로 관련 청크만 추출 (1~3초)
+      try {
+        const [ragKb, driveStudent] = await Promise.all([
+          loadKnowledgeBaseRAG(studentData).catch(e => {
+            console.error('[Analyze] RAG 실패:', e.message);
+            return null;
+          }),
           loadStudentFiles(studentData.name).catch(e => {
             console.error('[Analyze] 학생파일 오류:', e.message);
             return '';
           }),
-        ]),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Drive 로딩 20초 초과')), 20000)),
-      ]);
-      knowledgeBase = driveResult[0];
-      studentDriveFiles = driveResult[1];
-    } catch (driveErr) {
-      console.error('[Analyze] Drive 로딩 실패, 빈 데이터로 진행:', driveErr.message);
-      if (kbCacheByField[studentData.major]?.data) knowledgeBase = kbCacheByField[studentData.major].data;
+        ]);
+        if (ragKb) {
+          knowledgeBase = ragKb;
+          console.log(`[Analyze] RAG 성공 — 청크 ${ragKb._meta?.chunksUsed}개 사용`);
+        } else {
+          // RAG 실패 시 Drive fallback
+          knowledgeBase = await getCachedKnowledgeBase(studentData.major);
+        }
+        studentDriveFiles = driveStudent;
+      } catch (e) {
+        console.error('[Analyze] RAG/Drive 모두 실패:', e.message);
+      }
+    } else {
+      // RAG 벡터 없을 때 기존 Drive 방식
+      try {
+        const driveResult = await Promise.race([
+          Promise.all([
+            getCachedKnowledgeBase(studentData.major),
+            loadStudentFiles(studentData.name).catch(e => {
+              console.error('[Analyze] 학생파일 오류:', e.message);
+              return '';
+            }),
+          ]),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Drive 로딩 20초 초과')), 20000)),
+        ]);
+        knowledgeBase = driveResult[0];
+        studentDriveFiles = driveResult[1];
+      } catch (driveErr) {
+        console.error('[Analyze] Drive 로딩 실패, 빈 데이터로 진행:', driveErr.message);
+        if (kbCacheByField[studentData.major]?.data) knowledgeBase = kbCacheByField[studentData.major].data;
+      }
     }
 
     // 합격자 사례가 부족하면 웹 검색으로 보완
@@ -926,7 +962,14 @@ app.post('/api/generate-pdf', async (req, res) => {
   }
 });
 app.get('/api/students', async (req, res) => {
-  res.json({ success: true, students: [] });
+  try {
+    const { listStudents } = await import('./services/notionService.js');
+    const students = await listStudents();
+    res.json({ success: true, students });
+  } catch (err) {
+    console.error('[/api/students] 오류:', err.message);
+    res.status(500).json({ success: false, error: err.message, students: [] });
+  }
 });
 app.post('/api/login', (req, res) => {
   const { password } = req.body;

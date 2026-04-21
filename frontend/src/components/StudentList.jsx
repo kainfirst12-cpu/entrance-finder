@@ -1,5 +1,6 @@
 // src/components/StudentList.jsx
 import { useState, useEffect } from 'react';
+import { API_BASE } from '../apiBase';
 
 const STATUS_COLOR = {
   '완료': 'green',
@@ -13,7 +14,7 @@ export default function StudentList({ onNewAnalysis }) {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetch(`https://entrance-finder-production.up.railway.app/api/students`)
+    fetch(`${API_BASE}/api/students`)
       .then((r) => r.json())
       .then((d) => {
         if (d.success) setStudents(d.students);

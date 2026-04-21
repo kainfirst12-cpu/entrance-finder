@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-const API_BASE = 'https://entrance-finder-production.up.railway.app';
+import { API_BASE } from '../apiBase';
 
 const MODEL_CONFIG = {
   claude:        { icon: '🔵', label: 'Claude Sonnet', color: '#7c6af7', group: 'claude' },
