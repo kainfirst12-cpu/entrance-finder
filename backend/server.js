@@ -206,17 +206,24 @@ ${kb.합격자사례 || '(자료 없음)'}`;
       ? `아래는 [${sectionKey}] 섹션의 기존 분석 결과와 검증 피드백입니다. 이 섹션만 개선하여 재작성해 주세요.\n기존 내용을 기본 골격으로 유지하고, 검증에서 지적된 부분만 수정/보완하라. 기존 내용을 삭제하거나 축소하지 마라.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`
       : `아래는 전체 분석 결과와 검증 피드백입니다.\n**핵심 규칙: 기존 분석의 모든 내용을 기본 골격으로 유지하라. 검증에서 지적된 부분만 수정/보완하고, 지적되지 않은 부분은 그대로 살려라. 기존 내용을 삭제/축소/생략하지 마라.**\n모든 섹션을 [N단계] 헤더와 함께 빠짐없이 출력하라.\n\n=== 기존 분석 ===\n${analysisText}\n\n=== 검증 피드백 ===\n${verifyText}`;
 
+    // 섹션 단일 재생성은 8K로 충분, 전체 재생성은 32K 필요 (8단계 × 평균 ~2K)
+    const refineMaxTokens = sectionKey ? 8000 : 32000;
+
     if (aiModel === 'gemini') {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
+      const model = genAI.getGenerativeModel({
+        model: getModelId('gemini', submodel || aiModel),
+        generationConfig: { maxOutputTokens: refineMaxTokens },
+      });
       const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
       reply = result.response.text();
     } else if (aiModel === 'gpt') {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
-        model: getModelId('gpt', submodel || aiModel), max_tokens: 8000,
+        model: getModelId('gpt', submodel || aiModel),
+        max_tokens: Math.min(refineMaxTokens, 16384),
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       });
       reply = response.choices[0].message.content;
@@ -224,7 +231,9 @@ ${kb.합격자사례 || '(자료 없음)'}`;
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
       const response = await client.messages.create({
-        model: getModelId('claude', submodel || aiModel), max_tokens: 8000, system: systemPrompt,
+        model: getModelId('claude', submodel || aiModel),
+        max_tokens: refineMaxTokens,
+        system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       });
       reply = response.content[0].text;

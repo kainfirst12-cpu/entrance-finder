@@ -793,6 +793,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
         }
 
         // 헤더 기반 섹션 분할
+        // 마지막 섹션은 응답이 잘렸을 가능성이 있어 검증 필요
         for (let i = 0; i < headers.length; i++) {
           const hdr = headers[i];
           const sectionDef = SECTION_MAP.find(s => s.num === hdr.num);
@@ -800,7 +801,22 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           const contentStart = hdr.index + hdr.fullMatch.length;
           const contentEnd = i + 1 < headers.length ? headers[i + 1].index : replyText.length;
           const content = replyText.slice(contentStart, contentEnd).trim();
-          if (content) refined[sectionDef.key] = content;
+
+          // 안전장치: 새 콘텐츠가 기존의 30% 미만이면 응답 잘림으로 간주하고 기존 유지
+          const existingContent = results?.[sectionDef.key] || '';
+          const isLastSection = i === headers.length - 1;
+          const tooShort =
+            existingContent.length > 200 &&
+            content.length < existingContent.length * 0.3;
+
+          if (!content) continue;
+          if (isLastSection && tooShort) {
+            console.warn(
+              `[refine] ${sectionDef.title} 섹션이 잘린 것으로 판단 (기존 ${existingContent.length}자 → 새 ${content.length}자) - 기존 유지`
+            );
+            continue;
+          }
+          refined[sectionDef.key] = content;
         }
 
         // 정규식 파싱 실패 시 기존 indexOf 방식 fallback
