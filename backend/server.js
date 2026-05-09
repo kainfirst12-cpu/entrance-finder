@@ -230,13 +230,14 @@ ${kb.합격자사례 || '(자료 없음)'}`;
     } else {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
-      const response = await client.messages.create({
+      const stream = client.messages.stream({
         model: getModelId('claude', submodel || aiModel),
         max_tokens: refineMaxTokens,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       });
-      reply = response.content[0].text;
+      const final = await stream.finalMessage();
+      reply = final.content.map(b => b.type === 'text' ? b.text : '').join('');
     }
 
     res.json({ success: true, reply });
@@ -327,11 +328,12 @@ app.post('/api/chat-edit', async (req, res) => {
     } else {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
-      const response = await client.messages.create({
+      const stream = client.messages.stream({
         model: getModelId('claude', submodel || aiModel), max_tokens: 16000, system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       });
-      reply = response.content[0].text;
+      const final = await stream.finalMessage();
+      reply = final.content.map(b => b.type === 'text' ? b.text : '').join('');
     }
 
     // 수정된 섹션 파싱 (마크다운 장식 허용: ##, **, 공백 등)

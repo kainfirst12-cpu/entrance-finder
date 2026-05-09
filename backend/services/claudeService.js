@@ -152,13 +152,14 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
   try {
     const messages = buildUserMessage(userPrompt, pdfDocuments, pdfText);
     console.log(`[callClaude] 1차 시도: document ${pdfDocuments.length}개 + 텍스트 ${pdfText.length}자`);
-    const response = await client.messages.create({
+    const stream = client.messages.stream({
       model: modelId,
       max_tokens: maxTokens,
       system: systemPrompt,
       messages,
     });
-    return response.content[0].text;
+    const final = await stream.finalMessage();
+    return final.content.map(b => b.type === 'text' ? b.text : '').join('');
   } catch (err) {
     console.error(`[callClaude] document 타입 실패 (${err.status || 'unknown'}):`, err.message);
 
@@ -166,13 +167,14 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
     try {
       console.log(`[callClaude] 2차 시도: 텍스트만 ${pdfText.length}자`);
       const messages = buildUserMessage(userPrompt, [], pdfText);
-      const response = await client.messages.create({
+      const stream = client.messages.stream({
         model: modelId,
         max_tokens: maxTokens,
         system: systemPrompt,
         messages,
       });
-      return response.content[0].text;
+      const final = await stream.finalMessage();
+      return final.content.map(b => b.type === 'text' ? b.text : '').join('');
     } catch (err2) {
       console.error(`[callClaude] 2차 시도도 실패:`, err2.message);
       throw err2;
