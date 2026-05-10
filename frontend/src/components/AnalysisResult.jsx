@@ -24,6 +24,21 @@ const SECTION_MAP = [
   { key: 'dashboard',      num: '7', title: '종합 평가 및 권고사항' },
 ];
 
+// 검증 반영 결과에서 메타 표현 제거 (보수적: 명백한 마커만)
+function sanitizeRefinedContent(raw) {
+  if (!raw) return raw;
+  let t = raw;
+  // 1) 괄호/볼드 안의 메타 마커
+  t = t.replace(/\s*[（(]\s*(수정됨|수정 사항|수정함|수정|개선됨|개선|보완됨|보완|재작성됨|재작성|반영됨|반영)\s*[)）]\s*/g, ' ');
+  t = t.replace(/\*\*\s*(수정됨|수정 사항|수정|개선됨|개선|보완됨|보완|재작성됨|재작성|반영됨|반영)\s*\*\*/g, '');
+  // 2) 흔한 메타 문장이 단독으로 들어간 줄 제거 (보수적: 짧은 줄만)
+  const metaLineRe = /^[\s>*-]*.{0,80}(검증\s*(피드백|결과|에서)?\s*(을|를|에)?\s*(반영|반영하여|반영함|토대로|기반)|기존\s*분석(에서는|을\s*개선|을\s*다듬어|보다)|이전\s*분석|원래\s*분석|지적된?\s*사항(을|이)?|(피드백|검증)을?\s*토대로|AI\s*분석을\s*다듬어|정확성을\s*높이기\s*위해|오류를\s*바로잡|재구성하여|재작성하여)/;
+  t = t.split('\n').filter(line => !metaLineRe.test(line)).join('\n');
+  // 3) 연속된 빈 줄 정리
+  t = t.replace(/\n{3,}/g, '\n\n');
+  return t.trim();
+}
+
 // 이모지 제거
 function stripEmojis(str) {
   if (!str) return str;
@@ -116,6 +131,10 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [checkedItems, setCheckedItems] = useState({}); // { index: boolean }
   const [refining, setRefining] = useState(false);
   const [refinedResults, setRefinedResults] = useState(null);
+  // 검증 반영 미리보기 staging
+  // { changes: { [sectionKey]: { before, after, num, title } }, appliedIdx: number[] }
+  const [pendingRefine, setPendingRefine] = useState(null);
+  const [previewExpandedKey, setPreviewExpandedKey] = useState(null);
   const [editingKey, setEditingKey] = useState(null);
   const [editText, setEditText] = useState('');
   const [manualEdits, setManualEdits] = useState({});
@@ -848,15 +867,27 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           refined.dashboard = replyText;
         }
 
-        setRefinedResults(refined);
-        // 반영된 항목 숨기기 — 체크된 항목 제거
-        const remainingItems = verifyItems.filter((_, i) => !checkedItems[i]);
-        setVerifyItems(remainingItems);
-        setCheckedItems({});
-        if (remainingItems.length === 0) {
-          setVerifyResult(null); // 모든 항목 반영 완료 → 검증 패널 닫기
+        // 메타 문구 후처리 + 변경된 섹션만 추출하여 staging
+        const changes = {};
+        for (const sec of SECTION_MAP) {
+          const before = (results?.[sec.key] || '').trim();
+          const afterRaw = (refined[sec.key] || '').trim();
+          const after = sanitizeRefinedContent(afterRaw);
+          if (after && after !== before) {
+            changes[sec.key] = { before, after, num: sec.num, title: sec.title };
+          }
         }
-        alert('검증 결과가 반영되었습니다.' + (remainingItems.length > 0 ? ` (미반영 ${remainingItems.length}개 남음)` : ''));
+
+        if (Object.keys(changes).length === 0) {
+          alert('변경된 내용이 없습니다. 검증 항목을 다시 선택해 주세요.');
+        } else {
+          // 어떤 항목이 반영됐는지 기록
+          const appliedIdx = verifyItems
+            .map((_, i) => (checkedItems[i] ? i : -1))
+            .filter(i => i >= 0);
+          setPendingRefine({ changes, appliedIdx });
+          setPreviewExpandedKey(Object.keys(changes)[0] || null);
+        }
       } else {
         alert('재생성 오류: ' + resData.message);
       }
@@ -865,6 +896,30 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     } finally {
       setRefining(false);
     }
+  };
+
+  // 미리보기에서 "최종 반영" — 실제로 결과에 적용
+  const confirmPendingRefine = () => {
+    if (!pendingRefine) return;
+    const merged = { ...results };
+    for (const [key, { after }] of Object.entries(pendingRefine.changes)) {
+      merged[key] = after;
+    }
+    setRefinedResults(merged);
+    // 반영된 검증 항목 숨기기
+    const appliedSet = new Set(pendingRefine.appliedIdx);
+    const remaining = verifyItems.filter((_, i) => !appliedSet.has(i));
+    setVerifyItems(remaining);
+    setCheckedItems({});
+    if (remaining.length === 0) setVerifyResult(null);
+    setPendingRefine(null);
+    setPreviewExpandedKey(null);
+  };
+
+  // 미리보기 취소 — 변경 내용 폐기
+  const cancelPendingRefine = () => {
+    setPendingRefine(null);
+    setPreviewExpandedKey(null);
   };
 
   // ── AI 대화 (분석 결과 수정 요청) ──────────────────────
@@ -1167,11 +1222,79 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
               onClick={handleRefine}
               disabled={refining || (verifyItems.length > 0 && !Object.values(checkedItems).some(Boolean))}
             >
-              {refining ? '반영 중...' : `체크한 항목 반영 (${Object.values(checkedItems).filter(Boolean).length}개)`}
+              {refining ? '반영 중...' : `체크한 항목 반영 후 변경 미리보기 (${Object.values(checkedItems).filter(Boolean).length}개)`}
             </button>
             {refinedResults && (
               <span className="refine-done-badge">반영 완료</span>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 검증 반영 미리보기 모달 */}
+      {pendingRefine && (
+        <div className="refine-preview-overlay" onClick={cancelPendingRefine}>
+          <div className="refine-preview-modal" onClick={e => e.stopPropagation()}>
+            <div className="refine-preview-header">
+              <div>
+                <h3>검증 반영 미리보기</h3>
+                <p className="refine-preview-sub">
+                  체크한 검증 항목 {pendingRefine.appliedIdx.length}건이 반영되어
+                  {' '}{Object.keys(pendingRefine.changes).length}개 섹션이 변경되었습니다.
+                  내용을 확인한 후 최종 반영하세요.
+                </p>
+              </div>
+              <button className="refine-preview-close" onClick={cancelPendingRefine}>×</button>
+            </div>
+
+            <div className="refine-preview-list">
+              {Object.entries(pendingRefine.changes).map(([key, { before, after, num, title }]) => {
+                const expanded = previewExpandedKey === key;
+                const beforeLen = before.length;
+                const afterLen = after.length;
+                const delta = afterLen - beforeLen;
+                return (
+                  <div key={key} className={`refine-preview-item ${expanded ? 'expanded' : ''}`}>
+                    <button
+                      className="refine-preview-item-header"
+                      onClick={() => setPreviewExpandedKey(expanded ? null : key)}
+                    >
+                      <span className="refine-preview-section">[{num}단계] {title}</span>
+                      <span className="refine-preview-meta">
+                        {beforeLen.toLocaleString()}자 → {afterLen.toLocaleString()}자
+                        <span className={`refine-preview-delta ${delta >= 0 ? 'plus' : 'minus'}`}>
+                          {delta >= 0 ? '+' : ''}{delta.toLocaleString()}
+                        </span>
+                      </span>
+                      <span className="refine-preview-toggle">{expanded ? '▲ 닫기' : '▼ 변경 전/후 보기'}</span>
+                    </button>
+                    {expanded && (
+                      <div className="refine-preview-diff">
+                        <div className="refine-preview-col">
+                          <div className="refine-preview-col-label before">변경 전</div>
+                          <div
+                            className="refine-preview-col-body md-rendered"
+                            dangerouslySetInnerHTML={{ __html: mdToHtml(before) }}
+                          />
+                        </div>
+                        <div className="refine-preview-col">
+                          <div className="refine-preview-col-label after">변경 후</div>
+                          <div
+                            className="refine-preview-col-body md-rendered"
+                            dangerouslySetInnerHTML={{ __html: mdToHtml(after) }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="refine-preview-footer">
+              <button className="btn-preview-cancel" onClick={cancelPendingRefine}>취소 (반영 안 함)</button>
+              <button className="btn-preview-confirm" onClick={confirmPendingRefine}>최종 반영</button>
+            </div>
           </div>
         </div>
       )}
