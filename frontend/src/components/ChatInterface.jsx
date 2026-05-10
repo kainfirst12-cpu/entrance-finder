@@ -13,12 +13,12 @@ const SECTION_MAP = [
 ];
 
 const MODEL_CFG = {
-  claude:       { icon: '●', label: 'Claude Sonnet', color: '#7c6af7', group: 'claude' },
-  'claude-opus':{ icon: '◆', label: 'Claude Opus',   color: '#5b21b6', group: 'claude' },
-  gemini:       { icon: '●', label: 'Gemini Flash',  color: '#4caf50', group: 'gemini' },
-  'gemini-pro': { icon: '■', label: 'Gemini Pro',    color: '#166534', group: 'gemini' },
-  gpt:          { icon: '●', label: 'GPT-4o',        color: '#f0a500', group: 'gpt' },
-  'gpt-mini':   { icon: '●', label: 'GPT-4o Mini',   color: '#ea580c', group: 'gpt' },
+  claude:       { icon: '●', label: 'Claude Sonnet 4.6', color: '#7c6af7', group: 'claude' },
+  'claude-opus':{ icon: '◆', label: 'Claude Opus 4.7',   color: '#5b21b6', group: 'claude' },
+  gemini:       { icon: '●', label: 'Gemini 3 Flash',    color: '#4caf50', group: 'gemini' },
+  'gemini-pro': { icon: '■', label: 'Gemini 3.1 Pro',    color: '#166534', group: 'gemini' },
+  gpt:          { icon: '●', label: 'GPT-5.5',           color: '#f0a500', group: 'gpt' },
+  'gpt-mini':   { icon: '●', label: 'GPT-5.4 Mini',      color: '#ea580c', group: 'gpt' },
 };
 
 function chatMdToHtml(raw) {
@@ -96,7 +96,7 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     }
   }, [analysisData]);
 
-  const modelLabels = { claude: 'Claude', 'claude-opus': 'Claude Opus', gemini: 'Gemini', 'gemini-pro': 'Gemini Pro', gpt: 'GPT-4o', 'gpt-mini': 'GPT-4o Mini' };
+  const modelLabels = { claude: 'Claude Sonnet 4.6', 'claude-opus': 'Claude Opus 4.7', gemini: 'Gemini 3 Flash', 'gemini-pro': 'Gemini 3.1 Pro', gpt: 'GPT-5.5', 'gpt-mini': 'GPT-5.4 Mini' };
 
   // ── 파일 처리 (공통) ──────────────────────────────
   const processFiles = async (files) => {

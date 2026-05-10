@@ -1,9 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import pdfParse from 'pdf-parse';
 
+// 2026-05 기준 최신. preview 모델 우선, 안정 모델로 폴백
 const GEMINI_MODELS = {
-  'gemini': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'],
-  'gemini-pro': ['gemini-2.5-pro', 'gemini-2.5-flash'],
+  'gemini': ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'],
+  'gemini-pro': ['gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro'],
 };
 
 // PDF 텍스트 추출
@@ -245,7 +246,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 }
 
 export async function testGeminiConnection(apiKey) {
-  const modelList = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-lite'];
+  const modelList = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
   const genAI = new GoogleGenerativeAI(apiKey);
 
   for (const modelId of modelList) {

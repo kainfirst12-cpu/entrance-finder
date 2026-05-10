@@ -1,12 +1,13 @@
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
 
+// 2026-05 기준 최신 GPT 모델 매핑 (frontend 키는 호환을 위해 유지)
 const GPT_MODELS = {
-  'gpt': 'gpt-4o',
-  'gpt-mini': 'gpt-4o-mini',
-  'gpt-4.1': 'gpt-4.1',
-  'o3': 'o3',
-  'o4-mini': 'o4-mini',
+  'gpt': 'gpt-5.5',
+  'gpt-mini': 'gpt-5.4-mini',
+  'gpt-4.1': 'gpt-5.4',
+  'o3': 'gpt-5.5-pro',
+  'o4-mini': 'gpt-5.4-nano',
 };
 
 async function extractPdfTexts(pdfDocuments) {
@@ -212,7 +213,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 export async function testGPTConnection(apiKey) {
   const openai = new OpenAI({ apiKey });
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.4-mini',
     max_tokens: 20,
     messages: [{ role: 'user', content: '안녕하세요. "연결성공"이라고만 답하세요.' }],
   });

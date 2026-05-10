@@ -126,7 +126,7 @@ const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') =
 // ── Claude 호출 헬퍼 ──────────────────────────────────
 const CLAUDE_MODELS = {
   'claude': 'claude-sonnet-4-6',
-  'claude-opus': 'claude-opus-4-6',
+  'claude-opus': 'claude-opus-4-7',
 };
 
 const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null, submodel = 'claude') => {

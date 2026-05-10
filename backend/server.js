@@ -445,14 +445,17 @@ async function getCachedKnowledgeBase(studentMajor) {
   return data;
 }
 
-// ── 모델 ID 매핑 ──────────────────────────────────────
+// ── 모델 ID 매핑 (2026-05 기준 최신) ────────────────────
 const MODEL_IDS = {
   claude: 'claude-sonnet-4-6',
-  'claude-opus': 'claude-opus-4-6',
-  gemini: 'gemini-2.5-flash',
-  'gemini-pro': 'gemini-2.5-pro',
-  gpt: 'gpt-4o',
-  'gpt-mini': 'gpt-4o-mini',
+  'claude-opus': 'claude-opus-4-7',
+  gemini: 'gemini-3-flash-preview',
+  'gemini-pro': 'gemini-3.1-pro-preview',
+  gpt: 'gpt-5.5',
+  'gpt-mini': 'gpt-5.4-mini',
+  'gpt-4.1': 'gpt-5.4',
+  'o3': 'gpt-5.5-pro',
+  'o4-mini': 'gpt-5.4-nano',
 };
 function getModelId(group, submodel) {
   return MODEL_IDS[submodel] || MODEL_IDS[group] || MODEL_IDS.claude;
