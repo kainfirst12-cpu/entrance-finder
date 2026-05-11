@@ -239,7 +239,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel || aiModel),
-        max_tokens: Math.min(refineMaxTokens, 16384),
+        max_completion_tokens: Math.min(refineMaxTokens, 16384),
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       });
       reply = response.choices[0].message.content;
@@ -337,7 +337,7 @@ app.post('/api/chat-edit', async (req, res) => {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
-        model: getModelId('gpt', submodel || aiModel), max_tokens: 16000,
+        model: getModelId('gpt', submodel || aiModel), max_completion_tokens: 16000,
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
       });
       reply = response.choices[0].message.content;
@@ -582,7 +582,7 @@ ${kb.합격자사례 || '(자료 없음)'}${analysisSection}${fileSection}`;
       ];
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel),
-        max_tokens: 8000,
+        max_completion_tokens: 8000,
         messages,
       });
       reply = response.choices[0].message.content;
@@ -681,7 +681,7 @@ priority 설명:
       const openai = new OpenAI({ apiKey });
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel || aiModel),
-        max_tokens: 8000,
+        max_completion_tokens: 8000,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },

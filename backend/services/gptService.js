@@ -66,11 +66,7 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
         { role: 'user', content: contentParts },
       ],
     };
-    if (isReasoningModel) {
-      imgParams.max_completion_tokens = maxTokens;
-    } else {
-      imgParams.max_tokens = maxTokens;
-    }
+    imgParams.max_completion_tokens = maxTokens;
     const response = await openai.chat.completions.create(imgParams);
     return response.choices[0].message.content;
   }
@@ -82,11 +78,7 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
       { role: 'user', content: pdfContext + userPrompt },
     ],
   };
-  if (isReasoningModel) {
-    params.max_completion_tokens = maxTokens;
-  } else {
-    params.max_tokens = maxTokens;
-  }
+  params.max_completion_tokens = maxTokens;
   const response = await openai.chat.completions.create(params);
   return response.choices[0].message.content;
 }
@@ -214,7 +206,7 @@ export async function testGPTConnection(apiKey) {
   const openai = new OpenAI({ apiKey });
   const response = await openai.chat.completions.create({
     model: 'gpt-5.4-mini',
-    max_tokens: 20,
+    max_completion_tokens: 20,
     messages: [{ role: 'user', content: '안녕하세요. "연결성공"이라고만 답하세요.' }],
   });
   return response.choices[0].message.content;
