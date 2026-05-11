@@ -67,6 +67,7 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   const [loading, setLoading] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [verifyingIdx, setVerifyingIdx] = useState(null);
+  const [refiningVerifyIdx, setRefiningVerifyIdx] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -357,6 +358,74 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     finally { setVerifyingIdx(null); }
   };
 
+  // ── 검증 결과 반영 ──────────────────────────────
+  const refineChatWithVerify = async (verifyMsgIdx) => {
+    const currentMessages = messages;
+    const verifyMsg = currentMessages[verifyMsgIdx];
+    if (!verifyMsg?.isVerify) return;
+
+    // 검증 메시지 바로 앞의 원본 assistant 메시지 찾기
+    let origIdx = -1;
+    for (let j = verifyMsgIdx - 1; j >= 0; j--) {
+      if (currentMessages[j].role === 'assistant' && !currentMessages[j].isVerify && !currentMessages[j].isSystem) {
+        origIdx = j; break;
+      }
+    }
+    if (origIdx === -1) { alert('원본 답변을 찾을 수 없습니다.'); return; }
+
+    // 원본 답변 앞의 user 질문 찾기
+    let userQuestion = '';
+    for (let j = origIdx - 1; j >= 0; j--) {
+      if (currentMessages[j].role === 'user') { userQuestion = currentMessages[j].content; break; }
+    }
+
+    // 원본 답변 작성 모델의 API 키 사용
+    const group = MODEL_CFG[selectedModel]?.group || 'claude';
+    const apiKey = group === 'claude' ? localStorage.getItem('ef_apikey')
+      : group === 'gemini' ? localStorage.getItem('ef_geminikey')
+      : localStorage.getItem('ef_gptkey');
+    if (!apiKey) { alert('API 키가 설정되지 않았습니다.'); return; }
+
+    setRefiningVerifyIdx(verifyMsgIdx);
+    try {
+      const token = localStorage.getItem('ef_token');
+      const res = await fetch(`${API_BASE}/api/chat-refine`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'x-ai-model': group,
+          'x-ai-submodel': selectedModel,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          question: userQuestion,
+          originalAnswer: currentMessages[origIdx].content,
+          verifyText: verifyMsg.content,
+          studentData: analysisContext?.studentData || {},
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => {
+          const copy = [...prev];
+          // origIdx는 messages 배열 기준이므로 현재 인덱스 재탐색
+          let realOrigIdx = -1;
+          for (let j = verifyMsgIdx - 1; j >= 0; j--) {
+            if (copy[j].role === 'assistant' && !copy[j].isVerify && !copy[j].isSystem) {
+              realOrigIdx = j; break;
+            }
+          }
+          if (realOrigIdx !== -1) {
+            copy[realOrigIdx] = { ...copy[realOrigIdx], content: data.reply, refined: true };
+          }
+          return copy;
+        });
+      } else { alert('반영 실패: ' + data.message); }
+    } catch (err) { alert('반영 실패: ' + err.message); }
+    finally { setRefiningVerifyIdx(null); }
+  };
+
   // ── 분석 컨텍스트: 단계 클릭 → 질문 ──────────────
   const askAboutStage = (sec) => {
     if (!analysisContext?.results?.[sec.key]) return;
@@ -609,6 +678,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
 
                   {msg.role === 'assistant' && !msg.isVerify && !msg.isSystem && (
                     <span className="chat-verify-group">
+                      {msg.refined && <span style={{ fontSize: '11px', color: '#10b981', marginRight: 4 }}>✓ 검증 반영됨</span>}
                       {Object.entries(MODEL_CFG)
                         .filter(([key]) => key !== selectedModel)
                         .map(([key, cfg]) => (
@@ -618,6 +688,16 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                           </button>
                         ))}
                     </span>
+                  )}
+                  {msg.role === 'assistant' && msg.isVerify && (
+                    <button
+                      className="chat-verify-btn"
+                      style={{ borderColor: '#10b981', color: '#10b981', fontWeight: 600 }}
+                      onClick={() => refineChatWithVerify(i)}
+                      disabled={refiningVerifyIdx === i}
+                    >
+                      {refiningVerifyIdx === i ? '반영 중...' : '✓ 이 검증 결과 반영'}
+                    </button>
                   )}
                 </div>
               )}

@@ -613,6 +613,68 @@ ${kb.합격자사례 || '(자료 없음)'}${analysisSection}${fileSection}`;
   }
 });
 
+// ── 채팅 검증 결과 반영 ──────────────────────────
+app.post('/api/chat-refine', async (req, res) => {
+  const { question, originalAnswer, verifyText, studentData } = req.body;
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
+
+  const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
+아래에 원본 답변과 다른 AI의 교차 검증 피드백이 제공됩니다.
+검증 피드백에서 지적된 문제점을 반영하여 원본 답변을 개선한 최종 버전을 작성하세요.
+
+[출력 형식 원칙]
+- 이모티콘, 이모지, 유니코드 특수기호를 절대 사용하지 마라
+- 허용 기호: 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──), 표 구분(|), 볼드(**) 만 허용
+- 전문 컨설팅 보고서 톤 유지 (합니다체)
+
+[개선 원칙]
+1. 원본 답변의 구조·분량·표 형식을 그대로 유지하라. 삭제하거나 줄이지 마라.
+2. 검증에서 지적된 오류·개선점만 정확히 반영하라.
+3. 검증에서 지적되지 않은 내용은 원본 그대로 유지하라.
+4. 메타 표현 절대 금지: "수정됨", "개선됨", "검증 반영", "기존 답변", "이전 답변" 등
+5. 처음부터 그렇게 작성된 전문 답변처럼 자연스럽게 서술하라.`;
+
+  const userMsg = `[원본 질문]\n${question || ''}\n\n[원본 답변]\n${originalAnswer}\n\n[교차 검증 피드백]\n${verifyText}\n\n위 검증 피드백을 반영하여 원본 답변을 개선해주세요.`;
+
+  try {
+    let reply;
+    if (aiModel === 'gemini') {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
+      const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
+      reply = result.response.text();
+    } else if (aiModel === 'gpt') {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey });
+      const response = await openai.chat.completions.create({
+        model: getModelId('gpt', submodel || aiModel),
+        max_completion_tokens: 8000,
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+      });
+      reply = response.choices[0].message.content;
+    } else {
+      const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
+      const client = new AnthropicSDK({ apiKey });
+      const response = await client.messages.create({
+        model: getModelId('claude', submodel || aiModel),
+        max_tokens: 8000,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMsg }],
+      });
+      reply = response.content[0].text;
+    }
+    res.json({ success: true, reply });
+  } catch (err) {
+    console.error(`[chat-refine/${aiModel}] 오류:`, err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ── AI 교차 검증 엔드포인트 ──────────────────────────
 app.post('/api/verify', async (req, res) => {
   const { studentData, analysisText, originalModel } = req.body;
