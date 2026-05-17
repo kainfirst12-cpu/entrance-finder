@@ -15,6 +15,7 @@ export default function App() {
   const [analysisData, setAnalysisData] = useState(null);
   const [progressSteps, setProgressSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
+  const [formPrefill, setFormPrefill] = useState(null); // JSON 불러오기 시 폼에 미리 채울 데이터
   const [apiKey, setApiKey]           = useState(localStorage.getItem('ef_apikey')    || '');
   const [geminiKey, setGeminiKey]     = useState(localStorage.getItem('ef_geminikey') || '');
   const [gptKey, setGptKey]           = useState(localStorage.getItem('ef_gptkey')    || '');
@@ -29,7 +30,8 @@ export default function App() {
     return apiKey;
   };
 
-  const startAnalysis = async (studentData, files) => {
+  const startAnalysis = async (studentData, files, extras = {}) => {
+    // extras = { pdfTexts, existingResults, sectionsToRun }
     setView('analyzing');
     setProgressSteps([]);
     setCurrentStep(0);
@@ -43,8 +45,13 @@ export default function App() {
       if (files.awardsPdf)   { formData.append('awardsPdf',   files.awardsPdf);   console.log('[Upload] awardsPdf:', files.awardsPdf.name, files.awardsPdf.size, 'bytes'); }
       if (files.mockExamPdf) { formData.append('mockExamPdf', files.mockExamPdf); console.log('[Upload] mockExamPdf:', files.mockExamPdf.name, files.mockExamPdf.size, 'bytes'); }
 
+      // 재분석 모드: 이전 PDF 텍스트 / 기존 결과 / 부분 섹션
+      if (extras.pdfTexts) formData.append('pdfTexts', extras.pdfTexts);
+      if (extras.existingResults) formData.append('existingResults', JSON.stringify(extras.existingResults));
+      if (extras.sectionsToRun?.length) formData.append('sectionsToRun', JSON.stringify(extras.sectionsToRun));
+
       const pdfCount = Object.values(files).filter(Boolean).length;
-      console.log(`[Upload] 총 ${pdfCount}개 PDF 첨부`);
+      console.log(`[Upload] 총 ${pdfCount}개 PDF 첨부 (재분석: ${!!extras.pdfTexts}, 부분: ${extras.sectionsToRun?.length || '전체'})`);
       const token = localStorage.getItem('ef_token');
 
       const response = await fetch(`${API_BASE}/api/analyze`, {
@@ -87,7 +94,15 @@ export default function App() {
             }
             if (data.type === 'complete') {
               completed = true;
-              setAnalysisData({ results: data.results, notionUrl: data.notionUrl, studentData, pdfCount, analyzedModel: selectedModel });
+              setAnalysisData({
+                results: data.results,
+                notionUrl: data.notionUrl,
+                studentData,
+                pdfCount,
+                analyzedModel: selectedModel,
+                pdfTexts: data.pdfTexts || extras.pdfTexts || '',
+              });
+              setFormPrefill(null); // 사용 완료된 prefill 해제
               setView('result');
             }
             if (data.type === 'error') {
@@ -142,6 +157,7 @@ export default function App() {
           studentData: data.studentData,
           pdfCount: data.pdfCount || 0,
           analyzedModel: data.analyzedModel || 'claude',
+          pdfTexts: data.pdfTexts || '',
         });
         if (data.analyzedModel && modelConfig[data.analyzedModel]) {
           setSelectedModel(data.analyzedModel);
@@ -239,13 +255,24 @@ export default function App() {
 
       <main className="main">
         {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} />}
-        {view === 'form'      && <StudentForm onSubmit={startAnalysis} onCancel={() => setView('list')} />}
+        {view === 'form'      && (
+          <StudentForm
+            onSubmit={startAnalysis}
+            onCancel={() => { setFormPrefill(null); setView('list'); }}
+            prefill={formPrefill}
+            onClearPrefill={() => setFormPrefill(null)}
+          />
+        )}
         {view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
         {view === 'result' && analysisData && (
           <AnalysisResult
             data={analysisData}
             onBack={() => setView('list')}
-            onNewAnalysis={() => setView('form')}
+            onNewAnalysis={() => { setFormPrefill(null); setView('form'); }}
+            onReanalyze={(prefillData) => {
+              setFormPrefill(prefillData);
+              setView('form');
+            }}
             selectedModel={selectedModel}
             apiKey={apiKey}
             geminiKey={geminiKey}

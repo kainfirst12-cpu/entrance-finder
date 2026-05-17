@@ -265,10 +265,11 @@ ${kb.합격자사례 || '(자료 없음)'}`;
 
 // ── AI 채팅 수정 (대화형 — 특정 부분만 수정) ──────────────
 app.post('/api/chat-edit', async (req, res) => {
-  const { studentData, currentResults, userMessage } = req.body;
+  const { studentData, currentResults, userMessage, imageData } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
+  const hasImages = Array.isArray(imageData) && imageData.length > 0;
 
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
 
@@ -321,7 +322,8 @@ app.post('/api/chat-edit', async (req, res) => {
     .filter(Boolean)
     .join('\n\n');
 
-  const userMsg = `=== 현재 리포트 (0~7단계) ===\n${currentText}\n\n=== 사용자 수정 요청 ===\n${userMessage}\n\n[지시] 위 요청을 반영하여 해당하는 기존 섹션(0~7단계 중 하나)을 수정하십시오.
+  const imageNote = hasImages ? `\n\n[첨부 이미지] 사용자가 이미지 ${imageData.length}장을 첨부했습니다. 이미지의 내용(스크린샷, 자료 등)을 분석하여 수정 요청에 반영하십시오.` : '';
+  const userMsg = `=== 현재 리포트 (0~7단계) ===\n${currentText}\n\n=== 사용자 수정 요청 ===\n${userMessage}${imageNote}\n\n[지시] 위 요청을 반영하여 해당하는 기존 섹션(0~7단계 중 하나)을 수정하십시오.
 먼저 "=== 변경 사항 ===" 블록에서 무엇을 바꿨는지 설명하고, 그 아래에 [N단계] 헤더 + 수정된 전체 섹션을 출력하십시오.
 주의: [8단계] 등 새로운 번호를 만들지 마십시오. 반드시 기존 0~7 중 선택하십시오.`;
 
@@ -331,22 +333,34 @@ app.post('/api/chat-edit', async (req, res) => {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel), generationConfig: { maxOutputTokens: 16000 } });
-      const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
+      const parts = [{ text: systemPrompt }, { text: userMsg }];
+      if (hasImages) {
+        for (const img of imageData) {
+          parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+        }
+      }
+      const result = await model.generateContent(parts);
       reply = result.response.text();
     } else if (aiModel === 'gpt') {
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI({ apiKey });
+      const userContent = hasImages
+        ? [{ type: 'text', text: userMsg }, ...imageData.map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}` } }))]
+        : userMsg;
       const response = await openai.chat.completions.create({
         model: getModelId('gpt', submodel || aiModel), max_completion_tokens: 16000,
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
       });
       reply = response.choices[0].message.content;
     } else {
       const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
       const client = new AnthropicSDK({ apiKey });
+      const userContent = hasImages
+        ? [...imageData.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.base64 } })), { type: 'text', text: userMsg }]
+        : userMsg;
       const stream = client.messages.stream({
         model: getModelId('claude', submodel || aiModel), max_tokens: 16000, system: systemPrompt,
-        messages: [{ role: 'user', content: userMsg }],
+        messages: [{ role: 'user', content: userContent }],
       });
       const final = await stream.finalMessage();
       reply = final.content.map(b => b.type === 'text' ? b.text : '').join('');
@@ -812,10 +826,19 @@ priority 설명:
 
 app.post('/api/analyze', pdfFields, async (req, res) => {
   let studentData;
+  let reusedPdfTexts = '';
+  let existingResults = null;
+  let sectionsToRun = null;
   try {
     studentData = JSON.parse(req.body.studentData);
-  } catch {
-    return res.status(400).json({ error: '학생 데이터 파싱 오류' });
+    if (req.body.pdfTexts) reusedPdfTexts = String(req.body.pdfTexts);
+    if (req.body.existingResults) existingResults = JSON.parse(req.body.existingResults);
+    if (req.body.sectionsToRun) {
+      const parsed = JSON.parse(req.body.sectionsToRun);
+      if (Array.isArray(parsed) && parsed.length > 0) sectionsToRun = parsed;
+    }
+  } catch (e) {
+    return res.status(400).json({ error: '요청 데이터 파싱 오류: ' + e.message });
   }
 
   if (!studentData?.name) return res.status(400).json({ error: '학생 이름 필수' });
@@ -939,16 +962,28 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
 
     console.log(`[Analyze] 총 PDF ${pdfDocuments.length}개 준비 완료`);
     if (pdfDocuments.length === 0) {
-      console.warn('[Analyze] 경고: PDF 파일이 하나도 수신되지 않았습니다!');
+      if (reusedPdfTexts) {
+        // JSON 재분석 모드: 이전 추출 텍스트를 가짜 pdfDocument로 주입 (base64 없음 → buildUserMessage가 텍스트 전용 모드로 처리)
+        pdfDocuments.push({
+          label: '이전 분석 PDF 텍스트',
+          base64: '',
+          preExtractedText: reusedPdfTexts,
+        });
+        send({ type: 'progress', step: 0, label: `이전 분석의 PDF 텍스트 재사용 (${reusedPdfTexts.length}자)`, total: 9 });
+        console.log(`[Analyze] 재분석 모드: PDF 텍스트 ${reusedPdfTexts.length}자 재사용`);
+      } else {
+        console.warn('[Analyze] 경고: PDF 파일이 하나도 수신되지 않았습니다!');
+      }
     }
 
     // PDF 텍스트 추출 + 이미지 변환
-    let preExtractedPdfText = '';
+    let preExtractedPdfText = reusedPdfTexts || '';
     if (pdfDocuments.length > 0) {
       const pdfParseModule = await import('pdf-parse');
       const pdfParseFunc = pdfParseModule.default;
 
       for (const pdf of pdfDocuments) {
+        if (!pdf.base64) continue; // 재분석 모드: base64 없으면 추출 스킵 (preExtractedText 이미 있음)
         const buffer = Buffer.from(pdf.base64, 'base64');
         let text = '';
 
@@ -1017,17 +1052,19 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
     send({ type: 'progress', step: 1, label: 'Drive 자료 로딩 완료!', total: 9 });
 
     const progressCb = (progress) => send({ type: 'progress', ...progress, total: 9 });
+    const analyzeOptions = { existingResults: existingResults || {}, sectionsToRun };
     let results;
     if (aiModel === 'gemini') {
-      results = await runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
+      results = await runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey, analyzeOptions);
     } else if (aiModel === 'gpt') {
-      results = await runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey, submodel);
+      results = await runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey, submodel, analyzeOptions);
     } else {
-      results = await runFullAnalysis(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey);
+      results = await runFullAnalysis(studentData, knowledgeBase, studentDriveFiles, progressCb, pdfDocuments, apiKey, analyzeOptions);
     }
 
     clearInterval(keepAlive);
-    send({ type: 'complete', results, notionUrl: null, message: '분석 완료!' });
+    // 클라이언트가 재분석 시 재사용할 수 있도록 추출된 PDF 텍스트도 함께 전달
+    send({ type: 'complete', results, notionUrl: null, pdfTexts: preExtractedPdfText, message: '분석 완료!' });
     res.end();
   } catch (err) {
     clearInterval(keepAlive);

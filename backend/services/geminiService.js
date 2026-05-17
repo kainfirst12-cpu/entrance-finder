@@ -95,9 +95,12 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
   throw new Error('모든 Gemini 모델이 실패했습니다. 잠시 후 다시 시도해주세요.');
 }
 
-export async function runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey) {
+export async function runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey, options = {}) {
   const onProgress = progressCallback;
-  const results = {};
+  const { existingResults = {}, sectionsToRun = null } = options;
+  const shouldRun = (key) => (sectionsToRun && Array.isArray(sectionsToRun)) ? sectionsToRun.includes(key) : true;
+  const results = { ...existingResults };
+  console.log(`[Gemini] 모드: ${sectionsToRun ? `부분 재분석 (${sectionsToRun.join(', ')})` : '전체 분석'}`);
 
   const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
 
@@ -235,6 +238,10 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
   }));
 
   for (const s of steps) {
+    if (!shouldRun(s.key)) {
+      onProgress?.({ step: s.step, label: `${s.label} (기존 결과 유지)` });
+      continue;
+    }
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
     // step 1(사례매칭)만 이미지 포함, 나머지 텍스트만 (타임아웃 방지)
     const docs = s.step === 1 ? pdfDocuments : pdfDocsLight;

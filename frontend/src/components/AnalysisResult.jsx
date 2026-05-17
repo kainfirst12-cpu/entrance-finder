@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 
 const MODEL_CONFIG = {
@@ -73,7 +73,12 @@ function mdToHtml(raw) {
       if (dataRows.length > 0) {
         let html = '<div class="md-table-wrap"><table class="md-table">';
         dataRows.forEach((row, ri) => {
-          const cells = row.split('|').filter((_, ci, arr) => ci > 0 && ci < arr.length - 1).map(c => c.trim());
+          const cells = row.split('|')
+            .filter((_, ci, arr) => ci > 0 && ci < arr.length - 1)
+            .map(c => c.trim()
+              .replace(/\*\*([^*]+)\*\*/g, '$1')
+              .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '$1')
+              .replace(/`([^`]+)`/g, '$1'));
           const tag = ri === 0 ? 'th' : 'td';
           html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
         });
@@ -121,7 +126,7 @@ function mdToHtml(raw) {
   return out.join('\n');
 }
 
-export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedModel, apiKey, geminiKey, gptKey }) {
+export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyze, selectedModel, apiKey, geminiKey, gptKey }) {
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [verifyModel, setVerifyModel] = useState('');
@@ -143,6 +148,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatImages, setChatImages] = useState([]); // {name, mimeType, base64, preview}
+  const [chatDragging, setChatDragging] = useState(false);
+  const chatFileInputRef = useRef(null);
   const [regeneratingKeys, setRegeneratingKeys] = useState(new Set());
   const [coverEdit, setCoverEdit] = useState({
     reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
@@ -150,7 +158,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     brandSub: localStorage.getItem('ef_brand_sub') || '패스파인더 에듀',
     logoData: localStorage.getItem('ef_logo') || '',
   });
-  const { results: originalResults, studentData, pdfCount, analyzedModel } = data || {};
+  const { results: originalResults, studentData, pdfCount, analyzedModel, pdfTexts } = data || {};
   const baseResults = refinedResults || originalResults;
   // 수동 편집이 있으면 해당 섹션만 덮어씌움
   const results = { ...baseResults, ...manualEdits };
@@ -200,12 +208,13 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
   // JSON 내보내기
   const handleExportJSON = () => {
     const exportData = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       studentData,
       results,
       analyzedModel: usedModel,
       pdfCount: pdfCount || 0,
+      pdfTexts: pdfTexts || '', // 재분석용 — PDF 재업로드 없이도 분석 재실행 가능
       refinedResults: refinedResults || null,
       manualEdits: Object.keys(manualEdits).length > 0 ? manualEdits : null,
       verifyResult: verifyResult || null,
@@ -922,12 +931,78 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
     setPreviewExpandedKey(null);
   };
 
+  // ── 채팅 이미지 첨부 (붙여넣기/드래그/선택) ──────────────
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const addChatImages = async (files) => {
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
+    const added = [];
+    for (const file of imageFiles) {
+      try {
+        const base64 = await fileToBase64(file);
+        added.push({
+          name: file.name || `screenshot_${Date.now()}.png`,
+          mimeType: file.type || 'image/png',
+          base64,
+          preview: URL.createObjectURL(file),
+        });
+      } catch (err) {
+        console.error('이미지 변환 실패:', err);
+      }
+    }
+    if (added.length > 0) setChatImages(prev => [...prev, ...added]);
+  };
+
+  const removeChatImage = (idx) => {
+    setChatImages(prev => {
+      const target = prev[idx];
+      if (target?.preview) URL.revokeObjectURL(target.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const handleChatPaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const files = [];
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length > 0) {
+      e.preventDefault();
+      addChatImages(files);
+    }
+  };
+
+  const handleChatDragOver = (e) => { e.preventDefault(); setChatDragging(true); };
+  const handleChatDragLeave = (e) => { e.preventDefault(); setChatDragging(false); };
+  const handleChatDrop = (e) => {
+    e.preventDefault();
+    setChatDragging(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length > 0) addChatImages(files);
+  };
+
   // ── AI 대화 (분석 결과 수정 요청) ──────────────────────
   const handleChatSend = async () => {
-    if (!chatInput.trim() || chatLoading) return;
-    const userMsg = chatInput.trim();
+    if ((!chatInput.trim() && chatImages.length === 0) || chatLoading) return;
+    const userMsg = chatInput.trim() || '(첨부된 이미지를 참고하여 수정해 주세요)';
+    const imagesToSend = chatImages.map(img => ({ name: img.name, mimeType: img.mimeType, base64: img.base64 }));
+    const previewLabel = chatImages.length > 0 ? ` [이미지 ${chatImages.length}장 첨부]` : '';
     setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    // 미리보기 URL 해제
+    chatImages.forEach(img => img.preview && URL.revokeObjectURL(img.preview));
+    setChatImages([]);
+    setChatMessages(prev => [...prev, { role: 'user', text: userMsg + previewLabel }]);
     setChatLoading(true);
 
     try {
@@ -948,6 +1023,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           studentData,
           currentResults: results,
           userMessage: userMsg,
+          imageData: imagesToSend.length > 0 ? imagesToSend : undefined,
         }),
       });
 
@@ -1120,6 +1196,15 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           <button className="btn-secondary" onClick={handleCopyAll}>
             {copied ? '✅ 복사됨!' : '📋 전체 복사'}
           </button>
+          <button className="btn-secondary" onClick={() => onReanalyze?.({
+            version: 2,
+            studentData,
+            results,
+            analyzedModel: usedModel,
+            pdfCount: pdfCount || 0,
+            pdfTexts: pdfTexts || '',
+            exportedAt: new Date().toISOString(),
+          })}>🔄 이 데이터로 재분석</button>
           <button className="btn-secondary" onClick={onNewAnalysis}>✨ 새 분석</button>
           <button className="btn-ghost" onClick={onBack}>← 목록</button>
         </div>
@@ -1309,7 +1394,12 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
           {chatOpen ? 'X 닫기' : '💬 AI에게 수정 요청'}
         </button>
         {chatOpen && (
-          <div className="result-chat-panel">
+          <div
+            className={`result-chat-panel ${chatDragging ? 'drag-over' : ''}`}
+            onDragOver={handleChatDragOver}
+            onDragLeave={handleChatDragLeave}
+            onDrop={handleChatDrop}
+          >
             <div className="result-chat-header">
               <span>AI 수정 요청</span>
               <span className="result-chat-model">{MODEL_CONFIG[usedModel]?.icon} {MODEL_CONFIG[usedModel]?.label}</span>
@@ -1319,7 +1409,8 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
                 <div className="result-chat-hint">
                   수정하고 싶은 내용을 자유롭게 요청하세요.<br/>
                   예: "지원 전략에서 안정 대학을 더 추가해줘"<br/>
-                  예: "비교과 분석을 더 자세하게 해줘"
+                  예: "비교과 분석을 더 자세하게 해줘"<br/>
+                  <span style={{ color: '#94a3b8', fontSize: 11 }}>이미지: Ctrl+V 붙여넣기 / 드래그앤드롭 / + 버튼</span>
                 </div>
               )}
               {chatMessages.map((msg, i) => (
@@ -1330,17 +1421,46 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, selectedMo
               ))}
               {chatLoading && <div className="result-chat-msg ai"><div className="result-chat-msg-label">AI</div><div className="result-chat-msg-text">수정 중...</div></div>}
             </div>
+            {chatImages.length > 0 && (
+              <div className="result-chat-attached">
+                {chatImages.map((img, i) => (
+                  <div key={i} className="result-chat-thumb">
+                    <img src={img.preview} alt={img.name} />
+                    <button className="result-chat-thumb-remove" onClick={() => removeChatImage(i)} title="삭제">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="result-chat-input-row">
+              <button
+                className="result-chat-attach"
+                onClick={() => chatFileInputRef.current?.click()}
+                disabled={chatLoading}
+                title="이미지 첨부"
+              >+</button>
+              <input
+                ref={chatFileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={e => { addChatImages(e.target.files || []); e.target.value = ''; }}
+              />
               <input
                 type="text"
                 className="result-chat-input"
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleChatSend()}
-                placeholder="수정 요청을 입력하세요..."
+                onPaste={handleChatPaste}
+                placeholder="수정 요청을 입력하세요... (이미지는 Ctrl+V로 붙여넣기)"
                 disabled={chatLoading}
               />
-              <button className="result-chat-send" onClick={handleChatSend} disabled={chatLoading || !chatInput.trim()}>전송</button>
+              <button
+                className="result-chat-send"
+                onClick={handleChatSend}
+                disabled={chatLoading || (!chatInput.trim() && chatImages.length === 0)}
+              >전송</button>
             </div>
           </div>
         )}

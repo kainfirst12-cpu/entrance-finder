@@ -104,8 +104,10 @@ const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') =
     }
     console.log(`[buildUserMessage] 이미지 모드: ${pdfDocuments.reduce((s, p) => s + (p.images?.length || 0), 0)}페이지`);
   } else {
-    // 이미지 없으면 PDF document 타입으로 전달
+    // 이미지 없으면 PDF document 타입으로 전달 (단, base64가 있는 경우만)
+    let pdfAttached = 0;
     for (const pdf of pdfDocuments) {
+      if (!pdf.base64) continue; // 텍스트 전용(재분석 모드)이면 document 첨부 생략
       content.push({
         type: 'document',
         source: {
@@ -115,12 +117,19 @@ const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') =
         },
         title: pdf.label,
       });
+      pdfAttached++;
     }
-    console.log(`[buildUserMessage] document 모드: ${pdfDocuments.length}개 PDF`);
+    if (pdfAttached > 0) {
+      console.log(`[buildUserMessage] document 모드: ${pdfAttached}개 PDF`);
+    } else {
+      console.log(`[buildUserMessage] 텍스트 전용 모드 (PDF base64 없음, preExtractedText 사용)`);
+    }
   }
 
   content.push({ type: 'text', text: fullPrompt });
-  return [{ role: 'user', content }];
+  return content.length === 1
+    ? [{ role: 'user', content: fullPrompt }]
+    : [{ role: 'user', content }];
 };
 
 // ── Claude 호출 헬퍼 ──────────────────────────────────
@@ -589,13 +598,20 @@ ${studentData.name} 입시 컨설팅 종합 리포트
 };
 
 // ── 전체 분석 오케스트레이터 ──────────────────────────
-export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = [], apiKey) => {
+export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = [], apiKey, options = {}) => {
   const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
-  const results = {};
+  const { existingResults = {}, sectionsToRun = null } = options;
+  // sectionsToRun이 null이면 전부 실행, 배열이면 그 키만 실행. 기존 결과가 있고 실행 대상이 아니면 그대로 보존.
+  const shouldRun = (key) => {
+    if (sectionsToRun && Array.isArray(sectionsToRun)) return sectionsToRun.includes(key);
+    return true;
+  };
+  const results = { ...existingResults };
 
   // 스캔 PDF 여부 판단
   const isScannedPdf = pdfDocuments.some(pdf => pdf.images?.length > 0);
   console.log(`[Analysis] 스캔 PDF: ${isScannedPdf ? '예 — 이미지 모드' : '아니오 — 텍스트 모드'}`);
+  console.log(`[Analysis] 모드: ${sectionsToRun ? `부분 재분석 (${sectionsToRun.join(', ')})` : '전체 분석'}`);
 
   // 이미지 없는 경량 pdfDocuments (텍스트만, 이미지 제거)
   const pdfDocsLight = pdfDocuments.map(pdf => ({
@@ -605,8 +621,12 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   }));
 
   // 단계 0: 이미지 포함 → PDF 데이터 추출 + 사례 매칭
-  onProgress?.({ step: 0, label: isScannedPdf ? '스캔 PDF 이미지 분석 중...' : 'Drive 사례 매칭 중...' });
-  results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
+  if (shouldRun('caseMatching')) {
+    onProgress?.({ step: 0, label: isScannedPdf ? '스캔 PDF 이미지 분석 중...' : 'Drive 사례 매칭 중...' });
+    results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
+  } else {
+    onProgress?.({ step: 0, label: '사례 매칭 (기존 결과 유지)' });
+  }
 
   // step0에서 추출한 데이터를 이후 단계 컨텍스트로 사용
   const step0Context = results.caseMatching || '';
@@ -616,30 +636,42 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
     }
   }
 
-  // 스캔 PDF면 step1(학업역량)에도 이미지 전달 — 성적표 읽기 필수
-  onProgress?.({ step: 1, label: '학업역량 분석 중...' });
-  results.academic = await step1_academic(systemPrompt, studentData, isScannedPdf ? pdfDocuments : pdfDocsLight, apiKey);
+  if (shouldRun('academic')) {
+    onProgress?.({ step: 1, label: '학업역량 분석 중...' });
+    results.academic = await step1_academic(systemPrompt, studentData, isScannedPdf ? pdfDocuments : pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 1, label: '학업역량 (기존 결과 유지)' }); }
 
-  onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
-  results.activity = await step2_activity(systemPrompt, studentData, pdfDocsLight, apiKey);
+  if (shouldRun('activity')) {
+    onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
+    results.activity = await step2_activity(systemPrompt, studentData, pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 2, label: '비교과 (기존 결과 유지)' }); }
 
-  onProgress?.({ step: 3, label: '진로 역량 분석 중...' });
-  results.career = await step3_career(systemPrompt, studentData, pdfDocsLight, apiKey);
+  if (shouldRun('career')) {
+    onProgress?.({ step: 3, label: '진로 역량 분석 중...' });
+    results.career = await step3_career(systemPrompt, studentData, pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 3, label: '진로 (기존 결과 유지)' }); }
 
-  const prevSummary = `학업:${results.academic?.slice(0,200)}\n비교과:${results.activity?.slice(0,200)}\n진로:${results.career?.slice(0,200)}`;
+  if (shouldRun('strategy')) {
+    const prevSummary = `학업:${results.academic?.slice(0,200)}\n비교과:${results.activity?.slice(0,200)}\n진로:${results.career?.slice(0,200)}`;
+    onProgress?.({ step: 4, label: '지원 전략 수립 중...' });
+    results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 4, label: '지원 전략 (기존 결과 유지)' }); }
 
-  onProgress?.({ step: 4, label: '지원 전략 수립 중...' });
-  results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocsLight, apiKey);
+  if (shouldRun('roadmap')) {
+    onProgress?.({ step: 5, label: '3년 로드맵 생성 중...' });
+    results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 5, label: '로드맵 (기존 결과 유지)' }); }
 
-  onProgress?.({ step: 5, label: '3년 로드맵 생성 중...' });
-  results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocsLight, apiKey);
+  if (shouldRun('recordFeedback')) {
+    onProgress?.({ step: 6, label: '세특 개선안 작성 중...' });
+    results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 6, label: '세특 (기존 결과 유지)' }); }
 
-  onProgress?.({ step: 6, label: '세특 개선안 작성 중...' });
-  results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocsLight, apiKey);
-
-  const allAnalysis = Object.values(results).join('\n\n');
-  onProgress?.({ step: 7, label: '종합 대시보드 생성 중...' });
-  results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocsLight, apiKey);
+  if (shouldRun('dashboard')) {
+    const allAnalysis = Object.values(results).filter(Boolean).join('\n\n');
+    onProgress?.({ step: 7, label: '종합 대시보드 생성 중...' });
+    results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocsLight, apiKey);
+  } else { onProgress?.({ step: 7, label: '대시보드 (기존 결과 유지)' }); }
 
   onProgress?.({ step: 8, label: '분석 완료!' });
   return results;
