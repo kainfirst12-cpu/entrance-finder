@@ -1211,6 +1211,40 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
         </div>
       </div>
 
+      {/* AI 교차 검증 패널 */}
+      <div className="verify-panel">
+        <div className="verify-panel-header">
+          <span className="verify-title">🔎 다른 AI로 검증</span>
+          <span className="verify-desc">
+            분석 결과를 다른 AI가 교차 검증합니다
+          </span>
+        </div>
+        <div className="verify-controls">
+          {verifyOptions.map(([key, cfg]) => {
+            const hasKey = !!getKeyForModel(key);
+            return (
+              <button
+                key={key}
+                className={`verify-model-btn ${verifyModel === key ? 'active' : ''} ${!hasKey ? 'no-key' : ''}`}
+                style={verifyModel === key ? { borderColor: cfg.color, color: cfg.color } : {}}
+                onClick={() => setVerifyModel(key)}
+                title={!hasKey ? `${cfg.label} API 키가 설정되지 않았습니다` : ''}
+              >
+                {cfg.icon} {cfg.label}
+                {!hasKey && <span className="no-key-label">키 없음</span>}
+              </button>
+            );
+          })}
+          <button
+            className="btn-verify-start"
+            onClick={handleVerify}
+            disabled={!verifyModel || verifying}
+          >
+            {verifying ? '⏳ 검증 중...' : '검증 실행'}
+          </button>
+        </div>
+      </div>
+
       {/* 검증 결과 — 체크박스 리스트 */}
       {verifyResult && (
         <div className="verify-result">
