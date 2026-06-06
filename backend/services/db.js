@@ -195,7 +195,7 @@ export async function ensureAdminUser() {
 export async function findActiveUserByCode(code) {
   if (!dbEnabled() || !code) return null;
   const { rows } = await pool.query(
-    `SELECT id, code, name, role, active FROM app_users WHERE code = $1 AND active = true LIMIT 1`,
+    `SELECT id, code, name, role, active FROM app_users WHERE code = $1 AND active = true AND role = 'user' LIMIT 1`,
     [code]
   );
   return rows[0] || null;
