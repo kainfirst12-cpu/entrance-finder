@@ -54,6 +54,7 @@ export default function AdminDashboard({ onAuthError }) {
   const [kb, setKb] = useState({ vectorEnabled: true, counts: {} });
   const [kbBusy, setKbBusy] = useState('');
   const [kbMsg, setKbMsg] = useState('');
+  const [kbProgress, setKbProgress] = useState(null); // {state:'running'|'done'|'error', phase, docsDone, docs, chunks, error}
   const [uploadType, setUploadType] = useState('합격자사례');
   const uploadRef = useRef(null);
 
@@ -81,10 +82,11 @@ export default function AdminDashboard({ onAuthError }) {
 
   const ingestDrive = async () => {
     if (!confirm('Google Drive의 지식베이스를 Supabase로 가져옵니다.\n기존 지식베이스는 교체되며, 백그라운드로 처리됩니다(1~3분). 진행할까요?')) return;
-    setKbBusy('drive'); setKbMsg('시작하는 중...');
+    setKbBusy('drive'); setKbMsg('');
+    setKbProgress({ state: 'running', phase: 'drive-read', docsDone: 0, docs: 0, chunks: 0 });
     try {
       const r = await api('/api/admin/ingest/drive', { method: 'POST', body: JSON.stringify({ replace: true }) });
-      if (!r.success) { setKbMsg('실패: ' + (r.message || '')); setKbBusy(''); return; }
+      if (!r.success) { setKbProgress({ state: 'error', error: r.message || '시작 실패' }); setKbBusy(''); return; }
       // 백그라운드 진행 상태를 폴링 (요청이 즉시 끝나므로 Failed to fetch 없음)
       const poll = async () => {
         try {
@@ -92,23 +94,20 @@ export default function AdminDashboard({ onAuthError }) {
           if (s.counts) setKb(k => ({ ...k, counts: s.counts }));
           const st = s.state || {};
           if (st.running) {
-            setKbMsg(st.phase === 'drive-read'
-              ? 'Drive에서 문서 읽는 중...'
-              : `임베딩 중... (문서 ${st.docsDone}/${st.docs}, ${st.chunks}청크)`);
-            setTimeout(poll, 3000);
+            setKbProgress({ state: 'running', phase: st.phase, docsDone: st.docsDone || 0, docs: st.docs || 0, chunks: st.chunks || 0 });
+            setTimeout(poll, 2500);
           } else if (st.phase === 'done') {
-            setKbMsg(`완료: 문서 ${st.docs}건 → ${st.chunks}청크`); setKbBusy('');
+            setKbProgress({ state: 'done', docs: st.docs, chunks: st.chunks }); setKbBusy('');
           } else if (st.phase === 'error') {
-            setKbMsg('실패: ' + (st.error || '')); setKbBusy('');
-          } else { setKbBusy(''); }
+            setKbProgress({ state: 'error', error: st.error || '알 수 없는 오류' }); setKbBusy('');
+          } else { setKbProgress(null); setKbBusy(''); }
         } catch (e) {
           if (e.auth) { onAuthError?.(); return; }
-          // 일시적 네트워크 흔들림이면 재시도
-          setTimeout(poll, 4000);
+          setTimeout(poll, 4000); // 일시적 네트워크 흔들림이면 재시도
         }
       };
       setTimeout(poll, 2000);
-    } catch (e) { handleErr(e); setKbMsg('실패: ' + (e.message || '')); setKbBusy(''); }
+    } catch (e) { handleErr(e); setKbProgress({ state: 'error', error: e.message || '' }); setKbBusy(''); }
   };
 
   const ingestUpload = async (fileList) => {
@@ -192,6 +191,7 @@ export default function AdminDashboard({ onAuthError }) {
 
   return (
     <div style={S.page}>
+      <style>{`@keyframes efspin { to { transform: rotate(360deg); } }`}</style>
       <div style={S.headerRow}>
         <h2 style={S.h2}>🛡️ 관리자 대시보드</h2>
         <button style={S.refreshBtn} onClick={loadAll}>↻ 새로고침</button>
@@ -348,7 +348,44 @@ export default function AdminDashboard({ onAuthError }) {
                 onChange={e => ingestUpload(e.target.files)} disabled={!!kbBusy}
                 style={{ ...S.input, flex: 1, padding: '8px 10px' }} />
             </div>
-            {kbMsg && <div style={{ ...S.muted, color: kbMsg.startsWith('실패') ? '#ff8080' : '#22c55e' }}>{kbMsg}</div>}
+            {kbProgress && (() => {
+              const p = kbProgress;
+              if (p.state === 'running') {
+                const pct = p.docs > 0 ? Math.round((p.docsDone / p.docs) * 100) : null;
+                return (
+                  <div style={S.progressBox}>
+                    <div style={{ ...S.progressHead, color: '#2d5be3' }}>
+                      <span style={S.spinner} />
+                      {p.phase === 'drive-read' ? 'Drive에서 문서 읽는 중...' : `자료 가져오는 중 ${pct != null ? `(${pct}%)` : ''}`}
+                    </div>
+                    {p.phase !== 'drive-read' && (
+                      <>
+                        <div style={S.progressBarOuter}>
+                          <div style={{ ...S.progressBarInner, width: `${pct ?? 5}%` }} />
+                        </div>
+                        <div style={S.progressSub}>문서 {p.docsDone} / {p.docs}건 처리 · 누적 {p.chunks.toLocaleString()}청크 저장</div>
+                      </>
+                    )}
+                    <div style={S.progressSub}>창을 닫아도 서버에서 계속 진행됩니다. 잠시 후 자동 갱신됩니다.</div>
+                  </div>
+                );
+              }
+              if (p.state === 'done') {
+                return (
+                  <div style={{ ...S.progressBox, background: '#f0fdf4', borderColor: '#86efac' }}>
+                    <div style={{ ...S.progressHead, color: '#16a34a', marginBottom: 4 }}>✅ 가져오기 완료</div>
+                    <div style={S.progressSub}>문서 {p.docs}건 → {Number(p.chunks).toLocaleString()}청크 저장됨. 이제 분석에 이 자료가 활용됩니다.</div>
+                  </div>
+                );
+              }
+              return (
+                <div style={{ ...S.progressBox, background: '#fef2f2', borderColor: '#fca5a5' }}>
+                  <div style={{ ...S.progressHead, color: '#dc2626', marginBottom: 4 }}>❌ 실패</div>
+                  <div style={S.progressSub}>{p.error}</div>
+                </div>
+              );
+            })()}
+            {kbMsg && <div style={{ ...S.muted, fontWeight: 600, color: kbMsg.startsWith('실패') ? '#dc2626' : '#16a34a' }}>{kbMsg}</div>}
           </>
         )}
       </section>
@@ -387,37 +424,45 @@ export default function AdminDashboard({ onAuthError }) {
   );
 }
 
+// 앱은 밝은(흰색) 테마 — 어두운 글씨/흰 카드로 또렷하게
 const STYLES = {
-  page: { padding: '28px 32px', maxWidth: 1100, margin: '0 auto', color: '#e6edf3' },
+  page: { padding: '28px 32px', maxWidth: 1100, margin: '0 auto', color: '#1a1916' },
   headerRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  h2: { fontSize: 22, fontWeight: 700, margin: 0 },
-  refreshBtn: { background: 'rgba(255,255,255,0.08)', color: '#e6edf3', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 },
-  warn: { background: 'rgba(240,165,0,0.12)', border: '1px solid rgba(240,165,0,0.4)', color: '#f0c040', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13.5, lineHeight: 1.5 },
-  error: { background: 'rgba(255,80,80,0.12)', border: '1px solid rgba(255,80,80,0.4)', color: '#ff8080', padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13.5 },
-  muted: { color: 'rgba(230,237,243,0.45)', fontSize: 13.5, padding: '8px 2px' },
-  card: { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 20, marginBottom: 18 },
-  cardTitle: { fontSize: 15.5, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 },
-  sub: { fontSize: 12, color: 'rgba(230,237,243,0.4)', fontWeight: 400, marginLeft: 8 },
-  liveDot: { width: 9, height: 9, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e', display: 'inline-block' },
+  h2: { fontSize: 22, fontWeight: 700, margin: 0, color: '#1a1916' },
+  refreshBtn: { background: '#ffffff', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  warn: { background: '#fffbeb', border: '1px solid #fcd34d', color: '#b45309', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13.5, lineHeight: 1.5 },
+  error: { background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13.5 },
+  muted: { color: '#6b6860', fontSize: 13.5, padding: '8px 2px' },
+  card: { background: '#ffffff', border: '1px solid #e8e6df', borderRadius: 14, padding: 20, marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  cardTitle: { fontSize: 15.5, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, color: '#1a1916' },
+  sub: { fontSize: 12, color: '#9b9890', fontWeight: 400, marginLeft: 8 },
+  liveDot: { width: 9, height: 9, borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 8px #16a34a', display: 'inline-block' },
   tableWrap: { overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { textAlign: 'left', padding: '8px 10px', color: 'rgba(230,237,243,0.5)', fontWeight: 600, borderBottom: '1px solid rgba(255,255,255,0.1)', whiteSpace: 'nowrap' },
-  td: { padding: '9px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', whiteSpace: 'nowrap' },
-  code: { fontFamily: 'monospace', background: 'rgba(124,106,247,0.18)', color: '#b9acff', padding: '2px 7px', borderRadius: 6, fontSize: 12.5, letterSpacing: 1 },
-  bigCode: { fontFamily: 'monospace', fontSize: 18, letterSpacing: 2, color: '#fff', margin: '0 8px' },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1916' },
+  th: { textAlign: 'left', padding: '8px 10px', color: '#6b6860', fontWeight: 600, borderBottom: '2px solid #e8e6df', whiteSpace: 'nowrap' },
+  td: { padding: '9px 10px', borderBottom: '1px solid #f0eee8', whiteSpace: 'nowrap', color: '#1a1916' },
+  code: { fontFamily: 'monospace', background: '#eef1fc', color: '#2d5be3', padding: '2px 7px', borderRadius: 6, fontSize: 12.5, letterSpacing: 1, fontWeight: 600 },
+  bigCode: { fontFamily: 'monospace', fontSize: 18, letterSpacing: 2, color: '#16a34a', margin: '0 8px', fontWeight: 700 },
   createRow: { display: 'flex', gap: 10, marginBottom: 12 },
-  input: { flex: 1, padding: '10px 14px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 14, outline: 'none' },
-  primaryBtn: { background: 'linear-gradient(135deg, #667eea, #764ba2)', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontWeight: 600, cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' },
-  createdBox: { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap' },
-  copyBtn: { background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, marginRight: 10 },
-  copyMini: { background: 'transparent', color: 'rgba(185,172,255,0.8)', border: 'none', cursor: 'pointer', fontSize: 11.5, marginLeft: 6, textDecoration: 'underline' },
-  onlineBadge: { color: '#22c55e', fontWeight: 600, fontSize: 12.5 },
-  offlineBadge: { color: 'rgba(230,237,243,0.4)', fontSize: 12.5 },
-  disabledBadge: { color: '#ff8080', fontSize: 12.5 },
-  smallBtn: { background: 'rgba(255,255,255,0.08)', color: '#e6edf3', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
-  dangerBtn: { background: 'rgba(255,80,80,0.12)', borderColor: 'rgba(255,80,80,0.35)', color: '#ff8080' },
+  input: { flex: 1, padding: '10px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#ffffff', color: '#1a1916', fontSize: 14, outline: 'none' },
+  primaryBtn: { background: '#2d5be3', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontWeight: 600, cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' },
+  createdBox: { background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap', color: '#166534' },
+  copyBtn: { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, marginRight: 10 },
+  copyMini: { background: 'transparent', color: '#2d5be3', border: 'none', cursor: 'pointer', fontSize: 11.5, marginLeft: 6, textDecoration: 'underline' },
+  onlineBadge: { color: '#16a34a', fontWeight: 700, fontSize: 12.5 },
+  offlineBadge: { color: '#9b9890', fontSize: 12.5 },
+  disabledBadge: { color: '#dc2626', fontSize: 12.5 },
+  smallBtn: { background: '#f5f4f0', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
+  dangerBtn: { background: '#fef2f2', borderColor: '#fca5a5', color: '#dc2626' },
   kbCounts: { display: 'flex', gap: 12, marginBottom: 14 },
-  kbStat: { flex: 1, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
-  kbStatNum: { fontSize: 24, fontWeight: 700, color: '#b9acff' },
-  kbStatLabel: { fontSize: 12, color: 'rgba(230,237,243,0.55)', marginTop: 4 },
+  kbStat: { flex: 1, background: '#eef1fc', border: '1px solid #c7d2fe', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
+  kbStatNum: { fontSize: 26, fontWeight: 800, color: '#2d5be3' },
+  kbStatLabel: { fontSize: 12, color: '#6b6860', marginTop: 4, fontWeight: 600 },
+  // 진행 상태 박스
+  progressBox: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #e8e6df', background: '#f9f8f5' },
+  progressHead: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, marginBottom: 10 },
+  progressBarOuter: { height: 10, background: '#e8e6df', borderRadius: 6, overflow: 'hidden' },
+  progressBarInner: { height: '100%', background: 'linear-gradient(90deg,#2d5be3,#4f46e5)', borderRadius: 6, transition: 'width 0.4s' },
+  progressSub: { fontSize: 12.5, color: '#6b6860', marginTop: 8 },
+  spinner: { width: 14, height: 14, border: '2px solid #c7d2fe', borderTopColor: '#2d5be3', borderRadius: '50%', display: 'inline-block', animation: 'efspin 0.8s linear infinite' },
 };
