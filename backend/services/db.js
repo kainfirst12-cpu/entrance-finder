@@ -71,8 +71,49 @@ export async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_sessions_lastseen ON sessions(last_seen_at);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, created_at);`);
 
+    // 학생 관리 보드 (ef_ 접두어 — 같은 Supabase의 다른 앱 표와 충돌 방지)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_students (
+        id          SERIAL PRIMARY KEY,
+        owner_id    INTEGER REFERENCES app_users(id) ON DELETE CASCADE,
+        name        TEXT NOT NULL,
+        school      TEXT DEFAULT '',
+        grade       TEXT DEFAULT '',
+        major       TEXT DEFAULT '',
+        target_univ TEXT DEFAULT '',
+        status      TEXT NOT NULL DEFAULT '신규',
+        position    INTEGER NOT NULL DEFAULT 0,
+        notes       TEXT DEFAULT '',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_grades (
+        id         SERIAL PRIMARY KEY,
+        student_id INTEGER REFERENCES ef_students(id) ON DELETE CASCADE,
+        term       TEXT NOT NULL,
+        gpa        NUMERIC,
+        note       TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_records (
+        id         SERIAL PRIMARY KEY,
+        student_id INTEGER REFERENCES ef_students(id) ON DELETE CASCADE,
+        type       TEXT,
+        title      TEXT,
+        detail     TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_students_owner ON ef_students(owner_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_grades_student ON ef_grades(student_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_records_student ON ef_records(student_id);`);
+
     ready = true;
-    console.log('[DB] Postgres 연결 및 인증 스키마 준비 완료');
+    console.log('[DB] Postgres 연결 및 인증/보드 스키마 준비 완료');
 
     // ── pgvector 지식베이스 스키마 (Supabase) ──
     // 실패해도(확장 미설치 등) 인증 기능은 계속 동작하도록 분리

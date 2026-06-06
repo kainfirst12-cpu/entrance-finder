@@ -5,6 +5,10 @@ import 'dotenv/config';
 import { loadKnowledgeBase, loadStudentFiles, loadAllKnowledgeDocs } from './services/driveService.js';
 import { loadKnowledgeBaseRAG, ragAvailable } from './services/ragService.js';
 import { refreshKbCount, countByType, clearKnowledge, ingestDocuments } from './services/vectorStore.js';
+import {
+  BOARD_COLUMNS, listStudents, getStudentOwner, createStudent, updateStudent, deleteStudent,
+  addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
+} from './services/boardStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
@@ -663,6 +667,103 @@ app.post('/api/assessment/docx', async (req, res) => {
     console.error('[assessment/docx] 오류:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
+});
+
+// ══════════════════════════════════════════════════════
+// 학생 관리 보드 (칸반) — 선생님별 분리 + 관리자 조망
+// ══════════════════════════════════════════════════════
+
+// 편집 권한: 관리자는 전체, 선생님은 본인 소유만
+async function canEditStudent(req, studentId) {
+  if (req.user?.role === 'admin') return true;
+  const owner = await getStudentOwner(studentId);
+  return owner != null && owner === req.user?.userId;
+}
+
+// 관리자: 선생님 목록
+app.get('/api/board/teachers', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, teachers: await listTeachers() });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 보드 학생 목록 — 선생님은 본인, 관리자는 teacherId 지정
+app.get('/api/board/students', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    let ownerId;
+    if (req.user.role === 'admin') {
+      ownerId = Number(req.query.teacherId);
+      if (!ownerId) return res.json({ success: true, needTeacher: true, columns: BOARD_COLUMNS, students: [] });
+    } else {
+      ownerId = req.user.userId;
+    }
+    res.json({ success: true, columns: BOARD_COLUMNS, students: await listStudents(ownerId) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 카드 생성
+app.post('/api/board/students', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    let ownerId = req.user.userId;
+    if (req.user.role === 'admin') {
+      ownerId = Number(req.body.teacherId);
+      if (!ownerId) return res.status(400).json({ success: false, message: '관리자는 어떤 선생님의 학생인지 선택해야 합니다' });
+    }
+    if (!ownerId) return res.status(400).json({ success: false, message: '소유자 없음 — 이용자 코드로 로그인해야 보드를 사용할 수 있습니다' });
+    res.json({ success: true, student: await createStudent(ownerId, req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 카드 수정 (상태 이동/메모/정보)
+app.patch('/api/board/students/:id', requireAuth, async (req, res) => {
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    await updateStudent(Number(req.params.id), req.body);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 카드 삭제
+app.delete('/api/board/students/:id', requireAuth, async (req, res) => {
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteStudent(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 성적 추가 / 삭제
+app.post('/api/board/students/:id/grades', requireAuth, async (req, res) => {
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, grade: await addGrade(Number(req.params.id), req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/board/grades/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getGradeOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteGrade(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 활동 기록 추가 / 삭제
+app.post('/api/board/students/:id/records', requireAuth, async (req, res) => {
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, record: await addRecord(Number(req.params.id), req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/board/records/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getRecordOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteRecord(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 // ── 채팅 파일 업로드 (PDF 텍스트 추출 / 이미지 base64 변환) ──
