@@ -263,6 +263,14 @@ app.post('/api/refine', async (req, res) => {
 === 합격자 사례 (재매칭 참조용) ===
 ${kb.합격자사례 || '(자료 없음)'}`;
 
+  // 긴 생성 동안 Railway 프록시 타임아웃(Failed to fetch) 방지 — 8초마다 keepalive 핑
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+
   try {
     let reply;
     const userMsg = sectionKey
@@ -303,10 +311,10 @@ ${kb.합격자사례 || '(자료 없음)'}`;
       reply = final.content.map(b => b.type === 'text' ? b.text : '').join('');
     }
 
-    res.json({ success: true, reply });
+    sendDone({ success: true, reply });
   } catch (err) {
     console.error(`[refine/${aiModel}] 오류:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
+    sendDone({ success: false, message: err.message });
   }
 });
 

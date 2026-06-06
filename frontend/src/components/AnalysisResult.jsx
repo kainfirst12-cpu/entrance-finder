@@ -1,6 +1,33 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 
+// SSE(keepalive 포함) 또는 일반 JSON 응답을 모두 처리해 최종 결과 객체를 반환.
+// 긴 AI 생성(refine 등)은 서버가 8초마다 keepalive를 보내고 마지막에 data: {결과}를 보낸다.
+async function postForResult(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('text/event-stream')) {
+    return res.json();
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try { result = JSON.parse(line.slice(6)); } catch {}
+      }
+    }
+  }
+  return result || { success: false, message: '서버 응답이 비었습니다 (연결 끊김)' };
+}
+
 const MODEL_CONFIG = {
   claude:        { icon: '🔵', label: 'Claude Sonnet 4.6', color: '#7c6af7', group: 'claude' },
   'claude-opus': { icon: '🔷', label: 'Claude Opus 4.8',   color: '#5b21b6', group: 'claude' },
@@ -790,7 +817,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
         .map(({ key, title }) => `## ${title}\n${results[key]}`)
         .join('\n\n');
 
-      const res = await fetch(`${API_BASE}/api/refine`, {
+      const resData = await postForResult(`${API_BASE}/api/refine`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -806,7 +833,6 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
         }),
       });
 
-      const resData = await res.json();
       if (resData.success) {
         // AI가 전체를 하나의 텍스트로 반환 — 섹션별로 파싱
         const refined = { ...results };
