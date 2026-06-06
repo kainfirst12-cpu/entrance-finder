@@ -8,8 +8,8 @@ async function api(path, opts = {}) {
     ...opts,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}`, ...(opts.headers || {}) },
   });
-  if (res.status === 401 || res.status === 403) { const e = new Error('권한/인증 오류'); e.auth = res.status === 401; throw e; }
-  return res.json();
+  if (res.status === 401) { const e = new Error('세션 만료 — 다시 로그인하세요'); e.auth = true; throw e; }
+  return res.json(); // 403 등은 {success:false,message} 그대로 반환 (모달에서 표시)
 }
 
 // 파스텔 칸반 테마 (배경 / 강조색 / 카드 상단 띠)
@@ -234,36 +234,47 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
   const [saving, setSaving] = useState(false);
   const [expandedRec, setExpandedRec] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState('');
   const fileRef = useRef(null);
   const S = STYLES;
 
+  // 응답 success까지 검사 (실패 시 throw)
+  const call = async (path, opts) => {
+    const d = await api(path, opts);
+    if (d && d.success === false) throw new Error(d.message || '처리 실패');
+    return d;
+  };
+  const fail = (e) => { if (e.auth) onError(e); setMsg('⚠ ' + (e.message || '오류')); };
+
   const save = async () => {
-    setSaving(true);
-    try { await api(`/api/board/students/${student.id}`, { method: 'PATCH', body: JSON.stringify(form) }); await onChanged(); }
-    catch (e) { onError(e); } finally { setSaving(false); }
+    setSaving(true); setMsg('');
+    try { await call(`/api/board/students/${student.id}`, { method: 'PATCH', body: JSON.stringify(form) }); await onChanged(); setMsg('✓ 저장됨'); }
+    catch (e) { fail(e); } finally { setSaving(false); }
   };
   const del = async () => {
     if (!confirm(`'${student.name}' 학생 카드를 삭제할까요? 성적·기록도 함께 삭제됩니다.`)) return;
-    try { await api(`/api/board/students/${student.id}`, { method: 'DELETE' }); await onChanged(); onClose(); }
-    catch (e) { onError(e); }
+    try { await call(`/api/board/students/${student.id}`, { method: 'DELETE' }); await onChanged(); onClose(); }
+    catch (e) { fail(e); }
   };
   const addGrade = async () => {
-    if (!gTerm.trim()) return;
-    try { await api(`/api/board/students/${student.id}/grades`, { method: 'POST', body: JSON.stringify({ term: gTerm, gpa: gGpa, note: gNote }) }); setGTerm(''); setGGpa(''); setGNote(''); await onChanged(); }
-    catch (e) { onError(e); }
+    if (!gTerm.trim()) { setMsg('학기를 입력하세요 (예: 2-1)'); return; }
+    setMsg('');
+    try { await call(`/api/board/students/${student.id}/grades`, { method: 'POST', body: JSON.stringify({ term: gTerm, gpa: gGpa, note: gNote }) }); setGTerm(''); setGGpa(''); setGNote(''); await onChanged(); }
+    catch (e) { fail(e); }
   };
-  const delGrade = async (id) => { try { await api(`/api/board/grades/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { onError(e); } };
+  const delGrade = async (id) => { try { await call(`/api/board/grades/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { fail(e); } };
   const addRecord = async () => {
-    if (!rTitle.trim() && !rContent.trim()) return;
-    try { await api(`/api/board/students/${student.id}/records`, { method: 'POST', body: JSON.stringify({ type: rType, title: rTitle || rType, content: rContent }) }); setRTitle(''); setRContent(''); await onChanged(); }
-    catch (e) { onError(e); }
+    if (!rTitle.trim() && !rContent.trim()) { setMsg('제목 또는 내용을 입력하세요'); return; }
+    setMsg('');
+    try { await call(`/api/board/students/${student.id}/records`, { method: 'POST', body: JSON.stringify({ type: rType, title: rTitle || rType, content: rContent }) }); setRTitle(''); setRContent(''); await onChanged(); }
+    catch (e) { fail(e); }
   };
-  const delRecord = async (id) => { try { await api(`/api/board/records/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { onError(e); } };
+  const delRecord = async (id) => { try { await call(`/api/board/records/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { fail(e); } };
 
   const uploadFiles = async (fileList) => {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
-    setUploading(true);
+    setUploading(true); setMsg('');
     try {
       const fd = new FormData();
       files.forEach(f => fd.append('files', f));
@@ -271,9 +282,9 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
         method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
       });
       const d = await res.json();
-      if (!d.success) onError(new Error(d.message || '업로드 실패'));
-      await onChanged();
-    } catch (e) { onError(e); }
+      if (!d.success) throw new Error(d.message || '업로드 실패');
+      await onChanged(); setMsg('✓ 파일 업로드됨');
+    } catch (e) { fail(e); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
   };
   const downloadFile = async (f) => {
@@ -296,6 +307,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
           <input style={S.titleInput} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
           <button style={S.closeBtn} onClick={onClose}>×</button>
         </div>
+        {msg && <div style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 10, fontSize: 13, background: msg.startsWith('✓') ? 'rgba(52,211,153,0.14)' : 'rgba(248,113,113,0.14)', color: msg.startsWith('✓') ? '#34d399' : '#f87171', border: `1px solid ${msg.startsWith('✓') ? 'rgba(52,211,153,0.4)' : 'rgba(248,113,113,0.4)'}` }}>{msg}</div>}
 
         <div style={S.grid2}>
           <Field label="학교" v={form.school} on={v => setForm(f => ({ ...f, school: v }))} />
