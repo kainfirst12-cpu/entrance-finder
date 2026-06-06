@@ -237,19 +237,41 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
     preExtractedText: pdf.preExtractedText,
   }));
 
-  for (const s of steps) {
+  // 한 섹션 실행 + 완료 즉시 전송 + 오류 격리 (한 섹션 실패가 전체를 중단시키지 않음)
+  const runSection = async (s) => {
     if (!shouldRun(s.key)) {
       onProgress?.({ step: s.step, label: `${s.label} (기존 결과 유지)` });
-      continue;
+      if (results[s.key]) onProgress?.({ section: s.key, content: results[s.key] });
+      return;
     }
     onProgress?.({ step: s.step, label: `${s.label} 중...` });
     // step 1(사례매칭)만 이미지 포함, 나머지 텍스트만 (타임아웃 방지)
     const docs = s.step === 1 ? pdfDocuments : pdfDocsLight;
-    results[s.key] = await callGemini(systemPrompt, s.prompt, 16000, apiKey, 'gemini', docs);
-  }
+    try {
+      results[s.key] = await callGemini(systemPrompt, s.prompt, 16000, apiKey, 'gemini', docs);
+    } catch (e) {
+      console.error(`[Gemini] '${s.key}' 섹션 실패:`, e.message);
+      results[s.key] = `> 이 항목 분석 중 오류가 발생했습니다 (${e.message}).\n>\n> 결과 화면의 "이 데이터로 재분석"에서 이 섹션만 다시 실행할 수 있습니다.`;
+    }
+    onProgress?.({ section: s.key, content: results[s.key] });
+  };
+
+  // 사례 매칭(이미지 포함, 무거움)을 먼저, 나머지는 동시 4개씩 병렬 (속도 개선)
+  const caseStep = steps.find(s => s.key === 'caseMatching');
+  if (caseStep) await runSection(caseStep);
+  await runPool(steps.filter(s => s.key !== 'caseMatching'), 4, runSection);
 
   onProgress?.({ step: 8, label: '분석 완료!' });
   return results;
+}
+
+// 동시 실행 개수 제한 풀
+async function runPool(items, limit, worker) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) await worker(queue.shift());
+  });
+  await Promise.all(workers);
 }
 
 export async function testGeminiConnection(apiKey) {

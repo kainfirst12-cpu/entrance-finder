@@ -604,7 +604,6 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
         ${cvMajor ? `<tr><td>희망 전공</td><td>${cvMajor}</td></tr>` : ''}
         ${cvTarget ? `<tr><td>목표 대학</td><td>${cvTarget}</td></tr>` : ''}
         <tr><td>분석일</td><td>${today}</td></tr>
-        <tr><td>분석 AI</td><td>${modelLabel}</td></tr>
         ${pdfCount > 0 ? `<tr><td>첨부 자료</td><td>PDF ${pdfCount}건 분석 포함</td></tr>` : ''}
       </table>
 
@@ -1177,10 +1176,12 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           <h2>✅ 분석 완료</h2>
           <p>
             {studentData?.name} · {studentData?.school} · {studentData?.major}
-            <span className="model-badge-inline" style={{ background: usedCfg.color + '20', color: usedCfg.color }}>
-              {usedCfg.icon} {usedCfg.label} 분석
-            </span>
           </p>
+          {data?.partial && (
+            <div style={{ background: 'rgba(240,165,0,0.12)', border: '1px solid rgba(240,165,0,0.4)', color: '#b8860b', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '6px 0' }}>
+              ⚠️ 일부 항목만 완료된 상태로 저장되었습니다. 누락된 항목은 아래 "🔄 이 데이터로 재분석"으로 이어서 분석하세요.
+            </div>
+          )}
           {pdfCount > 0 && <span className="pdf-badge">📎 PDF {pdfCount}건 분석 포함</span>}
         </div>
         <div className="result-actions">
@@ -1207,40 +1208,6 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           })}>🔄 이 데이터로 재분석</button>
           <button className="btn-secondary" onClick={onNewAnalysis}>✨ 새 분석</button>
           <button className="btn-ghost" onClick={onBack}>← 목록</button>
-        </div>
-      </div>
-
-      {/* AI 교차 검증 패널 */}
-      <div className="verify-panel">
-        <div className="verify-panel-header">
-          <span className="verify-title">🔎 다른 AI로 검증</span>
-          <span className="verify-desc">
-            {usedCfg.label}(으)로 분석한 결과를 다른 AI가 교차 검증합니다
-          </span>
-        </div>
-        <div className="verify-controls">
-          {verifyOptions.map(([key, cfg]) => {
-            const hasKey = !!getKeyForModel(key);
-            return (
-              <button
-                key={key}
-                className={`verify-model-btn ${verifyModel === key ? 'active' : ''} ${!hasKey ? 'no-key' : ''}`}
-                style={verifyModel === key ? { borderColor: cfg.color, color: cfg.color } : {}}
-                onClick={() => setVerifyModel(key)}
-                title={!hasKey ? `${cfg.label} API 키가 설정되지 않았습니다` : ''}
-              >
-                {cfg.icon} {cfg.label}
-                {!hasKey && <span className="no-key-label">키 없음</span>}
-              </button>
-            );
-          })}
-          <button
-            className="btn-verify-start"
-            onClick={handleVerify}
-            disabled={!verifyModel || verifying}
-          >
-            {verifying ? '⏳ 검증 중...' : '검증 실행'}
-          </button>
         </div>
       </div>
 

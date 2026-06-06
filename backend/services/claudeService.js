@@ -597,7 +597,7 @@ ${studentData.name} 입시 컨설팅 종합 리포트
   return callClaude(systemPrompt, prompt, 12000, pdfDocuments, apiKey);
 };
 
-// ── 전체 분석 오케스트레이터 ──────────────────────────
+// ── 전체 분석 오케스트레이터 (병렬 + 섹션별 오류 격리 + 증분 전송) ──
 export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = [], apiKey, options = {}) => {
   const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
   const { existingResults = {}, sectionsToRun = null } = options;
@@ -608,10 +608,28 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   };
   const results = { ...existingResults };
 
+  // 한 섹션을 실행하고, 성공/실패와 무관하게 결과를 즉시 onProgress로 전송한다.
+  // 한 섹션이 실패해도 전체 분석은 중단되지 않는다(부분 저장 보장).
+  const runSection = async (key, step, label, fn) => {
+    if (!shouldRun(key)) {
+      onProgress?.({ step, label: `${label} (기존 결과 유지)` });
+      if (results[key]) onProgress?.({ section: key, content: results[key] });
+      return;
+    }
+    onProgress?.({ step, label: `${label} 중...` });
+    try {
+      results[key] = await fn();
+    } catch (e) {
+      console.error(`[Analysis] '${key}' 섹션 실패:`, e.message);
+      results[key] = `> 이 항목 분석 중 오류가 발생했습니다 (${e.message}).\n>\n> 결과 화면의 "이 데이터로 재분석"에서 이 섹션만 다시 실행할 수 있습니다.`;
+    }
+    onProgress?.({ section: key, content: results[key] }); // 완료 즉시 전송 → 끊겨도 저장됨
+  };
+
   // 스캔 PDF 여부 판단
   const isScannedPdf = pdfDocuments.some(pdf => pdf.images?.length > 0);
   console.log(`[Analysis] 스캔 PDF: ${isScannedPdf ? '예 — 이미지 모드' : '아니오 — 텍스트 모드'}`);
-  console.log(`[Analysis] 모드: ${sectionsToRun ? `부분 재분석 (${sectionsToRun.join(', ')})` : '전체 분석'}`);
+  console.log(`[Analysis] 모드: ${sectionsToRun ? `부분 재분석 (${sectionsToRun.join(', ')})` : '전체 분석(병렬)'}`);
 
   // 이미지 없는 경량 pdfDocuments (텍스트만, 이미지 제거)
   const pdfDocsLight = pdfDocuments.map(pdf => ({
@@ -620,13 +638,9 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
     preExtractedText: pdf.preExtractedText,
   }));
 
-  // 단계 0: 이미지 포함 → PDF 데이터 추출 + 사례 매칭
-  if (shouldRun('caseMatching')) {
-    onProgress?.({ step: 0, label: isScannedPdf ? '스캔 PDF 이미지 분석 중...' : 'Drive 사례 매칭 중...' });
-    results.caseMatching = await step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey);
-  } else {
-    onProgress?.({ step: 0, label: '사례 매칭 (기존 결과 유지)' });
-  }
+  // 단계 0: 이미지 포함 → PDF 데이터 추출 + 사례 매칭 (이후 단계의 컨텍스트라 먼저 단독 실행)
+  await runSection('caseMatching', 0, isScannedPdf ? '스캔 PDF 이미지 분석' : 'Drive 사례 매칭',
+    () => step0_caseMatching(systemPrompt, studentData, pdfDocuments, apiKey));
 
   // step0에서 추출한 데이터를 이후 단계 컨텍스트로 사용
   const step0Context = results.caseMatching || '';
@@ -635,43 +649,28 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
       pdf.preExtractedText = `[0단계에서 추출한 PDF 데이터 — 이 데이터를 기반으로 분석하십시오]\n${step0Context.slice(-4000)}\n`;
     }
   }
+  const academicDocs = isScannedPdf ? pdfDocuments : pdfDocsLight;
 
-  if (shouldRun('academic')) {
-    onProgress?.({ step: 1, label: '학업역량 분석 중...' });
-    results.academic = await step1_academic(systemPrompt, studentData, isScannedPdf ? pdfDocuments : pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 1, label: '학업역량 (기존 결과 유지)' }); }
+  // 1~3,5,6단계는 서로 독립 → 병렬 실행 (속도 대폭 개선)
+  await Promise.all([
+    runSection('academic',       1, '학업역량 분석',     () => step1_academic(systemPrompt, studentData, academicDocs, apiKey)),
+    runSection('activity',       2, '비교과 활동 분석',   () => step2_activity(systemPrompt, studentData, pdfDocsLight, apiKey)),
+    runSection('career',         3, '진로 역량 분석',     () => step3_career(systemPrompt, studentData, pdfDocsLight, apiKey)),
+    runSection('roadmap',        5, '핵심 리스크 분석',   () => step5_roadmap(systemPrompt, studentData, pdfDocsLight, apiKey)),
+    runSection('recordFeedback', 6, '실행 계획 작성',     () => step6_recordFeedback(systemPrompt, studentData, pdfDocsLight, apiKey)),
+  ]);
 
-  if (shouldRun('activity')) {
-    onProgress?.({ step: 2, label: '비교과 활동 분석 중...' });
-    results.activity = await step2_activity(systemPrompt, studentData, pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 2, label: '비교과 (기존 결과 유지)' }); }
-
-  if (shouldRun('career')) {
-    onProgress?.({ step: 3, label: '진로 역량 분석 중...' });
-    results.career = await step3_career(systemPrompt, studentData, pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 3, label: '진로 (기존 결과 유지)' }); }
-
-  if (shouldRun('strategy')) {
+  // 4단계(지원 전략)는 1~3단계 요약을 참고
+  await runSection('strategy', 4, '수시 지원 전략 수립', () => {
     const prevSummary = `학업:${results.academic?.slice(0,200)}\n비교과:${results.activity?.slice(0,200)}\n진로:${results.career?.slice(0,200)}`;
-    onProgress?.({ step: 4, label: '지원 전략 수립 중...' });
-    results.strategy = await step4_strategy(systemPrompt, studentData, prevSummary, pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 4, label: '지원 전략 (기존 결과 유지)' }); }
+    return step4_strategy(systemPrompt, studentData, prevSummary, pdfDocsLight, apiKey);
+  });
 
-  if (shouldRun('roadmap')) {
-    onProgress?.({ step: 5, label: '3년 로드맵 생성 중...' });
-    results.roadmap = await step5_roadmap(systemPrompt, studentData, pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 5, label: '로드맵 (기존 결과 유지)' }); }
-
-  if (shouldRun('recordFeedback')) {
-    onProgress?.({ step: 6, label: '세특 개선안 작성 중...' });
-    results.recordFeedback = await step6_recordFeedback(systemPrompt, studentData, pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 6, label: '세특 (기존 결과 유지)' }); }
-
-  if (shouldRun('dashboard')) {
+  // 7단계(종합 평가)는 전체 분석을 종합
+  await runSection('dashboard', 7, '종합 평가 생성', () => {
     const allAnalysis = Object.values(results).filter(Boolean).join('\n\n');
-    onProgress?.({ step: 7, label: '종합 대시보드 생성 중...' });
-    results.dashboard = await step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocsLight, apiKey);
-  } else { onProgress?.({ step: 7, label: '대시보드 (기존 결과 유지)' }); }
+    return step7_dashboard(systemPrompt, studentData, allAnalysis, pdfDocsLight, apiKey);
+  });
 
   onProgress?.({ step: 8, label: '분석 완료!' });
   return results;

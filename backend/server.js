@@ -7,6 +7,13 @@ import { loadKnowledgeBaseRAG, ragAvailable } from './services/ragService.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import {
+  initDb, dbEnabled,
+  findActiveUserByCode, createUserCode, setUserActive, deleteUser,
+  listUsersWithStats, listActiveSessions, listRecentLogs,
+  createSession, touchSession, logEvent, lookupGeo,
+} from './services/db.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
 import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js';
@@ -47,8 +54,47 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
   }
 }
 const app = express();
+app.set('trust proxy', true); // Railway 프록시 뒤에서 실제 클라이언트 IP 파악
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+
+// 클라이언트 실제 IP 추출
+const getIp = (req) =>
+  (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+  req.socket?.remoteAddress || '';
+
+// 토큰 검증 — 유효하면 req.user 세팅, 없거나 무효여도 통과 (사용량 추적용)
+function optionalAuth(req, _res, next) {
+  const h = req.headers.authorization;
+  const token = h?.startsWith('Bearer ') ? h.slice(7) : null;
+  if (token) {
+    try { req.user = jwt.verify(token, JWT_SECRET); } catch { /* 무시 */ }
+  }
+  next();
+}
+
+// 토큰 필수
+function requireAuth(req, res, next) {
+  const h = req.headers.authorization;
+  const token = h?.startsWith('Bearer ') ? h.slice(7) : null;
+  if (!token) return res.status(401).json({ success: false, message: '로그인이 필요합니다' });
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ success: false, message: '세션이 만료되었습니다. 다시 로그인해주세요.' });
+  }
+}
+
+// 관리자 전용
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user?.role !== 'admin') return res.status(403).json({ success: false, message: '관리자 전용 기능입니다' });
+    next();
+  });
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -824,7 +870,7 @@ priority 설명:
   }
 });
 
-app.post('/api/analyze', pdfFields, async (req, res) => {
+app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
   let studentData;
   let reusedPdfTexts = '';
   let existingResults = null;
@@ -845,6 +891,13 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
+
+  // 사용량 기록 (로그인 이용자인 경우)
+  if (req.user?.role === 'user' && req.user?.userId) {
+    const ip = getIp(req);
+    logEvent({ userId: req.user.userId, type: 'analyze', detail: `${studentData.name} / ${studentData.major || ''}`, ip });
+    if (req.user.jti) touchSession(req.user.jti);
+  }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -1051,7 +1104,14 @@ app.post('/api/analyze', pdfFields, async (req, res) => {
 
     send({ type: 'progress', step: 1, label: 'Drive 자료 로딩 완료!', total: 9 });
 
-    const progressCb = (progress) => send({ type: 'progress', ...progress, total: 9 });
+    // 섹션 완료 시 즉시 클라이언트로 전송(부분 저장용), 그 외는 진행상황으로 전송
+    const progressCb = (progress) => {
+      if (progress && progress.section) {
+        send({ type: 'section', key: progress.section, content: progress.content });
+      } else {
+        send({ type: 'progress', ...progress, total: 9 });
+      }
+    };
     const analyzeOptions = { existingResults: existingResults || {}, sectionsToRun };
     let results;
     if (aiModel === 'gemini') {
@@ -1100,17 +1160,120 @@ app.get('/api/students', async (req, res) => {
     res.status(500).json({ success: false, error: err.message, students: [] });
   }
 });
-app.post('/api/login', (req, res) => {
-  const { password } = req.body;
-  if (password === process.env.APP_PASSWORD) {
-    const token = jwt.sign({ auth: true }, process.env.JWT_SECRET || 'secret', { expiresIn: '7d' });
-    res.json({ success: true, token });
-  } else {
-    res.json({ success: false });
+// ── 로그인 (코드 기반) ────────────────────────────────
+// - 관리자: ADMIN_CODE(환경변수) 또는 기존 APP_PASSWORD
+// - 이용자: 관리자가 발급한 코드 (DB 조회)
+app.post('/api/login', async (req, res) => {
+  const cred = (req.body.code || req.body.password || '').trim();
+  if (!cred) return res.json({ success: false, message: '코드를 입력해주세요' });
+
+  const ip = getIp(req);
+  const userAgent = req.headers['user-agent'] || '';
+  const jti = crypto.randomBytes(12).toString('hex');
+
+  // 1) 관리자 코드
+  const adminCode = process.env.ADMIN_CODE || process.env.APP_PASSWORD;
+  if (adminCode && cred === adminCode) {
+    const token = jwt.sign({ role: 'admin', name: '관리자', jti }, JWT_SECRET, { expiresIn: '7d' });
+    logEvent({ userId: null, type: 'login', detail: '관리자 로그인', ip });
+    return res.json({ success: true, token, role: 'admin', name: '관리자' });
+  }
+
+  // 2) 이용자 코드 (DB)
+  if (dbEnabled()) {
+    try {
+      const user = await findActiveUserByCode(cred);
+      if (user) {
+        const token = jwt.sign(
+          { role: 'user', userId: user.id, name: user.name, jti },
+          JWT_SECRET, { expiresIn: '7d' }
+        );
+        // 세션 생성 + 위치 조회는 비동기로 (응답 지연 방지)
+        (async () => {
+          const geo = await lookupGeo(ip);
+          await createSession({ userId: user.id, jti, ip, userAgent, geo });
+          await logEvent({ userId: user.id, type: 'login', detail: geo || '', ip });
+        })().catch(() => {});
+        return res.json({ success: true, token, role: 'user', name: user.name });
+      }
+    } catch (e) {
+      console.error('[login] DB 조회 오류:', e.message);
+    }
+  }
+
+  return res.json({ success: false, message: '유효하지 않은 코드입니다' });
+});
+
+// ── 하트비트 (현재 접속자 추적) ───────────────────────
+app.post('/api/heartbeat', requireAuth, async (req, res) => {
+  if (req.user?.jti && req.user?.role === 'user') {
+    await touchSession(req.user.jti);
+  }
+  res.json({ success: true });
+});
+
+// ── 관리자: 이용자 코드 목록 + 사용량 ──────────────────
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, dbEnabled: dbEnabled(), users: await listUsersWithStats() });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 이용자 코드 발급
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DATABASE_URL이 설정되지 않아 코드 발급이 불가합니다' });
+  try {
+    const user = await createUserCode((req.body.name || '').trim());
+    res.json({ success: true, user });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 코드 활성/비활성 토글
+app.patch('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    await setUserActive(Number(req.params.id), !!req.body.active);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 코드 삭제
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    await deleteUser(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 현재 접속 중인 사용자
+app.get('/api/admin/active', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, sessions: await listActiveSessions() });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 최근 접속/사용 로그
+app.get('/api/admin/logs', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, logs: await listRecentLogs(Number(req.query.limit) || 100) });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+  await initDb();
+  const hasAdmin = !!(process.env.ADMIN_CODE || process.env.APP_PASSWORD);
+  console.log(`🔐 인증: 관리자코드=${hasAdmin ? '설정됨' : '미설정!'}, DB=${dbEnabled() ? 'ON' : 'OFF'}`);
   console.log(`\n🚀 입시-Finder 서버 실행 중: http://localhost:${PORT}`);
   console.log(`📁 Drive 연결 테스트: http://localhost:${PORT}/api/drive/test`);
 

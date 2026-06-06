@@ -2,26 +2,28 @@ import { useState } from 'react';
 import { API_BASE } from '../apiBase';
 
 export default function Login({ onLogin }) {
-  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!password) return;
+    if (!code) return;
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ code: code.trim() }),
       });
       const data = await res.json();
       if (data.success) {
         localStorage.setItem('ef_token', data.token);
+        localStorage.setItem('ef_role', data.role || 'user');
+        localStorage.setItem('ef_name', data.name || '');
         onLogin();
       } else {
-        setError('비밀번호가 올바르지 않습니다.');
+        setError(data.message || '코드가 올바르지 않습니다.');
       }
     } catch {
       setError('서버 연결 오류가 발생했습니다.');
@@ -54,9 +56,9 @@ export default function Login({ onLogin }) {
         <div style={{ marginBottom: '16px' }}>
           <input
             type="password"
-            placeholder="비밀번호를 입력하세요"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
+            placeholder="발급받은 코드를 입력하세요"
+            value={code}
+            onChange={e => setCode(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
             style={{
               width: '100%', padding: '14px 16px', borderRadius: '10px',

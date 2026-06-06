@@ -1,18 +1,33 @@
 import Settings from './components/Settings';
 import Login from './components/Login';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import StudentForm from './components/StudentForm';
 import AnalysisProgress from './components/AnalysisProgress';
 import AnalysisResult from './components/AnalysisResult';
 import StudentList from './components/StudentList';
 import ChatInterface from './components/ChatInterface';
+import AdminDashboard from './components/AdminDashboard';
 import { API_BASE } from './apiBase';
 import './App.css';
 
+const INPROGRESS_KEY = 'ef_inprogress';
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn]   = useState(!!localStorage.getItem('ef_token'));
-  const [view, setView]               = useState('list');
-  const [analysisData, setAnalysisData] = useState(null);
+  const [role, setRole]               = useState(localStorage.getItem('ef_role') || 'user');
+  // 새로고침/끊김 복구: 진행 중이던 분석이 저장돼 있으면 결과화면으로 복원
+  const recovered = (() => {
+    try {
+      const raw = localStorage.getItem(INPROGRESS_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      if (d?.results && Object.keys(d.results).length > 0) return d;
+    } catch {}
+    return null;
+  })();
+  const [view, setView]               = useState(recovered ? 'result' : 'list');
+  const [analysisData, setAnalysisData] = useState(recovered);
+  const partialRef = useRef(null);
   const [progressSteps, setProgressSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [formPrefill, setFormPrefill] = useState(null); // JSON 불러오기 시 폼에 미리 채울 데이터
@@ -22,6 +37,30 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState(
     localStorage.getItem('ef_model') || 'claude'
   );
+
+  // 현재 접속 추적용 하트비트 (60초마다)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const ping = () => {
+      const token = localStorage.getItem('ef_token');
+      if (!token) return;
+      fetch(`${API_BASE}/api/heartbeat`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    };
+    ping();
+    const id = setInterval(ping, 60000);
+    return () => clearInterval(id);
+  }, [isLoggedIn]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('ef_token');
+    localStorage.removeItem('ef_role');
+    localStorage.removeItem('ef_name');
+    setIsLoggedIn(false);
+    setRole('user');
+  };
 
   const getActiveKey = () => {
     const group = modelConfig[selectedModel]?.group || selectedModel;
@@ -35,6 +74,19 @@ export default function App() {
     setView('analyzing');
     setProgressSteps([]);
     setCurrentStep(0);
+
+    const pdfCountInit = Object.values(files).filter(Boolean).length;
+    // 부분 저장용 누적 버퍼 — 재분석이면 기존 결과 위에 덮어씀
+    partialRef.current = {
+      results: { ...(extras.existingResults || {}) },
+      studentData,
+      pdfCount: pdfCountInit,
+      analyzedModel: selectedModel,
+      pdfTexts: extras.pdfTexts || '',
+    };
+    const persistPartial = () => {
+      try { localStorage.setItem(INPROGRESS_KEY, JSON.stringify(partialRef.current)); } catch {}
+    };
 
     try {
       const formData = new FormData();
@@ -92,35 +144,51 @@ export default function App() {
                 { step: data.step, label: data.label, total: data.total },
               ]);
             }
+            if (data.type === 'section') {
+              // 한 섹션이 완료될 때마다 즉시 누적 + 로컬 저장 (중간에 끊겨도 보존)
+              partialRef.current.results[data.key] = data.content;
+              persistPartial();
+            }
             if (data.type === 'complete') {
               completed = true;
-              setAnalysisData({
-                results: data.results,
+              const finalData = {
+                results: { ...partialRef.current.results, ...data.results },
                 notionUrl: data.notionUrl,
                 studentData,
                 pdfCount,
                 analyzedModel: selectedModel,
                 pdfTexts: data.pdfTexts || extras.pdfTexts || '',
-              });
+              };
+              setAnalysisData(finalData);
+              localStorage.removeItem(INPROGRESS_KEY); // 정상 완료 → 임시 저장 삭제
               setFormPrefill(null); // 사용 완료된 prefill 해제
               setView('result');
             }
             if (data.type === 'error') {
               completed = true;
-              alert('분석 오류: ' + data.message);
-              setView('form');
+              finishWithPartial(`분석 중 오류가 발생했습니다: ${data.message}`);
             }
           } catch {}
         }
       }
 
-      if (!completed) {
-        alert('서버 연결이 끊어졌습니다. 다시 시도해주세요.');
+      if (!completed) finishWithPartial('서버 연결이 끊어졌습니다.');
+    } catch (err) {
+      finishWithPartial('서버 연결 오류: ' + err.message);
+    }
+
+    // 오류/끊김 시: 그때까지 완료된 섹션이 있으면 결과화면으로 보존, 없으면 폼으로
+    function finishWithPartial(msg) {
+      const got = partialRef.current?.results || {};
+      const doneCount = Object.values(got).filter(Boolean).length;
+      if (doneCount > 0) {
+        setAnalysisData({ ...partialRef.current, partial: true, notionUrl: null });
+        setView('result');
+        alert(`${msg}\n\n완료된 ${doneCount}개 항목은 저장되어 결과 화면에 표시됩니다. 누락된 항목은 "이 데이터로 재분석"으로 이어서 분석할 수 있습니다.`);
+      } else {
+        alert(msg + '\n\n다시 시도해주세요.');
         setView('form');
       }
-    } catch (err) {
-      alert('서버 연결 오류: ' + err.message);
-      setView('form');
     }
   };
 
@@ -172,7 +240,7 @@ export default function App() {
   };
 
   if (!isLoggedIn) {
-    return <Login onLogin={() => setIsLoggedIn(true)} />;
+    return <Login onLogin={() => { setIsLoggedIn(true); setRole(localStorage.getItem('ef_role') || 'user'); }} />;
   }
 
   const modelConfig = {
@@ -239,6 +307,14 @@ export default function App() {
           <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
             <span>⚙️</span> 설정
           </button>
+          {role === 'admin' && (
+            <button className={`nav-item ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}>
+              <span>🛡️</span> 관리자
+            </button>
+          )}
+          <button className="nav-item" onClick={handleLogout}>
+            <span>🚪</span> 로그아웃
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -284,6 +360,9 @@ export default function App() {
         )}
         {view === 'settings' && (
           <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />
+        )}
+        {view === 'admin' && role === 'admin' && (
+          <AdminDashboard onAuthError={handleLogout} />
         )}
       </main>
     </div>
