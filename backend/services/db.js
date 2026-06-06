@@ -105,12 +105,28 @@ export async function initDb() {
         type       TEXT,
         title      TEXT,
         detail     TEXT DEFAULT '',
+        content    TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`ALTER TABLE ef_records ADD COLUMN IF NOT EXISTS content TEXT DEFAULT '';`);
+    // 학생별 첨부파일 (생기부/수행평가 결과물 등) — bytea 보관
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_files (
+        id         SERIAL PRIMARY KEY,
+        student_id INTEGER REFERENCES ef_students(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        mime       TEXT,
+        size       INTEGER,
+        kind       TEXT DEFAULT '',
+        data       BYTEA,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_students_owner ON ef_students(owner_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_grades_student ON ef_grades(student_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_records_student ON ef_records(student_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_files_student ON ef_files(student_id);`);
 
     // 대학 입결 (어디가 등 공식 자료 업로드)
     await pool.query(`

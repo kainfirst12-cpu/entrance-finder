@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 
 const token = () => localStorage.getItem('ef_token');
@@ -230,8 +230,11 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
     major: student.major || '', targetUniv: student.target_univ || '', status: student.status, notes: student.notes || '',
   });
   const [gTerm, setGTerm] = useState(''); const [gGpa, setGGpa] = useState(''); const [gNote, setGNote] = useState('');
-  const [rType, setRType] = useState('생기부 분석'); const [rTitle, setRTitle] = useState('');
+  const [rType, setRType] = useState('생기부 분석'); const [rTitle, setRTitle] = useState(''); const [rContent, setRContent] = useState('');
   const [saving, setSaving] = useState(false);
+  const [expandedRec, setExpandedRec] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
   const S = STYLES;
 
   const save = async () => {
@@ -251,11 +254,40 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
   };
   const delGrade = async (id) => { try { await api(`/api/board/grades/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { onError(e); } };
   const addRecord = async () => {
-    if (!rTitle.trim()) return;
-    try { await api(`/api/board/students/${student.id}/records`, { method: 'POST', body: JSON.stringify({ type: rType, title: rTitle }) }); setRTitle(''); await onChanged(); }
+    if (!rTitle.trim() && !rContent.trim()) return;
+    try { await api(`/api/board/students/${student.id}/records`, { method: 'POST', body: JSON.stringify({ type: rType, title: rTitle || rType, content: rContent }) }); setRTitle(''); setRContent(''); await onChanged(); }
     catch (e) { onError(e); }
   };
   const delRecord = async (id) => { try { await api(`/api/board/records/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { onError(e); } };
+
+  const uploadFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f));
+      const res = await fetch(`${API_BASE}/api/board/students/${student.id}/files`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+      });
+      const d = await res.json();
+      if (!d.success) onError(new Error(d.message || '업로드 실패'));
+      await onChanged();
+    } catch (e) { onError(e); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+  const downloadFile = async (f) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/board/files/${f.id}`, { headers: { Authorization: `Bearer ${token()}` } });
+      if (!res.ok) return onError(new Error('다운로드 실패'));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) { onError(e); }
+  };
+  const delFile = async (id) => { try { await api(`/api/board/files/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { onError(e); } };
+  const fmtSize = (b) => b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
 
   return (
     <div style={S.overlay} onClick={onClose}>
@@ -300,23 +332,49 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
           <button style={S.addSmall} onClick={addGrade}>+ 성적</button>
         </div>
 
-        <div style={S.sectionTitle}>활동 기록 (분석 · 보완 · 수행평가)</div>
+        <div style={S.sectionTitle}>생기부 분석 · 수행평가 · 활동 기록</div>
         <div style={S.gradeList}>
+          {(student.records || []).length === 0 && <div style={{ color: '#6b7d8a', fontSize: 13 }}>아직 기록이 없습니다. 분석/수행평가를 하면 자동으로 쌓이고, 아래에서 직접 추가할 수도 있습니다.</div>}
           {(student.records || []).map(r => (
-            <div key={r.id} style={S.gradeRow}>
-              <span style={S.recType}>{r.type}</span>
-              <span style={{ flex: 1 }}>{r.title}</span>
-              <span style={{ color: '#6b7d8a', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
-              <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
+            <div key={r.id}>
+              <div style={S.gradeRow}>
+                <span style={S.recType}>{r.type}</span>
+                <span style={{ flex: 1 }}>{r.title}</span>
+                {r.content ? <button style={S.viewBtn} onClick={() => setExpandedRec(expandedRec === r.id ? null : r.id)}>{expandedRec === r.id ? '닫기' : '내용 보기'}</button> : null}
+                <span style={{ color: '#6b7d8a', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
+                <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
+              </div>
+              {expandedRec === r.id && r.content && (
+                <div style={S.recContent}>{r.content}</div>
+              )}
             </div>
           ))}
         </div>
         <div style={S.addRow}>
-          <select style={{ ...S.input, flex: '0 0 130px' }} value={rType} onChange={e => setRType(e.target.value)}>
+          <select style={{ ...S.input, flex: '0 0 120px' }} value={rType} onChange={e => setRType(e.target.value)}>
             <option>생기부 분석</option><option>보완</option><option>수행평가</option><option>상담</option><option>기타</option>
           </select>
-          <input style={{ ...S.input, flex: 1 }} value={rTitle} onChange={e => setRTitle(e.target.value)} placeholder="내용 (예: 1차 분석 완료)" />
+          <input style={{ ...S.input, flex: 1 }} value={rTitle} onChange={e => setRTitle(e.target.value)} placeholder="제목 (예: 1차 분석 요약)" />
           <button style={S.addSmall} onClick={addRecord}>+ 기록</button>
+        </div>
+        <textarea style={{ ...S.textarea, marginTop: 6 }} rows={2} value={rContent} onChange={e => setRContent(e.target.value)} placeholder="기록 내용/메모를 붙여넣어 보관 (선택)" />
+
+        <div style={S.sectionTitle}>첨부 파일 (생기부 PDF, 수행평가 결과물 등)</div>
+        <div style={S.gradeList}>
+          {(student.files || []).length === 0 && <div style={{ color: '#6b7d8a', fontSize: 13 }}>업로드된 파일이 없습니다.</div>}
+          {(student.files || []).map(f => (
+            <div key={f.id} style={S.gradeRow}>
+              <span style={{ flex: 1 }}>📎 {f.name}</span>
+              <span style={{ color: '#6b7d8a', fontSize: 12 }}>{fmtSize(f.size || 0)}</span>
+              <button style={S.viewBtn} onClick={() => downloadFile(f)}>다운로드</button>
+              <button style={S.miniDel} onClick={() => delFile(f.id)}>삭제</button>
+            </div>
+          ))}
+        </div>
+        <div style={S.addRow}>
+          <button style={S.addSmall} onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? '업로드 중...' : '📎 파일 첨부'}</button>
+          <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={e => uploadFiles(e.target.files)} />
+          <span style={{ color: '#6b7d8a', fontSize: 12 }}>여러 개 가능 · 1개당 15MB 이하</span>
         </div>
 
         <div style={S.modalFooter}>
@@ -376,8 +434,10 @@ const STYLES = {
   sectionTitle: { fontSize: 14, fontWeight: 700, color: '#e8eef3', margin: '20px 0 8px' },
   gradeList: { display: 'flex', flexDirection: 'column', gap: 5, margin: '8px 0' },
   gradeRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#1c2937', borderRadius: 7 },
-  recType: { background: 'rgba(45,212,191,0.15)', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10 },
+  recType: { background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' },
   miniDel: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer' },
+  viewBtn: { background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#2dd4bf', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
+  recContent: { whiteSpace: 'pre-wrap', background: '#0e1620', border: '1px solid #2a3a48', borderRadius: 8, padding: '12px 14px', margin: '4px 0 8px', fontSize: 12.5, lineHeight: 1.6, color: '#cdd9e2', maxHeight: 320, overflowY: 'auto' },
   addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' },
   addSmall: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   modalFooter: { display: 'flex', justifyContent: 'space-between', marginTop: 22 },

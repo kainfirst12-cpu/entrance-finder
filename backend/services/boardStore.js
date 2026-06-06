@@ -12,14 +12,16 @@ export async function listStudents(ownerId) {
   );
   if (students.length === 0) return [];
   const ids = students.map(s => s.id);
-  const [{ rows: grades }, { rows: records }] = await Promise.all([
+  const [{ rows: grades }, { rows: records }, { rows: files }] = await Promise.all([
     pool.query(`SELECT * FROM ef_grades WHERE student_id = ANY($1) ORDER BY term, id`, [ids]),
-    pool.query(`SELECT * FROM ef_records WHERE student_id = ANY($1) ORDER BY created_at DESC`, [ids]),
+    pool.query(`SELECT id, student_id, type, title, detail, content, created_at FROM ef_records WHERE student_id = ANY($1) ORDER BY created_at DESC`, [ids]),
+    pool.query(`SELECT id, student_id, name, mime, size, kind, created_at FROM ef_files WHERE student_id = ANY($1) ORDER BY created_at DESC`, [ids]),
   ]);
-  const gByS = {}, rByS = {};
+  const gByS = {}, rByS = {}, fByS = {};
   for (const g of grades) (gByS[g.student_id] ||= []).push(g);
   for (const r of records) (rByS[r.student_id] ||= []).push(r);
-  return students.map(s => ({ ...s, grades: gByS[s.id] || [], records: rByS[s.id] || [] }));
+  for (const f of files) (fByS[f.student_id] ||= []).push(f);
+  return students.map(s => ({ ...s, grades: gByS[s.id] || [], records: rByS[s.id] || [], files: fByS[s.id] || [] }));
 }
 
 // 이름으로 찾아 없으면 생성, 있으면 빈 필드만 보완 (자동 연동용)
@@ -86,16 +88,38 @@ export async function deleteGrade(id) {
   await getPool().query(`DELETE FROM ef_grades WHERE id = $1`, [id]);
 }
 
-export async function addRecord(studentId, { type, title, detail }) {
+export async function addRecord(studentId, { type, title, detail, content }) {
   const { rows } = await getPool().query(
-    `INSERT INTO ef_records (student_id, type, title, detail) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [studentId, type || '기록', title || '', detail || '']
+    `INSERT INTO ef_records (student_id, type, title, detail, content) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [studentId, type || '기록', title || '', detail || '', content || '']
   );
   return rows[0];
 }
 
 export async function deleteRecord(id) {
   await getPool().query(`DELETE FROM ef_records WHERE id = $1`, [id]);
+}
+
+// ── 학생 첨부파일 ──────────────────────────────────────
+export async function addFile(studentId, { name, mime, size, kind, data }) {
+  const { rows } = await getPool().query(
+    `INSERT INTO ef_files (student_id, name, mime, size, kind, data) VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, student_id, name, mime, size, kind, created_at`,
+    [studentId, name || 'file', mime || 'application/octet-stream', size || 0, kind || '', data]
+  );
+  return rows[0];
+}
+export async function getFile(id) {
+  const { rows } = await getPool().query(`SELECT name, mime, data FROM ef_files WHERE id = $1`, [id]);
+  return rows[0] || null;
+}
+export async function deleteFile(id) {
+  await getPool().query(`DELETE FROM ef_files WHERE id = $1`, [id]);
+}
+export async function getFileStudentOwner(fileId) {
+  const { rows } = await getPool().query(
+    `SELECT s.owner_id FROM ef_files f JOIN ef_students s ON s.id = f.student_id WHERE f.id = $1`, [fileId]);
+  return rows[0]?.owner_id ?? null;
 }
 
 // 관리자: 선생님(이용자 코드) 목록 + 학생 수

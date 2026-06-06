@@ -169,7 +169,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           fetch(`${API_BASE}/api/board/upsert`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-            body: JSON.stringify({ name: studentName.trim(), grade, record: { type: '수행평가', title: `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}` } }),
+            body: JSON.stringify({ name: studentName.trim(), grade, record: { type: '수행평가', title: `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`, content: data.reply || '' } }),
           }).catch(() => {});
         }
       } else setError(data.message || '생성 실패');

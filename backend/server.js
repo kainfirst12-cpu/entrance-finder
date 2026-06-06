@@ -8,7 +8,7 @@ import { refreshKbCount, countByType, clearKnowledge, ingestDocuments } from './
 import {
   BOARD_COLUMNS, listStudents, getStudentOwner, createStudent, updateStudent, deleteStudent,
   addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
-  upsertStudentByName,
+  upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
 } from './services/boardStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
@@ -815,6 +815,39 @@ app.delete('/api/board/records/:id', requireAuth, async (req, res) => {
     const owner = await getRecordOwner(Number(req.params.id));
     if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
     await deleteRecord(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 첨부파일 업로드 / 다운로드 / 삭제
+app.post('/api/board/students/:id/files', requireAuth, upload.array('files', 10), async (req, res) => {
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    const out = [];
+    for (const f of (req.files || [])) {
+      if (f.size > 15 * 1024 * 1024) { out.push({ name: f.originalname, error: '15MB 초과' }); continue; }
+      out.push(await addFile(Number(req.params.id), { name: f.originalname, mime: f.mimetype, size: f.size, kind: req.body.kind || '', data: f.buffer }));
+    }
+    res.json({ success: true, files: out });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.get('/api/board/files/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getFileStudentOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    const f = await getFile(Number(req.params.id));
+    if (!f) return res.status(404).json({ success: false, message: '파일 없음' });
+    const filename = encodeURIComponent(f.name || 'file');
+    res.setHeader('Content-Type', f.mime || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.end(f.data);
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/board/files/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getFileStudentOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteFile(Number(req.params.id));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
