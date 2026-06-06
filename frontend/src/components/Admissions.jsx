@@ -96,9 +96,9 @@ export default function Admissions({ onAuthError }) {
             <input style={{ ...S.input, flex: '0 0 110px' }} value={upYear} onChange={e => setUpYear(e.target.value)} placeholder="학년도 예:2026" />
             <button style={S.upBtn} onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? '업로드 중...' : '파일 선택 후 업로드'}</button>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => upload(e.target.files?.[0])} />
-            {stats.total > 0 && <button style={{ ...S.upBtn, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5' }} onClick={clearAll}>전체 삭제</button>}
+            {stats.total > 0 && <button style={{ ...S.upBtn, background: 'rgba(248,113,113,0.14)', color: '#f87171', border: '1px solid #fca5a5' }} onClick={clearAll}>전체 삭제</button>}
           </div>
-          {upMsg && <div style={{ ...S.opt, color: upMsg.startsWith('실패') ? '#dc2626' : '#16a34a', marginTop: 8 }}>{upMsg}</div>}
+          {upMsg && <div style={{ ...S.opt, color: upMsg.startsWith('실패') ? '#f87171' : '#34d399', marginTop: 8 }}>{upMsg}</div>}
           <div style={{ ...S.opt, marginTop: 6 }}>※ 업로드 전 위에서 구분(수시/정시/논술)·4년제/전문대·학년도를 먼저 고르세요. 파일에 해당 열이 있으면 자동 반영됩니다.</div>
         </div>
       )}
@@ -168,29 +168,29 @@ export default function Admissions({ onAuthError }) {
 }
 
 const STYLES = {
-  page: { padding: '24px 28px', maxWidth: 1000, margin: '0 auto', color: '#1a1916' },
+  page: { padding: '24px 28px', maxWidth: 1000, margin: '0 auto', color: '#e8eef3' },
   h2: { fontSize: 22, fontWeight: 700, margin: '0 0 6px' },
-  lead: { color: '#6b6860', fontSize: 13.5, margin: '0 0 16px', lineHeight: 1.5 },
-  opt: { fontSize: 12, color: '#9b9890', fontWeight: 400 },
-  uploadCard: { background: '#e4f7f3', border: '1px solid #9fe3d8', borderRadius: 12, padding: 16, marginBottom: 16 },
+  lead: { color: '#9db0bd', fontSize: 13.5, margin: '0 0 16px', lineHeight: 1.5 },
+  opt: { fontSize: 12, color: '#6b7d8a', fontWeight: 400 },
+  uploadCard: { background: 'rgba(45,212,191,0.15)', border: '1px solid #9fe3d8', borderRadius: 12, padding: 16, marginBottom: 16 },
   uploadTitle: { fontWeight: 700, fontSize: 14, marginBottom: 10 },
   upRow: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   upBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-  card: { background: '#fff', border: '1px solid #e8e6df', borderRadius: 14, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  card: { background: '#16212e', border: '1px solid #e8e6df', borderRadius: 14, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
   searchRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
-  input: { flex: 1, minWidth: 120, padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 14, outline: 'none', boxSizing: 'border-box' },
+  input: { flex: 1, minWidth: 120, padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 14, outline: 'none', boxSizing: 'border-box' },
   searchBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 20px', fontWeight: 700, cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' },
-  error: { background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', padding: '10px 14px', borderRadius: 9, fontSize: 13.5, marginTop: 12 },
-  muted: { color: '#9b9890', fontSize: 14, padding: '16px 4px' },
+  error: { background: 'rgba(248,113,113,0.14)', border: '1px solid #fca5a5', color: '#f87171', padding: '10px 14px', borderRadius: 9, fontSize: 13.5, marginTop: 12 },
+  muted: { color: '#6b7d8a', fontSize: 14, padding: '16px 4px' },
   tableWrap: { overflowX: 'auto', marginTop: 14 },
-  resultCount: { fontSize: 12.5, color: '#6b6860', marginBottom: 8 },
+  resultCount: { fontSize: 12.5, color: '#9db0bd', marginBottom: 8 },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13.5 },
-  th: { textAlign: 'left', padding: '9px 10px', color: '#6b6860', fontWeight: 600, borderBottom: '2px solid #e8e6df', whiteSpace: 'nowrap' },
-  td: { padding: '9px 10px', borderBottom: '1px solid #f0eee8', color: '#1a1916' },
-  detailBtn: { background: '#e4f7f3', color: '#14b8a6', border: 'none', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' },
-  rawCell: { padding: '10px 12px', background: '#f9f8f5', borderBottom: '1px solid #e8e6df' },
+  th: { textAlign: 'left', padding: '9px 10px', color: '#9db0bd', fontWeight: 600, borderBottom: '2px solid #e8e6df', whiteSpace: 'nowrap' },
+  td: { padding: '9px 10px', borderBottom: '1px solid #f0eee8', color: '#e8eef3' },
+  detailBtn: { background: 'rgba(45,212,191,0.15)', color: '#14b8a6', border: 'none', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' },
+  rawCell: { padding: '10px 12px', background: '#1c2937', borderBottom: '1px solid #e8e6df' },
   rawGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '6px 16px' },
   rawItem: { display: 'flex', gap: 8, fontSize: 12.5, borderBottom: '1px dotted #e0ded6', padding: '2px 0' },
-  rawKey: { color: '#6b6860', minWidth: 90, fontWeight: 600 },
-  rawVal: { color: '#1a1916' },
+  rawKey: { color: '#9db0bd', minWidth: 90, fontWeight: 600 },
+  rawVal: { color: '#e8eef3' },
 };

@@ -372,20 +372,20 @@ export default function AdminDashboard({ onAuthError }) {
               }
               if (p.state === 'done') {
                 return (
-                  <div style={{ ...S.progressBox, background: '#f0fdf4', borderColor: '#86efac' }}>
-                    <div style={{ ...S.progressHead, color: '#16a34a', marginBottom: 4 }}>✅ 가져오기 완료</div>
+                  <div style={{ ...S.progressBox, background: 'rgba(52,211,153,0.14)', borderColor: 'rgba(52,211,153,0.45)' }}>
+                    <div style={{ ...S.progressHead, color: '#34d399', marginBottom: 4 }}>✅ 가져오기 완료</div>
                     <div style={S.progressSub}>문서 {p.docs}건 → {Number(p.chunks).toLocaleString()}청크 저장됨. 이제 분석에 이 자료가 활용됩니다.</div>
                   </div>
                 );
               }
               return (
-                <div style={{ ...S.progressBox, background: '#fef2f2', borderColor: '#fca5a5' }}>
-                  <div style={{ ...S.progressHead, color: '#dc2626', marginBottom: 4 }}>❌ 실패</div>
+                <div style={{ ...S.progressBox, background: 'rgba(248,113,113,0.14)', borderColor: 'rgba(248,113,113,0.45)' }}>
+                  <div style={{ ...S.progressHead, color: '#f87171', marginBottom: 4 }}>❌ 실패</div>
                   <div style={S.progressSub}>{p.error}</div>
                 </div>
               );
             })()}
-            {kbMsg && <div style={{ ...S.muted, fontWeight: 600, color: kbMsg.startsWith('실패') ? '#dc2626' : '#16a34a' }}>{kbMsg}</div>}
+            {kbMsg && <div style={{ ...S.muted, fontWeight: 600, color: kbMsg.startsWith('실패') ? '#f87171' : '#34d399' }}>{kbMsg}</div>}
           </>
         )}
       </section>
@@ -426,43 +426,43 @@ export default function AdminDashboard({ onAuthError }) {
 
 // 앱은 밝은(흰색) 테마 — 어두운 글씨/흰 카드로 또렷하게
 const STYLES = {
-  page: { padding: '28px 32px', maxWidth: 1100, margin: '0 auto', color: '#1a1916' },
+  page: { padding: '28px 32px', maxWidth: 1100, margin: '0 auto', color: '#e8eef3' },
   headerRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  h2: { fontSize: 22, fontWeight: 700, margin: 0, color: '#1a1916' },
-  refreshBtn: { background: '#ffffff', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
-  warn: { background: '#fffbeb', border: '1px solid #fcd34d', color: '#b45309', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13.5, lineHeight: 1.5 },
-  error: { background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13.5 },
-  muted: { color: '#6b6860', fontSize: 13.5, padding: '8px 2px' },
-  card: { background: '#ffffff', border: '1px solid #e8e6df', borderRadius: 14, padding: 20, marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
-  cardTitle: { fontSize: 15.5, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, color: '#1a1916' },
-  sub: { fontSize: 12, color: '#9b9890', fontWeight: 400, marginLeft: 8 },
-  liveDot: { width: 9, height: 9, borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 8px #16a34a', display: 'inline-block' },
+  h2: { fontSize: 22, fontWeight: 700, margin: 0, color: '#e8eef3' },
+  refreshBtn: { background: '#16212e', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
+  warn: { background: 'rgba(251,191,36,0.14)', border: '1px solid #fcd34d', color: '#fbbf24', padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13.5, lineHeight: 1.5 },
+  error: { background: 'rgba(248,113,113,0.14)', border: '1px solid #fca5a5', color: '#f87171', padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13.5 },
+  muted: { color: '#9db0bd', fontSize: 13.5, padding: '8px 2px' },
+  card: { background: '#16212e', border: '1px solid #e8e6df', borderRadius: 14, padding: 20, marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  cardTitle: { fontSize: 15.5, fontWeight: 700, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, color: '#e8eef3' },
+  sub: { fontSize: 12, color: '#6b7d8a', fontWeight: 400, marginLeft: 8 },
+  liveDot: { width: 9, height: 9, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 8px #16a34a', display: 'inline-block' },
   tableWrap: { overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1916' },
-  th: { textAlign: 'left', padding: '8px 10px', color: '#6b6860', fontWeight: 600, borderBottom: '2px solid #e8e6df', whiteSpace: 'nowrap' },
-  td: { padding: '9px 10px', borderBottom: '1px solid #f0eee8', whiteSpace: 'nowrap', color: '#1a1916' },
-  code: { fontFamily: 'monospace', background: '#e4f7f3', color: '#14b8a6', padding: '2px 7px', borderRadius: 6, fontSize: 12.5, letterSpacing: 1, fontWeight: 600 },
-  bigCode: { fontFamily: 'monospace', fontSize: 18, letterSpacing: 2, color: '#16a34a', margin: '0 8px', fontWeight: 700 },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#e8eef3' },
+  th: { textAlign: 'left', padding: '8px 10px', color: '#9db0bd', fontWeight: 600, borderBottom: '2px solid #e8e6df', whiteSpace: 'nowrap' },
+  td: { padding: '9px 10px', borderBottom: '1px solid #f0eee8', whiteSpace: 'nowrap', color: '#e8eef3' },
+  code: { fontFamily: 'monospace', background: 'rgba(45,212,191,0.15)', color: '#14b8a6', padding: '2px 7px', borderRadius: 6, fontSize: 12.5, letterSpacing: 1, fontWeight: 600 },
+  bigCode: { fontFamily: 'monospace', fontSize: 18, letterSpacing: 2, color: '#34d399', margin: '0 8px', fontWeight: 700 },
   createRow: { display: 'flex', gap: 10, marginBottom: 12 },
-  input: { flex: 1, padding: '10px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#ffffff', color: '#1a1916', fontSize: 14, outline: 'none' },
+  input: { flex: 1, padding: '10px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 14, outline: 'none' },
   primaryBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontWeight: 600, cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' },
-  createdBox: { background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap', color: '#166534' },
-  copyBtn: { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, marginRight: 10 },
+  createdBox: { background: 'rgba(52,211,153,0.14)', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap', color: '#34d399' },
+  copyBtn: { background: '#34d399', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, marginRight: 10 },
   copyMini: { background: 'transparent', color: '#14b8a6', border: 'none', cursor: 'pointer', fontSize: 11.5, marginLeft: 6, textDecoration: 'underline' },
-  onlineBadge: { color: '#16a34a', fontWeight: 700, fontSize: 12.5 },
-  offlineBadge: { color: '#9b9890', fontSize: 12.5 },
-  disabledBadge: { color: '#dc2626', fontSize: 12.5 },
-  smallBtn: { background: '#f5f4f0', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
-  dangerBtn: { background: '#fef2f2', borderColor: '#fca5a5', color: '#dc2626' },
+  onlineBadge: { color: '#34d399', fontWeight: 700, fontSize: 12.5 },
+  offlineBadge: { color: '#6b7d8a', fontSize: 12.5 },
+  disabledBadge: { color: '#f87171', fontSize: 12.5 },
+  smallBtn: { background: '#131c26', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
+  dangerBtn: { background: 'rgba(248,113,113,0.14)', borderColor: 'rgba(248,113,113,0.45)', color: '#f87171' },
   kbCounts: { display: 'flex', gap: 12, marginBottom: 14 },
-  kbStat: { flex: 1, background: '#e4f7f3', border: '1px solid #9fe3d8', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
+  kbStat: { flex: 1, background: 'rgba(45,212,191,0.15)', border: '1px solid #9fe3d8', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
   kbStatNum: { fontSize: 26, fontWeight: 800, color: '#14b8a6' },
-  kbStatLabel: { fontSize: 12, color: '#6b6860', marginTop: 4, fontWeight: 600 },
+  kbStatLabel: { fontSize: 12, color: '#9db0bd', marginTop: 4, fontWeight: 600 },
   // 진행 상태 박스
-  progressBox: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #e8e6df', background: '#f9f8f5' },
+  progressBox: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #e8e6df', background: '#1c2937' },
   progressHead: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, marginBottom: 10 },
-  progressBarOuter: { height: 10, background: '#e8e6df', borderRadius: 6, overflow: 'hidden' },
+  progressBarOuter: { height: 10, background: '#2a3a48', borderRadius: 6, overflow: 'hidden' },
   progressBarInner: { height: '100%', background: 'linear-gradient(90deg,#14b8a6,#4f46e5)', borderRadius: 6, transition: 'width 0.4s' },
-  progressSub: { fontSize: 12.5, color: '#6b6860', marginTop: 8 },
+  progressSub: { fontSize: 12.5, color: '#9db0bd', marginTop: 8 },
   spinner: { width: 14, height: 14, border: '2px solid #9fe3d8', borderTopColor: '#14b8a6', borderRadius: '50%', display: 'inline-block', animation: 'efspin 0.8s linear infinite' },
 };

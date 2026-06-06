@@ -40,7 +40,7 @@ function mdPreview(md) {
         const cells = r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
         html += '<tr>' + cells.map(c => {
           const inner = esc(c).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-          return `<${ri === 0 ? 'th' : 'td'} style="border:1px solid #d8d5cc;padding:6px 9px;text-align:left;background:${ri === 0 ? '#f0eee8' : '#fff'}">${inner}</${ri === 0 ? 'th' : 'td'}>`;
+          return `<${ri === 0 ? 'th' : 'td'} style="border:1px solid #d8d5cc;padding:6px 9px;text-align:left;background:${ri === 0 ? '#243341' : '#fff'}">${inner}</${ri === 0 ? 'th' : 'td'}>`;
         }).join('') + '</tr>';
       });
       html += '</table>';
@@ -371,38 +371,38 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
 }
 
 const STYLES = {
-  page: { padding: '28px 32px', maxWidth: 920, margin: '0 auto', color: '#1a1916' },
+  page: { padding: '28px 32px', maxWidth: 920, margin: '0 auto', color: '#e8eef3' },
   h2: { fontSize: 22, fontWeight: 700, margin: '0 0 6px' },
-  lead: { color: '#6b6860', fontSize: 13.5, margin: '0 0 18px', lineHeight: 1.5 },
+  lead: { color: '#9db0bd', fontSize: 13.5, margin: '0 0 18px', lineHeight: 1.5 },
   modeRow: { display: 'flex', gap: 8, marginBottom: 16 },
-  modeBtn: { flex: 1, padding: '12px', borderRadius: 10, border: '1px solid #d8d5cc', background: '#fff', color: '#6b6860', fontSize: 14.5, fontWeight: 600, cursor: 'pointer' },
-  modeActive: { borderColor: '#14b8a6', color: '#14b8a6', background: '#e4f7f3' },
-  card: { background: '#fff', border: '1px solid #e8e6df', borderRadius: 14, padding: 22, marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
+  modeBtn: { flex: 1, padding: '12px', borderRadius: 10, border: '1px solid #d8d5cc', background: '#16212e', color: '#9db0bd', fontSize: 14.5, fontWeight: 600, cursor: 'pointer' },
+  modeActive: { borderColor: '#14b8a6', color: '#14b8a6', background: 'rgba(45,212,191,0.15)' },
+  card: { background: '#16212e', border: '1px solid #e8e6df', borderRadius: 14, padding: 22, marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' },
   grid3: { display: 'grid', gridTemplateColumns: '1fr 110px 1fr', gap: 12, marginBottom: 6 },
-  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#1a1916', margin: '12px 0 6px' },
-  opt: { fontWeight: 400, color: '#9b9890', fontSize: 12 },
-  input: { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 14, outline: 'none', boxSizing: 'border-box' },
-  textarea: { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 },
+  label: { display: 'block', fontSize: 13, fontWeight: 600, color: '#e8eef3', margin: '12px 0 6px' },
+  opt: { fontWeight: 400, color: '#6b7d8a', fontSize: 12 },
+  input: { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 14, outline: 'none', boxSizing: 'border-box' },
+  textarea: { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 },
   fileRow: { marginTop: 8 },
-  fileBtn: { background: '#f5f4f0', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 },
+  fileBtn: { background: '#131c26', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 },
   thumbs: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 },
   thumb: { position: 'relative', width: 72, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #d8d5cc' },
   thumbImg: { width: '100%', height: '100%', objectFit: 'cover' },
   thumbDel: { position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: 0 },
-  error: { background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', padding: '10px 14px', borderRadius: 9, fontSize: 13.5, marginTop: 14 },
+  error: { background: 'rgba(248,113,113,0.14)', border: '1px solid #fca5a5', color: '#f87171', padding: '10px 14px', borderRadius: 9, fontSize: 13.5, marginTop: 14 },
   genBtn: { width: '100%', marginTop: 18, padding: '14px', borderRadius: 10, border: 'none', background: '#14b8a6', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
   resultHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 },
   resultTitle: { fontSize: 15, fontWeight: 700 },
-  docxBtn: { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
-  ghostBtn: { background: '#f5f4f0', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13.5 },
-  resultEdit: { width: '100%', padding: '12px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#fcfbf9', color: '#1a1916', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' },
-  previewLabel: { fontSize: 12, color: '#9b9890', fontWeight: 600, margin: '16px 0 6px' },
-  preview: { border: '1px solid #e8e6df', borderRadius: 9, padding: '16px 18px', background: '#fff', fontSize: 14, lineHeight: 1.6, color: '#1a1916' },
+  docxBtn: { background: '#34d399', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
+  ghostBtn: { background: '#131c26', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13.5 },
+  resultEdit: { width: '100%', padding: '12px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#1c2937', color: '#e8eef3', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' },
+  previewLabel: { fontSize: 12, color: '#6b7d8a', fontWeight: 600, margin: '16px 0 6px' },
+  preview: { border: '1px solid #e8e6df', borderRadius: 9, padding: '16px 18px', background: '#16212e', fontSize: 14, lineHeight: 1.6, color: '#e8eef3' },
   aiToolRow: { display: 'flex', gap: 8, marginTop: 16 },
-  verifyBtn: { background: '#f4edff', color: '#7c3aed', border: '1px solid #dccdf6', borderRadius: 9, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
-  verifyPanel: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #dccdf6', background: '#faf7ff' },
+  verifyBtn: { background: 'rgba(144,112,216,0.16)', color: '#7c3aed', border: '1px solid #dccdf6', borderRadius: 9, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
+  verifyPanel: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #dccdf6', background: 'rgba(139,111,216,0.16)' },
   verifyTitle: { fontSize: 13.5, fontWeight: 700, color: '#7c3aed', marginBottom: 8 },
-  verifyHint: { fontSize: 12, color: '#9b9890', marginTop: 10 },
+  verifyHint: { fontSize: 12, color: '#6b7d8a', marginTop: 10 },
   reviseRow: { display: 'flex', gap: 8, marginTop: 12 },
   reviseBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5, whiteSpace: 'nowrap' },
 };

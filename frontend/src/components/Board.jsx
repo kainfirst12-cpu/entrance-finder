@@ -14,18 +14,18 @@ async function api(path, opts = {}) {
 
 // 파스텔 칸반 테마 (배경 / 강조색 / 카드 상단 띠)
 const COL_THEME = {
-  '신규':       { bg: '#f3f1ee', accent: '#8a857c', bar: '#d8d3ca' },
-  '생기부 분석': { bg: '#eaf1ff', accent: '#5b86d6', bar: '#bcd3f5' },
-  '보완 중':     { bg: '#fff4e6', accent: '#e0993f', bar: '#f6dbb0' },
-  '수행평가':    { bg: '#f4edff', accent: '#9070d8', bar: '#dccdf6' },
-  '완료':       { bg: '#e9f7ee', accent: '#46a571', bar: '#bfe6cd' },
+  '신규':       { bg: 'rgba(255,255,255,0.05)', accent: '#8a857c', bar: '#d8d3ca' },
+  '생기부 분석': { bg: 'rgba(91,134,214,0.16)', accent: '#5b86d6', bar: '#bcd3f5' },
+  '보완 중':     { bg: 'rgba(224,153,63,0.16)', accent: '#e0993f', bar: '#f6dbb0' },
+  '수행평가':    { bg: 'rgba(144,112,216,0.16)', accent: '#9070d8', bar: 'rgba(139,111,216,0.45)' },
+  '완료':       { bg: 'rgba(70,165,113,0.16)', accent: '#46a571', bar: '#bfe6cd' },
 };
-const theme = (col) => COL_THEME[col] || { bg: '#f3f1ee', accent: '#8a857c', bar: '#d8d3ca' };
+const theme = (col) => COL_THEME[col] || { bg: 'rgba(255,255,255,0.05)', accent: '#8a857c', bar: '#d8d3ca' };
 
 // 성적 추이 SVG (내신 등급: 낮을수록 좋음 → 위로 갈수록 향상)
 function GradeGraph({ grades }) {
   const pts = grades.filter(g => g.gpa != null && g.gpa !== '').map(g => ({ term: g.term, gpa: Number(g.gpa) }));
-  if (pts.length === 0) return <div style={{ color: '#9b9890', fontSize: 13, padding: '12px 0' }}>성적 데이터를 추가하면 추이 그래프가 표시됩니다.</div>;
+  if (pts.length === 0) return <div style={{ color: '#6b7d8a', fontSize: 13, padding: '12px 0' }}>성적 데이터를 추가하면 추이 그래프가 표시됩니다.</div>;
   const W = 460, H = 160, padL = 34, padB = 26, padT = 12, padR = 12;
   const xs = (i) => padL + (pts.length === 1 ? (W - padL - padR) / 2 : (i * (W - padL - padR)) / (pts.length - 1));
   const gpas = pts.map(p => p.gpa);
@@ -37,17 +37,17 @@ function GradeGraph({ grades }) {
   const line = pts.map((p, i) => `${xs(i)},${ys(p.gpa)}`).join(' ');
   const improved = pts.length >= 2 && pts[pts.length - 1].gpa < pts[0].gpa;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', background: '#fcfbf9', border: '1px solid #e8e6df', borderRadius: 8 }}>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', background: '#1c2937', border: '1px solid #e8e6df', borderRadius: 8 }}>
       {[lo, (lo + hi) / 2, hi].map((v, i) => (
         <g key={i}>
           <line x1={padL} y1={ys(v)} x2={W - padR} y2={ys(v)} stroke="#eee" />
           <text x={4} y={ys(v) + 4} fontSize="10" fill="#9b9890">{v}</text>
         </g>
       ))}
-      <polyline points={line} fill="none" stroke={improved ? '#16a34a' : '#14b8a6'} strokeWidth="2.5" />
+      <polyline points={line} fill="none" stroke={improved ? '#34d399' : '#14b8a6'} strokeWidth="2.5" />
       {pts.map((p, i) => (
         <g key={i}>
-          <circle cx={xs(i)} cy={ys(p.gpa)} r="4" fill={improved ? '#16a34a' : '#14b8a6'} />
+          <circle cx={xs(i)} cy={ys(p.gpa)} r="4" fill={improved ? '#34d399' : '#14b8a6'} />
           <text x={xs(i)} y={ys(p.gpa) - 9} fontSize="10" fill="#1a1916" textAnchor="middle">{p.gpa}</text>
           <text x={xs(i)} y={H - 8} fontSize="10" fill="#6b6860" textAnchor="middle">{p.term}</text>
         </g>
@@ -140,7 +140,7 @@ export default function Board({ onAuthError }) {
         <h2 style={S.h2}>📋 학생 관리 보드</h2>
         {isAdmin && (
           <div style={S.teacherPick}>
-            <span style={{ color: '#6b6860', fontSize: 13 }}>선생님</span>
+            <span style={{ color: '#9db0bd', fontSize: 13 }}>선생님</span>
             <select style={S.select} value={teacherId} onChange={e => onSelectTeacher(e.target.value)}>
               {teachers.map(t => <option key={t.id} value={t.id}>{t.name || t.code} ({t.student_count}명)</option>)}
             </select>
@@ -183,7 +183,7 @@ export default function Board({ onAuthError }) {
                         <div style={S.cardName}>{s.name}</div>
                         <div style={S.cardSub}>{[s.grade, s.major].filter(Boolean).join(' · ') || '정보 없음'}</div>
                         <div style={S.cardMeta}>
-                          {last && <span style={S.gradeChip}>내신 {Number(last.gpa)} {trend && <b style={{ color: trend === '↑' ? '#16a34a' : '#dc2626' }}>{trend}</b>}</span>}
+                          {last && <span style={S.gradeChip}>내신 {Number(last.gpa)} {trend && <b style={{ color: trend === '↑' ? '#34d399' : '#f87171' }}>{trend}</b>}</span>}
                           {s.records?.length > 0 && <span style={S.recChip}>기록 {s.records.length}</span>}
                         </div>
                       </div>
@@ -288,7 +288,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
             <div key={g.id} style={S.gradeRow}>
               <span style={{ fontWeight: 600 }}>{g.term}</span>
               <span>내신 {g.gpa != null ? Number(g.gpa) : '-'}</span>
-              <span style={{ color: '#6b6860', flex: 1 }}>{g.note}</span>
+              <span style={{ color: '#9db0bd', flex: 1 }}>{g.note}</span>
               <button style={S.miniDel} onClick={() => delGrade(g.id)}>삭제</button>
             </div>
           ))}
@@ -306,7 +306,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
             <div key={r.id} style={S.gradeRow}>
               <span style={S.recType}>{r.type}</span>
               <span style={{ flex: 1 }}>{r.title}</span>
-              <span style={{ color: '#9b9890', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
+              <span style={{ color: '#6b7d8a', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
               <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
             </div>
           ))}
@@ -338,49 +338,49 @@ function Field({ label, v, on }) {
 }
 
 const STYLES = {
-  page: { padding: '24px 28px', color: '#1a1916' },
+  page: { padding: '24px 28px', color: '#e8eef3' },
   headerRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 },
   h2: { fontSize: 22, fontWeight: 700, margin: 0 },
   teacherPick: { display: 'flex', alignItems: 'center', gap: 8 },
-  select: { padding: '8px 12px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 14 },
-  adminTag: { background: '#e4f7f3', color: '#14b8a6', fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20 },
-  error: { background: '#fffbeb', border: '1px solid #fcd34d', color: '#b45309', padding: '10px 14px', borderRadius: 9, marginBottom: 14, fontSize: 13.5 },
-  muted: { color: '#9b9890', fontSize: 14, padding: 20 },
+  select: { padding: '8px 12px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 14 },
+  adminTag: { background: 'rgba(45,212,191,0.15)', color: '#14b8a6', fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20 },
+  error: { background: 'rgba(251,191,36,0.14)', border: '1px solid #fcd34d', color: '#fbbf24', padding: '10px 14px', borderRadius: 9, marginBottom: 14, fontSize: 13.5 },
+  muted: { color: '#6b7d8a', fontSize: 14, padding: 20 },
   board: { display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' },
-  column: { flex: '0 0 248px', background: '#f5f4f0', borderRadius: 12, padding: 10, minHeight: 200 },
+  column: { flex: '0 0 248px', background: '#131c26', borderRadius: 12, padding: 10, minHeight: 200 },
   colHead: { display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 14, padding: '4px 6px 10px' },
   colDot: { width: 9, height: 9, borderRadius: '50%', display: 'inline-block' },
-  colCount: { marginLeft: 'auto', background: '#fff', color: '#6b6860', borderRadius: 10, padding: '1px 8px', fontSize: 12 },
+  colCount: { marginLeft: 'auto', background: '#16212e', color: '#9db0bd', borderRadius: 10, padding: '1px 8px', fontSize: 12 },
   colBody: { display: 'flex', flexDirection: 'column', gap: 8 },
-  card: { background: '#fff', border: '1px solid #e8e6df', borderRadius: 10, padding: '11px 12px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' },
-  cardName: { fontWeight: 700, fontSize: 14.5, color: '#1a1916' },
-  cardSub: { fontSize: 12.5, color: '#6b6860', marginTop: 2 },
+  card: { background: '#16212e', border: '1px solid #e8e6df', borderRadius: 10, padding: '11px 12px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' },
+  cardName: { fontWeight: 700, fontSize: 14.5, color: '#e8eef3' },
+  cardSub: { fontSize: 12.5, color: '#9db0bd', marginTop: 2 },
   cardMeta: { display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  gradeChip: { background: '#e4f7f3', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
-  recChip: { background: '#f0fdf4', color: '#16a34a', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
-  addBtn: { background: 'transparent', border: '1px dashed #c9c6bd', color: '#6b6860', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 13, marginTop: 2 },
-  addBox: { background: '#fff', border: '1px solid #14b8a6', borderRadius: 9, padding: 8 },
+  gradeChip: { background: 'rgba(45,212,191,0.15)', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
+  recChip: { background: 'rgba(52,211,153,0.14)', color: '#34d399', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
+  addBtn: { background: 'transparent', border: '1px dashed #c9c6bd', color: '#9db0bd', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 13, marginTop: 2 },
+  addBox: { background: '#16212e', border: '1px solid #14b8a6', borderRadius: 9, padding: 8 },
   addInput: { width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid #d8d5cc', fontSize: 13.5, boxSizing: 'border-box', outline: 'none' },
   addConfirm: { flex: 1, background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
-  addCancel: { flex: 1, background: '#f5f4f0', color: '#6b6860', border: '1px solid #d8d5cc', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
+  addCancel: { flex: 1, background: '#131c26', color: '#9db0bd', border: '1px solid #d8d5cc', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
   // 상세 모달
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '40px 16px' },
-  modal: { background: '#fff', borderRadius: 16, padding: 24, width: 560, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+  modal: { background: '#16212e', borderRadius: 16, padding: 24, width: 560, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
   modalHead: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 },
-  titleInput: { flex: 1, fontSize: 19, fontWeight: 700, border: 'none', borderBottom: '2px solid #e8e6df', padding: '4px 2px', outline: 'none', color: '#1a1916' },
-  closeBtn: { background: 'transparent', border: 'none', fontSize: 26, color: '#9b9890', cursor: 'pointer', lineHeight: 1 },
+  titleInput: { flex: 1, fontSize: 19, fontWeight: 700, border: 'none', borderBottom: '2px solid #e8e6df', padding: '4px 2px', outline: 'none', color: '#e8eef3' },
+  closeBtn: { background: 'transparent', border: 'none', fontSize: 26, color: '#6b7d8a', cursor: 'pointer', lineHeight: 1 },
   grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 },
-  label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#6b6860', margin: '8px 0 4px' },
-  input: { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 13.5, outline: 'none', boxSizing: 'border-box' },
-  textarea: { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 },
-  sectionTitle: { fontSize: 14, fontWeight: 700, color: '#1a1916', margin: '20px 0 8px' },
+  label: { display: 'block', fontSize: 12, fontWeight: 600, color: '#9db0bd', margin: '8px 0 4px' },
+  input: { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 13.5, outline: 'none', boxSizing: 'border-box' },
+  textarea: { width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#16212e', color: '#e8eef3', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 },
+  sectionTitle: { fontSize: 14, fontWeight: 700, color: '#e8eef3', margin: '20px 0 8px' },
   gradeList: { display: 'flex', flexDirection: 'column', gap: 5, margin: '8px 0' },
-  gradeRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#f9f8f5', borderRadius: 7 },
-  recType: { background: '#e4f7f3', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10 },
-  miniDel: { background: 'transparent', border: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' },
+  gradeRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#1c2937', borderRadius: 7 },
+  recType: { background: 'rgba(45,212,191,0.15)', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10 },
+  miniDel: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer' },
   addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' },
   addSmall: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   modalFooter: { display: 'flex', justifyContent: 'space-between', marginTop: 22 },
-  delBtn: { background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 9, padding: '10px 16px', cursor: 'pointer', fontSize: 13.5 },
+  delBtn: { background: 'rgba(248,113,113,0.14)', color: '#f87171', border: '1px solid #fca5a5', borderRadius: 9, padding: '10px 16px', cursor: 'pointer', fontSize: 13.5 },
   saveBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', fontSize: 14 },
 };
