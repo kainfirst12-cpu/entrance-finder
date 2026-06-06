@@ -354,7 +354,7 @@ export default function AdminDashboard({ onAuthError }) {
                 const pct = p.docs > 0 ? Math.round((p.docsDone / p.docs) * 100) : null;
                 return (
                   <div style={S.progressBox}>
-                    <div style={{ ...S.progressHead, color: '#2d5be3' }}>
+                    <div style={{ ...S.progressHead, color: '#14b8a6' }}>
                       <span style={S.spinner} />
                       {p.phase === 'drive-read' ? 'Drive에서 문서 읽는 중...' : `자료 가져오는 중 ${pct != null ? `(${pct}%)` : ''}`}
                     </div>
@@ -441,28 +441,28 @@ const STYLES = {
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13, color: '#1a1916' },
   th: { textAlign: 'left', padding: '8px 10px', color: '#6b6860', fontWeight: 600, borderBottom: '2px solid #e8e6df', whiteSpace: 'nowrap' },
   td: { padding: '9px 10px', borderBottom: '1px solid #f0eee8', whiteSpace: 'nowrap', color: '#1a1916' },
-  code: { fontFamily: 'monospace', background: '#eef1fc', color: '#2d5be3', padding: '2px 7px', borderRadius: 6, fontSize: 12.5, letterSpacing: 1, fontWeight: 600 },
+  code: { fontFamily: 'monospace', background: '#e4f7f3', color: '#14b8a6', padding: '2px 7px', borderRadius: 6, fontSize: 12.5, letterSpacing: 1, fontWeight: 600 },
   bigCode: { fontFamily: 'monospace', fontSize: 18, letterSpacing: 2, color: '#16a34a', margin: '0 8px', fontWeight: 700 },
   createRow: { display: 'flex', gap: 10, marginBottom: 12 },
   input: { flex: 1, padding: '10px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#ffffff', color: '#1a1916', fontSize: 14, outline: 'none' },
-  primaryBtn: { background: '#2d5be3', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontWeight: 600, cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' },
+  primaryBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 18px', fontWeight: 600, cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' },
   createdBox: { background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', marginBottom: 14, fontSize: 14, display: 'flex', alignItems: 'center', flexWrap: 'wrap', color: '#166534' },
   copyBtn: { background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5, marginRight: 10 },
-  copyMini: { background: 'transparent', color: '#2d5be3', border: 'none', cursor: 'pointer', fontSize: 11.5, marginLeft: 6, textDecoration: 'underline' },
+  copyMini: { background: 'transparent', color: '#14b8a6', border: 'none', cursor: 'pointer', fontSize: 11.5, marginLeft: 6, textDecoration: 'underline' },
   onlineBadge: { color: '#16a34a', fontWeight: 700, fontSize: 12.5 },
   offlineBadge: { color: '#9b9890', fontSize: 12.5 },
   disabledBadge: { color: '#dc2626', fontSize: 12.5 },
   smallBtn: { background: '#f5f4f0', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
   dangerBtn: { background: '#fef2f2', borderColor: '#fca5a5', color: '#dc2626' },
   kbCounts: { display: 'flex', gap: 12, marginBottom: 14 },
-  kbStat: { flex: 1, background: '#eef1fc', border: '1px solid #c7d2fe', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
-  kbStatNum: { fontSize: 26, fontWeight: 800, color: '#2d5be3' },
+  kbStat: { flex: 1, background: '#e4f7f3', border: '1px solid #9fe3d8', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
+  kbStatNum: { fontSize: 26, fontWeight: 800, color: '#14b8a6' },
   kbStatLabel: { fontSize: 12, color: '#6b6860', marginTop: 4, fontWeight: 600 },
   // 진행 상태 박스
   progressBox: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #e8e6df', background: '#f9f8f5' },
   progressHead: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 700, marginBottom: 10 },
   progressBarOuter: { height: 10, background: '#e8e6df', borderRadius: 6, overflow: 'hidden' },
-  progressBarInner: { height: '100%', background: 'linear-gradient(90deg,#2d5be3,#4f46e5)', borderRadius: 6, transition: 'width 0.4s' },
+  progressBarInner: { height: '100%', background: 'linear-gradient(90deg,#14b8a6,#4f46e5)', borderRadius: 6, transition: 'width 0.4s' },
   progressSub: { fontSize: 12.5, color: '#6b6860', marginTop: 8 },
-  spinner: { width: 14, height: 14, border: '2px solid #c7d2fe', borderTopColor: '#2d5be3', borderRadius: '50%', display: 'inline-block', animation: 'efspin 0.8s linear infinite' },
+  spinner: { width: 14, height: 14, border: '2px solid #9fe3d8', borderTopColor: '#14b8a6', borderRadius: '50%', display: 'inline-block', animation: 'efspin 0.8s linear infinite' },
 };

@@ -44,10 +44,10 @@ function GradeGraph({ grades }) {
           <text x={4} y={ys(v) + 4} fontSize="10" fill="#9b9890">{v}</text>
         </g>
       ))}
-      <polyline points={line} fill="none" stroke={improved ? '#16a34a' : '#2d5be3'} strokeWidth="2.5" />
+      <polyline points={line} fill="none" stroke={improved ? '#16a34a' : '#14b8a6'} strokeWidth="2.5" />
       {pts.map((p, i) => (
         <g key={i}>
-          <circle cx={xs(i)} cy={ys(p.gpa)} r="4" fill={improved ? '#16a34a' : '#2d5be3'} />
+          <circle cx={xs(i)} cy={ys(p.gpa)} r="4" fill={improved ? '#16a34a' : '#14b8a6'} />
           <text x={xs(i)} y={ys(p.gpa) - 9} fontSize="10" fill="#1a1916" textAnchor="middle">{p.gpa}</text>
           <text x={xs(i)} y={H - 8} fontSize="10" fill="#6b6860" textAnchor="middle">{p.term}</text>
         </g>
@@ -343,7 +343,7 @@ const STYLES = {
   h2: { fontSize: 22, fontWeight: 700, margin: 0 },
   teacherPick: { display: 'flex', alignItems: 'center', gap: 8 },
   select: { padding: '8px 12px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 14 },
-  adminTag: { background: '#eef1fc', color: '#2d5be3', fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20 },
+  adminTag: { background: '#e4f7f3', color: '#14b8a6', fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 20 },
   error: { background: '#fffbeb', border: '1px solid #fcd34d', color: '#b45309', padding: '10px 14px', borderRadius: 9, marginBottom: 14, fontSize: 13.5 },
   muted: { color: '#9b9890', fontSize: 14, padding: 20 },
   board: { display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start' },
@@ -356,12 +356,12 @@ const STYLES = {
   cardName: { fontWeight: 700, fontSize: 14.5, color: '#1a1916' },
   cardSub: { fontSize: 12.5, color: '#6b6860', marginTop: 2 },
   cardMeta: { display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' },
-  gradeChip: { background: '#eef1fc', color: '#2d5be3', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
+  gradeChip: { background: '#e4f7f3', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
   recChip: { background: '#f0fdf4', color: '#16a34a', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 12 },
   addBtn: { background: 'transparent', border: '1px dashed #c9c6bd', color: '#6b6860', borderRadius: 9, padding: '9px', cursor: 'pointer', fontSize: 13, marginTop: 2 },
-  addBox: { background: '#fff', border: '1px solid #2d5be3', borderRadius: 9, padding: 8 },
+  addBox: { background: '#fff', border: '1px solid #14b8a6', borderRadius: 9, padding: 8 },
   addInput: { width: '100%', padding: '7px 9px', borderRadius: 7, border: '1px solid #d8d5cc', fontSize: 13.5, boxSizing: 'border-box', outline: 'none' },
-  addConfirm: { flex: 1, background: '#2d5be3', color: '#fff', border: 'none', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
+  addConfirm: { flex: 1, background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
   addCancel: { flex: 1, background: '#f5f4f0', color: '#6b6860', border: '1px solid #d8d5cc', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
   // 상세 모달
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '40px 16px' },
@@ -376,11 +376,11 @@ const STYLES = {
   sectionTitle: { fontSize: 14, fontWeight: 700, color: '#1a1916', margin: '20px 0 8px' },
   gradeList: { display: 'flex', flexDirection: 'column', gap: 5, margin: '8px 0' },
   gradeRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#f9f8f5', borderRadius: 7 },
-  recType: { background: '#eef1fc', color: '#2d5be3', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10 },
+  recType: { background: '#e4f7f3', color: '#14b8a6', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10 },
   miniDel: { background: 'transparent', border: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' },
   addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' },
-  addSmall: { background: '#2d5be3', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
+  addSmall: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   modalFooter: { display: 'flex', justifyContent: 'space-between', marginTop: 22 },
   delBtn: { background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 9, padding: '10px 16px', cursor: 'pointer', fontSize: 13.5 },
-  saveBtn: { background: '#2d5be3', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', fontSize: 14 },
+  saveBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 24px', fontWeight: 700, cursor: 'pointer', fontSize: 14 },
 };

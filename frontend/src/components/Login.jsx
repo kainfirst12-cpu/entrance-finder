@@ -80,7 +80,7 @@ export default function Login({ onLogin }) {
           disabled={loading}
           style={{
             width: '100%', padding: '14px', borderRadius: '10px', border: 'none',
-            background: loading ? '#555' : 'linear-gradient(135deg, #667eea, #764ba2)',
+            background: loading ? '#555' : 'linear-gradient(135deg, #14b8a6, #0f8e82)',
             color: '#fff', fontSize: '15px', fontWeight: '600',
             cursor: loading ? 'not-allowed' : 'pointer'
           }}
