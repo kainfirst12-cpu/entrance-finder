@@ -630,8 +630,6 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
         ${cvSchool ? `<tr><td>학교/학년</td><td>${cvSchool}</td></tr>` : ''}
         ${cvMajor ? `<tr><td>희망 전공</td><td>${cvMajor}</td></tr>` : ''}
         ${cvTarget ? `<tr><td>목표 대학</td><td>${cvTarget}</td></tr>` : ''}
-        <tr><td>분석일</td><td>${today}</td></tr>
-        <tr><td>분석 AI</td><td>${modelLabel}</td></tr>
         ${pdfCount > 0 ? `<tr><td>첨부 자료</td><td>PDF ${pdfCount}건 분석 포함</td></tr>` : ''}
       </table>
 
