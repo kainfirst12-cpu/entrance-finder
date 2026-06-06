@@ -22,6 +22,46 @@ const COL_THEME = {
 };
 const theme = (col) => COL_THEME[col] || { bg: 'rgba(255,255,255,0.05)', accent: '#8a857c', bar: '#d8d3ca' };
 
+// 마크다운(분석/수행평가 본문) → HTML (다크용: 제목/굵게/표/목록/구분선)
+function mdToHtml(md) {
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b style="color:#e8eef3">$1</b>');
+  const lines = String(md || '').replace(/\r\n/g, '\n').split('\n');
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) { i++; continue; }
+    if (t === '---' || /^[-=]{3,}$/.test(t)) { html += '<hr style="border:none;border-top:1px solid #2a3a48;margin:10px 0"/>'; i++; continue; }
+    if (t.startsWith('|')) {
+      const block = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { block.push(lines[i]); i++; }
+      const rows = block.filter(l => !/^\s*\|?[\s:|-]+\|?\s*$/.test(l) || !l.includes('-'));
+      html += '<table style="border-collapse:collapse;width:100%;margin:8px 0;font-size:12.5px">';
+      rows.forEach((r, ri) => {
+        const cells = r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        html += '<tr>' + cells.map(c => {
+          const tag = ri === 0 ? 'th' : 'td';
+          const st = ri === 0 ? 'background:rgba(45,212,191,0.12);color:#7ff0e3' : 'color:#cdd9e2';
+          return `<${tag} style="border:1px solid #2a3a48;padding:5px 8px;text-align:left;${st}">${inline(c)}</${tag}>`;
+        }).join('') + '</tr>';
+      });
+      html += '</table>';
+      continue;
+    }
+    const h = t.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { const sz = [0, 17, 15.5, 14, 13][h[1].length] || 14; html += `<div style="font-weight:700;color:#2dd4bf;font-size:${sz}px;margin:12px 0 5px">${inline(h[2])}</div>`; i++; continue; }
+    const stepH = t.match(/^\[(\d+단계)\]\s*(.*)$/);
+    if (stepH) { html += `<div style="font-weight:700;color:#2dd4bf;font-size:15px;margin:14px 0 6px">[${stepH[1]}] ${inline(stepH[2])}</div>`; i++; continue; }
+    const b = t.match(/^[-*]\s+(.*)$/);
+    if (b) { html += `<div style="margin:2px 0 2px 12px;color:#cdd9e2">• ${inline(b[1])}</div>`; i++; continue; }
+    const num = t.match(/^(\d+\.)\s+(.*)$/);
+    if (num) { html += `<div style="margin:2px 0 2px 12px;color:#cdd9e2">${num[1]} ${inline(num[2])}</div>`; i++; continue; }
+    html += `<p style="margin:5px 0;color:#cdd9e2">${inline(t)}</p>`;
+    i++;
+  }
+  return html;
+}
+
 // 성적 추이 SVG (내신 등급: 낮을수록 좋음 → 위로 갈수록 향상)
 function GradeGraph({ grades }) {
   const pts = grades.filter(g => g.gpa != null && g.gpa !== '').map(g => ({ term: g.term, gpa: Number(g.gpa) }));
@@ -357,7 +397,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
                 <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
               </div>
               {expandedRec === r.id && r.content && (
-                <div style={S.recContent}>{r.content}</div>
+                <div style={S.recContent} dangerouslySetInnerHTML={{ __html: mdToHtml(r.content) }} />
               )}
             </div>
           ))}
@@ -449,7 +489,7 @@ const STYLES = {
   recType: { background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' },
   miniDel: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer' },
   viewBtn: { background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#2dd4bf', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
-  recContent: { whiteSpace: 'pre-wrap', background: '#0e1620', border: '1px solid #2a3a48', borderRadius: 8, padding: '12px 14px', margin: '4px 0 8px', fontSize: 12.5, lineHeight: 1.6, color: '#cdd9e2', maxHeight: 320, overflowY: 'auto' },
+  recContent: { background: '#0e1620', border: '1px solid #2a3a48', borderRadius: 8, padding: '12px 16px', margin: '4px 0 8px', fontSize: 13, lineHeight: 1.65, color: '#cdd9e2', maxHeight: 420, overflowY: 'auto' },
   addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' },
   addSmall: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   modalFooter: { display: 'flex', justifyContent: 'space-between', marginTop: 22 },

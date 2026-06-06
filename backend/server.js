@@ -67,6 +67,16 @@ app.use(express.json({ limit: '50mb' }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 
+// multipart 한글 파일명 보정 (multer가 latin1로 해석 → utf8 복원)
+const fixFilename = (n) => {
+  if (!n) return n;
+  try {
+    const fixed = Buffer.from(n, 'latin1').toString('utf8');
+    // 복원 결과에 한글이 생기면 채택, 아니면 원본 유지
+    return /[가-힣]/.test(fixed) ? fixed : n;
+  } catch { return n; }
+};
+
 // 클라이언트 실제 IP 추출
 const getIp = (req) =>
   (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
@@ -686,7 +696,7 @@ app.post('/api/assessment/extract', upload.array('files', 10), async (req, res) 
       } else {
         text = f.buffer.toString('utf-8');
       }
-      if (text.trim()) parts.push(`[${f.originalname}]\n${text.trim()}`);
+      if (text.trim()) parts.push(`[${fixFilename(f.originalname)}]\n${text.trim()}`);
     }
     res.json({ success: true, text: parts.join('\n\n') });
   } catch (err) {
@@ -825,8 +835,9 @@ app.post('/api/board/students/:id/files', requireAuth, upload.array('files', 10)
     if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
     const out = [];
     for (const f of (req.files || [])) {
-      if (f.size > 15 * 1024 * 1024) { out.push({ name: f.originalname, error: '15MB 초과' }); continue; }
-      out.push(await addFile(Number(req.params.id), { name: f.originalname, mime: f.mimetype, size: f.size, kind: req.body.kind || '', data: f.buffer }));
+      const fname = fixFilename(f.originalname);
+      if (f.size > 15 * 1024 * 1024) { out.push({ name: fname, error: '15MB 초과' }); continue; }
+      out.push(await addFile(Number(req.params.id), { name: fname, mime: f.mimetype, size: f.size, kind: req.body.kind || '', data: f.buffer }));
     }
     res.json({ success: true, files: out });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
@@ -1681,7 +1692,7 @@ app.post('/api/admin/ingest/upload', requireAdmin, kbUpload, async (req, res) =>
       } else {
         text = f.buffer.toString('utf-8');
       }
-      if (text.trim()) docs.push({ type, title: f.originalname, text });
+      if (text.trim()) docs.push({ type, title: fixFilename(f.originalname), text });
     }
     if (docs.length === 0) return res.status(400).json({ success: false, message: '텍스트를 추출할 수 있는 파일이 없습니다' });
     const inserted = await ingestDocuments(docs);
