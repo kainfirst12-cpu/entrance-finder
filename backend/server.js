@@ -508,8 +508,8 @@ async function getCachedKnowledgeBase(studentMajor) {
 // ── 모델 ID 매핑 (2026-05 기준 최신) ────────────────────
 const MODEL_IDS = {
   claude: 'claude-sonnet-4-6',
-  'claude-opus': 'claude-opus-4-7',
-  gemini: 'gemini-3-flash-preview',
+  'claude-opus': 'claude-opus-4-8',
+  gemini: 'gemini-3.5-flash',
   'gemini-pro': 'gemini-3.1-pro-preview',
   gpt: 'gpt-5.5',
   'gpt-mini': 'gpt-5.4-mini',

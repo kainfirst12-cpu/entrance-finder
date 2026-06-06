@@ -245,8 +245,8 @@ export default function App() {
 
   const modelConfig = {
     claude:       { icon: '🔵', label: 'Claude Sonnet 4.6', color: '#7c6af7', group: 'claude' },
-    'claude-opus':{ icon: '🔷', label: 'Claude Opus 4.7',   color: '#5b21b6', group: 'claude' },
-    gemini:       { icon: '🟢', label: 'Gemini 3 Flash',    color: '#4caf50', group: 'gemini' },
+    'claude-opus':{ icon: '🔷', label: 'Claude Opus 4.8',   color: '#5b21b6', group: 'claude' },
+    gemini:       { icon: '🟢', label: 'Gemini 3.5 Flash',  color: '#4caf50', group: 'gemini' },
     'gemini-pro': { icon: '🟩', label: 'Gemini 3.1 Pro',    color: '#166534', group: 'gemini' },
     gpt:          { icon: '🟡', label: 'GPT-5.5',           color: '#f0a500', group: 'gpt' },
     'gpt-mini':   { icon: '🟠', label: 'GPT-5.4 Mini',      color: '#ea580c', group: 'gpt' },
