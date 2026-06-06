@@ -2,14 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import 'dotenv/config';
-import { loadKnowledgeBase, loadStudentFiles } from './services/driveService.js';
+import { loadKnowledgeBase, loadStudentFiles, loadAllKnowledgeDocs } from './services/driveService.js';
 import { loadKnowledgeBaseRAG, ragAvailable } from './services/ragService.js';
+import { refreshKbCount, countByType, clearKnowledge, ingestDocuments } from './services/vectorStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
-  initDb, dbEnabled,
+  initDb, dbEnabled, vectorEnabled,
   findActiveUserByCode, createUserCode, setUserActive, deleteUser,
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
@@ -1269,11 +1270,83 @@ app.get('/api/admin/logs', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   }
 });
+
+// 관리자: 지식베이스 상태 (type별 청크 수)
+app.get('/api/admin/kb', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, vectorEnabled: vectorEnabled(), counts: await countByType() });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: Google Drive 지식베이스를 Supabase(pgvector)로 인제스트 (1회 마이그레이션)
+app.post('/api/admin/ingest/drive', requireAdmin, async (req, res) => {
+  if (!vectorEnabled()) return res.status(400).json({ success: false, message: 'pgvector 비활성 — DATABASE_URL(Supabase)과 vector 확장을 확인하세요' });
+  if (!process.env.OPENAI_API_KEY) return res.status(400).json({ success: false, message: 'OPENAI_API_KEY 미설정 — 임베딩 불가' });
+  try {
+    const replace = req.body?.replace !== false; // 기본: 기존 KB 비우고 교체
+    const docs = await loadAllKnowledgeDocs();
+    if (docs.length === 0) return res.status(400).json({ success: false, message: 'Drive에서 추출된 문서가 없습니다 (폴더/권한 확인)' });
+    if (replace) await clearKnowledge();
+    const inserted = await ingestDocuments(docs);
+    logEvent({ userId: null, type: 'ingest', detail: `Drive ${docs.length}문서 → ${inserted}청크`, ip: getIp(req) });
+    res.json({ success: true, documents: docs.length, chunks: inserted, counts: await countByType() });
+  } catch (e) {
+    console.error('[ingest/drive] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 파일 업로드로 지식베이스 추가
+const kbUpload = upload.array('files', 20);
+app.post('/api/admin/ingest/upload', requireAdmin, kbUpload, async (req, res) => {
+  if (!vectorEnabled()) return res.status(400).json({ success: false, message: 'pgvector 비활성 상태입니다' });
+  if (!process.env.OPENAI_API_KEY) return res.status(400).json({ success: false, message: 'OPENAI_API_KEY 미설정' });
+  const type = (req.body.type || '').trim();
+  const validTypes = ['대입정책', '대학별전형', '합격자사례'];
+  if (!validTypes.includes(type)) return res.status(400).json({ success: false, message: `type은 ${validTypes.join('/')} 중 하나여야 합니다` });
+  try {
+    const files = req.files || [];
+    const docs = [];
+    for (const f of files) {
+      let text = '';
+      if (f.mimetype === 'application/pdf') {
+        try { text = (await pdfParse(f.buffer)).text || ''; } catch (e) { text = ''; }
+      } else if (f.mimetype.includes('wordprocessingml')) {
+        const mammoth = await import('mammoth');
+        text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
+      } else {
+        text = f.buffer.toString('utf-8');
+      }
+      if (text.trim()) docs.push({ type, title: f.originalname, text });
+    }
+    if (docs.length === 0) return res.status(400).json({ success: false, message: '텍스트를 추출할 수 있는 파일이 없습니다' });
+    const inserted = await ingestDocuments(docs);
+    logEvent({ userId: null, type: 'ingest', detail: `업로드 ${docs.length}문서 → ${inserted}청크 (${type})`, ip: getIp(req) });
+    res.json({ success: true, documents: docs.length, chunks: inserted, counts: await countByType() });
+  } catch (e) {
+    console.error('[ingest/upload] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 관리자: 지식베이스 전체 삭제 (재인제스트용)
+app.delete('/api/admin/kb', requireAdmin, async (req, res) => {
+  if (!vectorEnabled()) return res.status(400).json({ success: false, message: 'pgvector 비활성 상태입니다' });
+  try {
+    await clearKnowledge();
+    res.json({ success: true, counts: await countByType() });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
   await initDb();
+  await refreshKbCount();
   const hasAdmin = !!(process.env.ADMIN_CODE || process.env.APP_PASSWORD);
-  console.log(`🔐 인증: 관리자코드=${hasAdmin ? '설정됨' : '미설정!'}, DB=${dbEnabled() ? 'ON' : 'OFF'}`);
+  console.log(`🔐 인증: 관리자코드=${hasAdmin ? '설정됨' : '미설정!'}, DB=${dbEnabled() ? 'ON' : 'OFF'}, pgvector=${vectorEnabled() ? 'ON' : 'OFF'}, RAG=${ragAvailable() ? 'ON' : 'OFF'}`);
   console.log(`\n🚀 입시-Finder 서버 실행 중: http://localhost:${PORT}`);
   console.log(`📁 Drive 연결 테스트: http://localhost:${PORT}/api/drive/test`);
 

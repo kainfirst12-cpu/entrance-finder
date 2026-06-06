@@ -147,21 +147,21 @@ async function listFiles(drive, folderId) {
 }
 
 // ── 파일 텍스트 추출 ──────────────────────────────────
-async function extractText(drive, fileId, mimeType, fileName) {
+async function extractText(drive, fileId, mimeType, fileName, maxChars = MAX_CHARS_PER_FILE) {
   try {
     if (mimeType === 'text/plain' || fileName.endsWith('.md')) {
       const res = await withTimeout(
         drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' }),
         API_TIMEOUT, `files.get(${fileName})`
       );
-      return String(res.data).slice(0, MAX_CHARS_PER_FILE);
+      return String(res.data).slice(0, maxChars);
     }
     if (mimeType === 'application/vnd.google-apps.document') {
       const res = await withTimeout(
         drive.files.export({ fileId, mimeType: 'text/plain' }, { responseType: 'text' }),
         API_TIMEOUT, `files.export(${fileName})`
       );
-      return String(res.data).slice(0, MAX_CHARS_PER_FILE);
+      return String(res.data).slice(0, maxChars);
     }
     // Google Sheets
     if (mimeType === 'application/vnd.google-apps.spreadsheet') {
@@ -169,7 +169,7 @@ async function extractText(drive, fileId, mimeType, fileName) {
         drive.files.export({ fileId, mimeType: 'text/csv' }, { responseType: 'text' }),
         API_TIMEOUT, `files.export(${fileName})`
       );
-      return String(res.data).slice(0, MAX_CHARS_PER_FILE);
+      return String(res.data).slice(0, maxChars);
     }
 
     const res = await withTimeout(
@@ -190,7 +190,7 @@ async function extractText(drive, fileId, mimeType, fileName) {
         if (text && text.length > 50) {
           const koreanChars = (text.match(/[가-힣]/g) || []).length;
           console.log(`[Drive] pdftotext 성공: ${fileName} → ${text.length}자 (한글 ${koreanChars}자)`);
-          return text.slice(0, MAX_CHARS_PER_FILE);
+          return text.slice(0, maxChars);
         }
       } catch (e) {
         console.warn(`[Drive] pdftotext 실패 (${fileName}):`, e.message);
@@ -206,7 +206,7 @@ async function extractText(drive, fileId, mimeType, fileName) {
         const text = parsed.text?.trim();
         if (text && text.length > 50) {
           console.log(`[Drive] pdf-parse 성공: ${fileName} → ${text.length}자`);
-          return text.slice(0, MAX_CHARS_PER_FILE);
+          return text.slice(0, maxChars);
         }
       } catch (e2) {
         console.error(`[Drive] pdf-parse도 실패 (${fileName}):`, e2.message);
@@ -218,7 +218,7 @@ async function extractText(drive, fileId, mimeType, fileName) {
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
       const mammoth = await import('mammoth');
       const result = await mammoth.extractRawText({ buffer });
-      return result.value.slice(0, MAX_CHARS_PER_FILE);
+      return result.value.slice(0, maxChars);
     }
 
     // Excel
@@ -365,5 +365,46 @@ export const loadStudentFiles = async (studentName) => {
     return '';
   }
 };
+
+// ── 폴더명 → 지식베이스 타입 매핑 ──────────────────────
+function folderToType(name) {
+  const n = name || '';
+  if (n.includes('정책') || n.includes('01') || n.includes('1.')) return '대입정책';
+  if (n.includes('전형') || n.includes('02') || n.includes('2.')) return '대학별전형';
+  if (n.includes('사례') || n.includes('03') || n.includes('3.')) return '합격자사례';
+  return null;
+}
+
+// ── 인제스트용: 지식베이스 전체 문서 추출 (계열 필터·캡 없음) ──
+// 반환: [{ type, title, text }]
+export async function loadAllKnowledgeDocs({ maxCharsPerFile = 200000 } = {}) {
+  const folderId = (process.env.GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID || '').trim();
+  if (!folderId) throw new Error('GOOGLE_DRIVE_KNOWLEDGE_FOLDER_ID 미설정');
+
+  const drive = await getDrive();
+  const folders = await withTimeout(
+    drive.files.list({
+      q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id, name)',
+    }),
+    API_TIMEOUT, 'ingest.folders.list'
+  );
+  const subFolders = folders.data.files || [];
+  const docs = [];
+
+  for (const folder of subFolders) {
+    const type = folderToType(folder.name);
+    if (!type) continue;
+    const files = await listFiles(drive, folder.id);
+    for (const f of files) {
+      const text = await extractText(drive, f.id, f.mimeType, f.name, maxCharsPerFile);
+      if (text && !text.startsWith('[')) {
+        docs.push({ type, title: f.name, text });
+      }
+    }
+  }
+  console.log(`[Drive] 인제스트 대상 문서 ${docs.length}건 추출 완료`);
+  return docs;
+}
 
 export { listFiles as listFilesInFolder };

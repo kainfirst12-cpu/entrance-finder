@@ -7,9 +7,19 @@ const { Pool } = pg;
 
 let pool = null;
 let ready = false;
+let vectorReady = false;
 
 export function dbEnabled() {
   return ready && !!pool;
+}
+
+// pgvector(documents 테이블) 사용 가능 여부
+export function vectorEnabled() {
+  return ready && vectorReady;
+}
+
+export function getPool() {
+  return pool;
 }
 
 // ── 초기화 (부팅 시 1회) ──────────────────────────────
@@ -62,7 +72,35 @@ export async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, created_at);`);
 
     ready = true;
-    console.log('[DB] Postgres 연결 및 스키마 준비 완료');
+    console.log('[DB] Postgres 연결 및 인증 스키마 준비 완료');
+
+    // ── pgvector 지식베이스 스키마 (Supabase) ──
+    // 실패해도(확장 미설치 등) 인증 기능은 계속 동작하도록 분리
+    try {
+      await pool.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS documents (
+          id         SERIAL PRIMARY KEY,
+          type       TEXT NOT NULL,
+          title      TEXT,
+          content    TEXT NOT NULL,
+          embedding  vector(1536),
+          metadata   JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+      `);
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);`);
+      // HNSW 코사인 인덱스 (대량 검색 가속). 실패 시 무시(소량이면 인덱스 없이도 동작)
+      try {
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_embedding ON documents USING hnsw (embedding vector_cosine_ops);`);
+      } catch (ie) {
+        console.warn('[DB] HNSW 인덱스 생성 건너뜀:', ie.message);
+      }
+      vectorReady = true;
+      console.log('[DB] pgvector(documents) 스키마 준비 완료');
+    } catch (ve) {
+      console.warn('[DB] pgvector 비활성 — 지식베이스 검색은 Drive 폴백 사용:', ve.message);
+    }
   } catch (e) {
     console.error('[DB] 초기화 실패 — 추적 기능 비활성화로 계속 진행:', e.message);
     pool = null;

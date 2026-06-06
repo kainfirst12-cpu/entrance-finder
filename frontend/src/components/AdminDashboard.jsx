@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 
 const token = () => localStorage.getItem('ef_token');
@@ -50,6 +50,13 @@ export default function AdminDashboard({ onAuthError }) {
   const [creating, setCreating] = useState(false);
   const [createdCode, setCreatedCode] = useState(null);
 
+  // 지식베이스 (pgvector)
+  const [kb, setKb] = useState({ vectorEnabled: true, counts: {} });
+  const [kbBusy, setKbBusy] = useState('');
+  const [kbMsg, setKbMsg] = useState('');
+  const [uploadType, setUploadType] = useState('합격자사례');
+  const uploadRef = useRef(null);
+
   const handleErr = useCallback((e) => {
     if (e.auth) { onAuthError?.(); return; }
     setError(e.message || '오류가 발생했습니다');
@@ -57,18 +64,59 @@ export default function AdminDashboard({ onAuthError }) {
 
   const loadAll = useCallback(async () => {
     try {
-      const [u, a, l] = await Promise.all([
+      const [u, a, l, k] = await Promise.all([
         api('/api/admin/users'),
         api('/api/admin/active'),
         api('/api/admin/logs?limit=80'),
+        api('/api/admin/kb'),
       ]);
       if (u.success) { setUsers(u.users || []); setDbOn(u.dbEnabled !== false); }
       if (a.success) setSessions(a.sessions || []);
       if (l.success) setLogs(l.logs || []);
+      if (k.success) setKb({ vectorEnabled: k.vectorEnabled !== false, counts: k.counts || {} });
       setError('');
     } catch (e) { handleErr(e); }
     finally { setLoading(false); }
   }, [handleErr]);
+
+  const ingestDrive = async () => {
+    if (!confirm('Google Drive의 지식베이스를 Supabase로 가져옵니다.\n기존 지식베이스는 교체되며, 자료 양에 따라 1~3분 걸릴 수 있습니다. 진행할까요?')) return;
+    setKbBusy('drive'); setKbMsg('');
+    try {
+      const r = await api('/api/admin/ingest/drive', { method: 'POST', body: JSON.stringify({ replace: true }) });
+      if (r.success) { setKbMsg(`완료: 문서 ${r.documents}건 → ${r.chunks}청크`); setKb(k => ({ ...k, counts: r.counts || {} })); }
+      else setKbMsg('실패: ' + (r.message || ''));
+    } catch (e) { handleErr(e); setKbMsg('실패: ' + (e.message || '')); }
+    finally { setKbBusy(''); }
+  };
+
+  const ingestUpload = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    setKbBusy('upload'); setKbMsg('');
+    try {
+      const fd = new FormData();
+      fd.append('type', uploadType);
+      files.forEach(f => fd.append('files', f));
+      const res = await fetch(`${API_BASE}/api/admin/ingest/upload`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+      });
+      const r = await res.json();
+      if (r.success) { setKbMsg(`완료: 문서 ${r.documents}건 → ${r.chunks}청크 (${uploadType})`); setKb(k => ({ ...k, counts: r.counts || {} })); }
+      else setKbMsg('실패: ' + (r.message || ''));
+    } catch (e) { setKbMsg('실패: ' + (e.message || '')); }
+    finally { setKbBusy(''); if (uploadRef.current) uploadRef.current.value = ''; }
+  };
+
+  const clearKb = async () => {
+    if (!confirm('지식베이스 전체를 삭제할까요? 다시 인제스트해야 분석에 활용됩니다.')) return;
+    setKbBusy('clear'); setKbMsg('');
+    try {
+      const r = await api('/api/admin/kb', { method: 'DELETE' });
+      if (r.success) { setKbMsg('지식베이스를 비웠습니다.'); setKb(k => ({ ...k, counts: r.counts || {} })); }
+    } catch (e) { handleErr(e); }
+    finally { setKbBusy(''); }
+  };
 
   // 접속자만 빠르게 새로고침
   const loadActive = useCallback(async () => {
@@ -243,6 +291,47 @@ export default function AdminDashboard({ onAuthError }) {
         )}
       </section>
 
+      {/* 지식베이스 (pgvector) */}
+      <section style={S.card}>
+        <div style={S.cardTitle}>
+          지식베이스 (Supabase 벡터 검색)
+          <span style={S.sub}>분석 시 참고하는 입시 자료</span>
+        </div>
+        {!kb.vectorEnabled ? (
+          <div style={S.warn}>
+            pgvector가 비활성 상태입니다. DATABASE_URL을 Supabase로 설정하고 `vector` 확장이 켜져 있는지 확인하세요.
+          </div>
+        ) : (
+          <>
+            <div style={S.kbCounts}>
+              {['대입정책', '대학별전형', '합격자사례'].map(t => (
+                <div key={t} style={S.kbStat}>
+                  <div style={S.kbStatNum}>{kb.counts?.[t] || 0}</div>
+                  <div style={S.kbStatLabel}>{t} 청크</div>
+                </div>
+              ))}
+            </div>
+            <div style={S.createRow}>
+              <button style={{ ...S.primaryBtn, opacity: kbBusy ? 0.5 : 1 }} onClick={ingestDrive} disabled={!!kbBusy}>
+                {kbBusy === 'drive' ? '가져오는 중...' : '📥 Google Drive에서 가져오기 (교체)'}
+              </button>
+              <button style={{ ...S.smallBtn, ...S.dangerBtn, padding: '10px 14px' }} onClick={clearKb} disabled={!!kbBusy}>전체 삭제</button>
+            </div>
+            <div style={{ ...S.createRow, marginTop: 4, alignItems: 'center' }}>
+              <select style={{ ...S.input, flex: '0 0 160px' }} value={uploadType} onChange={e => setUploadType(e.target.value)}>
+                <option value="합격자사례">합격자사례</option>
+                <option value="대입정책">대입정책</option>
+                <option value="대학별전형">대학별전형</option>
+              </select>
+              <input ref={uploadRef} type="file" multiple accept=".pdf,.txt,.md,.docx"
+                onChange={e => ingestUpload(e.target.files)} disabled={!!kbBusy}
+                style={{ ...S.input, flex: 1, padding: '8px 10px' }} />
+            </div>
+            {kbMsg && <div style={{ ...S.muted, color: kbMsg.startsWith('실패') ? '#ff8080' : '#22c55e' }}>{kbMsg}</div>}
+          </>
+        )}
+      </section>
+
       {/* 최근 활동 로그 */}
       <section style={S.card}>
         <div style={S.cardTitle}>최근 활동 로그</div>
@@ -306,4 +395,8 @@ const STYLES = {
   disabledBadge: { color: '#ff8080', fontSize: 12.5 },
   smallBtn: { background: 'rgba(255,255,255,0.08)', color: '#e6edf3', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
   dangerBtn: { background: 'rgba(255,80,80,0.12)', borderColor: 'rgba(255,80,80,0.35)', color: '#ff8080' },
+  kbCounts: { display: 'flex', gap: 12, marginBottom: 14 },
+  kbStat: { flex: 1, background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
+  kbStatNum: { fontSize: 24, fontWeight: 700, color: '#b9acff' },
+  kbStatLabel: { fontSize: 12, color: 'rgba(230,237,243,0.55)', marginTop: 4 },
 };
