@@ -237,6 +237,21 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
     finally { setDownloading(false); }
   };
 
+  const assignStudent = async () => {
+    let nm = studentName.trim();
+    if (!nm) { nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:') || '').trim(); if (!nm) return; setStudentName(nm); }
+    if (!token()) { alert('로그인이 필요합니다.'); return; }
+    try {
+      const r = await fetch(`${API_BASE}/api/board/upsert`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({ name: nm, grade, record: { type: '수행평가', title: `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`, content: result } }),
+      });
+      const d = await r.json();
+      if (d.success) alert(`'${nm}' 학생 보드에 배정되었습니다.\n학생 카드 → '내용 보기'에서 확인할 수 있어요.`);
+      else alert('배정 실패: ' + (d.message || '다시 로그인해 주세요'));
+    } catch (e) { alert('배정 오류: ' + e.message); }
+  };
+
   const copyAll = async () => {
     await navigator.clipboard.writeText(result);
     setCopied(true); setTimeout(() => setCopied(false), 1800);
@@ -339,6 +354,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           <div style={S.resultHead}>
             <span style={S.resultTitle}>결과 <span style={S.opt}>아래에서 자유롭게 수정한 뒤 Word로 받으세요</span></span>
             <div style={{ display: 'flex', gap: 8 }}>
+              <button style={S.assignBtn} onClick={assignStudent}>📋 학생에게 배정</button>
               <button style={S.docxBtn} onClick={downloadDocx} disabled={downloading}>{downloading ? '생성 중...' : '📄 Word(.docx) 다운로드'}</button>
               <button style={S.ghostBtn} onClick={copyAll}>{copied ? '복사됨!' : '복사'}</button>
             </div>
@@ -393,6 +409,7 @@ const STYLES = {
   genBtn: { width: '100%', marginTop: 18, padding: '14px', borderRadius: 10, border: 'none', background: '#14b8a6', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
   resultHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 },
   resultTitle: { fontSize: 15, fontWeight: 700 },
+  assignBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
   docxBtn: { background: '#34d399', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
   ghostBtn: { background: '#131c26', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13.5 },
   resultEdit: { width: '100%', padding: '12px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#1c2937', color: '#e8eef3', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' },

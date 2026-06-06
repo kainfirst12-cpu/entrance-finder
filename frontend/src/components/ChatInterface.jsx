@@ -313,6 +313,23 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     setTimeout(() => setCopiedIdx(null), 2000);
   };
 
+  // ── 학생 보드에 배정 ──────────────────────────────
+  const assignChatMessage = async (idx) => {
+    const nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:') || '').trim();
+    if (!nm) return;
+    const tok = localStorage.getItem('ef_token');
+    if (!tok) { alert('로그인이 필요합니다.'); return; }
+    try {
+      const r = await fetch(`${API_BASE}/api/board/upsert`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ name: nm, record: { type: '입시상담', title: '입시 상담', content: messages[idx]?.content || '' } }),
+      });
+      const d = await r.json();
+      if (d.success) alert(`'${nm}' 학생 보드에 배정되었습니다.\n학생 카드 → '내용 보기'에서 확인할 수 있어요.`);
+      else alert('배정 실패: ' + (d.message || '다시 로그인해 주세요'));
+    } catch (e) { alert('배정 오류: ' + e.message); }
+  };
+
   // ── 교차 검증 ──────────────────────────────────
   const verifyChatMessage = async (msgIdx, verifyModel) => {
     const msg = messages[msgIdx];
@@ -675,6 +692,9 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                   <button className="chat-copy-btn" onClick={() => copyMessage(msg.content, i)}>{copiedIdx === i ? '복사됨!' : '복사'}</button>
                   <button className="chat-copy-btn" onClick={() => startEdit(i)}>수정</button>
                   <button className="chat-copy-btn" onClick={() => deleteMessage(i)} style={{ color: '#ef4444' }}>삭제</button>
+                  {msg.role === 'assistant' && !msg.isSystem && (
+                    <button className="chat-copy-btn" onClick={() => assignChatMessage(i)} style={{ color: '#2dd4bf' }}>📋 학생 배정</button>
+                  )}
 
                   {msg.role === 'assistant' && !msg.isVerify && !msg.isSystem && (
                     <span className="chat-verify-group">
