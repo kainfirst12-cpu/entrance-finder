@@ -72,49 +72,48 @@ export function chunkText(text, { maxChars = 1200, overlap = 150 } = {}) {
 }
 
 // ── 인제스트: {type, title, text} 문서들을 청킹+임베딩+저장 ──
+// 문서 단위로 처리(메모리 절약 + 진행상황 노출). onProgress({doc,totalDocs,chunks}) 콜백 옵션.
 // 반환: 저장된 청크 수
-export async function ingestDocuments(docs) {
+export async function ingestDocuments(docs, onProgress) {
   const pool = getPool();
   if (!vectorEnabled() || !pool) throw new Error('pgvector(documents) 비활성 상태입니다');
 
-  // 1) 청크 생성
-  const rows = [];
-  for (const d of docs) {
-    const type = d.type;
-    if (!type) continue;
-    const chunks = chunkText(d.text);
-    chunks.forEach((c, i) => {
-      rows.push({
-        type,
-        title: d.title || '',
-        content: c,
-        metadata: { filename: d.title || '', chunk: i, ...(d.metadata || {}) },
-      });
-    });
-  }
-  if (rows.length === 0) return 0;
-
-  // 2) 임베딩 (배치)
-  const embeddings = await embedTexts(rows.map(r => r.content));
-
-  // 3) 저장 (다중 행 insert를 배치로)
-  let inserted = 0;
   const INSERT_BATCH = 100;
-  for (let i = 0; i < rows.length; i += INSERT_BATCH) {
-    const slice = rows.slice(i, i + INSERT_BATCH);
-    const values = [];
-    const params = [];
-    slice.forEach((r, j) => {
-      const emb = embeddings[i + j];
-      const base = j * 5;
-      values.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}::vector, $${base + 5}::jsonb)`);
-      params.push(r.type, r.title, r.content, pgVectorLiteral(emb), JSON.stringify(r.metadata));
-    });
-    await pool.query(
-      `INSERT INTO documents (type, title, content, embedding, metadata) VALUES ${values.join(',')}`,
-      params
-    );
-    inserted += slice.length;
+  let inserted = 0;
+
+  for (let d = 0; d < docs.length; d++) {
+    const doc = docs[d];
+    if (!doc?.type) continue;
+    const chunks = chunkText(doc.text);
+    if (chunks.length === 0) continue;
+
+    // 이 문서의 청크만 임베딩 (한 번에 전부 메모리에 올리지 않음)
+    const embeddings = await embedTexts(chunks);
+
+    for (let i = 0; i < chunks.length; i += INSERT_BATCH) {
+      const cs = chunks.slice(i, i + INSERT_BATCH);
+      const es = embeddings.slice(i, i + INSERT_BATCH);
+      const values = [];
+      const params = [];
+      cs.forEach((c, j) => {
+        const base = j * 5;
+        values.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}::vector, $${base + 5}::jsonb)`);
+        params.push(
+          doc.type, doc.title || '', c,
+          pgVectorLiteral(es[j]),
+          JSON.stringify({ filename: doc.title || '', chunk: i + j, ...(doc.metadata || {}) })
+        );
+      });
+      await pool.query(
+        `INSERT INTO documents (type, title, content, embedding, metadata) VALUES ${values.join(',')}`,
+        params
+      );
+      inserted += cs.length;
+    }
+
+    if (onProgress) {
+      try { onProgress({ doc: d + 1, totalDocs: docs.length, chunks: inserted }); } catch {}
+    }
   }
 
   await refreshKbCount();

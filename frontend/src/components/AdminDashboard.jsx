@@ -80,14 +80,35 @@ export default function AdminDashboard({ onAuthError }) {
   }, [handleErr]);
 
   const ingestDrive = async () => {
-    if (!confirm('Google Drive의 지식베이스를 Supabase로 가져옵니다.\n기존 지식베이스는 교체되며, 자료 양에 따라 1~3분 걸릴 수 있습니다. 진행할까요?')) return;
-    setKbBusy('drive'); setKbMsg('');
+    if (!confirm('Google Drive의 지식베이스를 Supabase로 가져옵니다.\n기존 지식베이스는 교체되며, 백그라운드로 처리됩니다(1~3분). 진행할까요?')) return;
+    setKbBusy('drive'); setKbMsg('시작하는 중...');
     try {
       const r = await api('/api/admin/ingest/drive', { method: 'POST', body: JSON.stringify({ replace: true }) });
-      if (r.success) { setKbMsg(`완료: 문서 ${r.documents}건 → ${r.chunks}청크`); setKb(k => ({ ...k, counts: r.counts || {} })); }
-      else setKbMsg('실패: ' + (r.message || ''));
-    } catch (e) { handleErr(e); setKbMsg('실패: ' + (e.message || '')); }
-    finally { setKbBusy(''); }
+      if (!r.success) { setKbMsg('실패: ' + (r.message || '')); setKbBusy(''); return; }
+      // 백그라운드 진행 상태를 폴링 (요청이 즉시 끝나므로 Failed to fetch 없음)
+      const poll = async () => {
+        try {
+          const s = await api('/api/admin/ingest/status');
+          if (s.counts) setKb(k => ({ ...k, counts: s.counts }));
+          const st = s.state || {};
+          if (st.running) {
+            setKbMsg(st.phase === 'drive-read'
+              ? 'Drive에서 문서 읽는 중...'
+              : `임베딩 중... (문서 ${st.docsDone}/${st.docs}, ${st.chunks}청크)`);
+            setTimeout(poll, 3000);
+          } else if (st.phase === 'done') {
+            setKbMsg(`완료: 문서 ${st.docs}건 → ${st.chunks}청크`); setKbBusy('');
+          } else if (st.phase === 'error') {
+            setKbMsg('실패: ' + (st.error || '')); setKbBusy('');
+          } else { setKbBusy(''); }
+        } catch (e) {
+          if (e.auth) { onAuthError?.(); return; }
+          // 일시적 네트워크 흔들림이면 재시도
+          setTimeout(poll, 4000);
+        }
+      };
+      setTimeout(poll, 2000);
+    } catch (e) { handleErr(e); setKbMsg('실패: ' + (e.message || '')); setKbBusy(''); }
   };
 
   const ingestUpload = async (fileList) => {

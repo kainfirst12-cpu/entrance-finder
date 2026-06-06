@@ -1280,20 +1280,51 @@ app.get('/api/admin/kb', requireAdmin, async (req, res) => {
   }
 });
 
-// 관리자: Google Drive 지식베이스를 Supabase(pgvector)로 인제스트 (1회 마이그레이션)
+// 인제스트 진행 상태 (백그라운드 작업 추적)
+let ingestState = { running: false, phase: 'idle', docs: 0, docsDone: 0, chunks: 0, error: null, finishedAt: null };
+
+// 관리자: Google Drive 지식베이스를 Supabase(pgvector)로 인제스트 (백그라운드 실행)
 app.post('/api/admin/ingest/drive', requireAdmin, async (req, res) => {
   if (!vectorEnabled()) return res.status(400).json({ success: false, message: 'pgvector 비활성 — DATABASE_URL(Supabase)과 vector 확장을 확인하세요' });
   if (!process.env.OPENAI_API_KEY) return res.status(400).json({ success: false, message: 'OPENAI_API_KEY 미설정 — 임베딩 불가' });
+  if (ingestState.running) return res.json({ success: true, started: false, already: true, state: ingestState });
+
+  const replace = req.body?.replace !== false; // 기본: 기존 KB 비우고 교체
+  ingestState = { running: true, phase: 'drive-read', docs: 0, docsDone: 0, chunks: 0, error: null, finishedAt: null };
+  const ip = getIp(req);
+
+  // 즉시 응답 — 무거운 작업은 백그라운드에서 (요청 타임아웃/Failed to fetch 방지)
+  res.json({ success: true, started: true });
+
+  (async () => {
+    try {
+      const docs = await loadAllKnowledgeDocs();
+      ingestState.docs = docs.length;
+      if (docs.length === 0) {
+        ingestState = { running: false, phase: 'error', docs: 0, docsDone: 0, chunks: 0, error: 'Drive에서 추출된 문서가 없습니다 (폴더/권한 확인)', finishedAt: Date.now() };
+        return;
+      }
+      if (replace) await clearKnowledge();
+      ingestState.phase = 'embedding';
+      const inserted = await ingestDocuments(docs, (p) => {
+        ingestState.docsDone = p.doc;
+        ingestState.chunks = p.chunks;
+      });
+      ingestState = { running: false, phase: 'done', docs: docs.length, docsDone: docs.length, chunks: inserted, error: null, finishedAt: Date.now() };
+      logEvent({ userId: null, type: 'ingest', detail: `Drive ${docs.length}문서 → ${inserted}청크`, ip });
+      console.log(`[ingest/drive] 완료: ${docs.length}문서 → ${inserted}청크`);
+    } catch (e) {
+      console.error('[ingest/drive] 오류:', e.message);
+      ingestState = { running: false, phase: 'error', docs: ingestState.docs, docsDone: ingestState.docsDone, chunks: ingestState.chunks, error: e.message, finishedAt: Date.now() };
+    }
+  })();
+});
+
+// 관리자: 인제스트 진행 상태 + 현재 카운트
+app.get('/api/admin/ingest/status', requireAdmin, async (req, res) => {
   try {
-    const replace = req.body?.replace !== false; // 기본: 기존 KB 비우고 교체
-    const docs = await loadAllKnowledgeDocs();
-    if (docs.length === 0) return res.status(400).json({ success: false, message: 'Drive에서 추출된 문서가 없습니다 (폴더/권한 확인)' });
-    if (replace) await clearKnowledge();
-    const inserted = await ingestDocuments(docs);
-    logEvent({ userId: null, type: 'ingest', detail: `Drive ${docs.length}문서 → ${inserted}청크`, ip: getIp(req) });
-    res.json({ success: true, documents: docs.length, chunks: inserted, counts: await countByType() });
+    res.json({ success: true, state: ingestState, counts: await countByType() });
   } catch (e) {
-    console.error('[ingest/drive] 오류:', e.message);
     res.status(500).json({ success: false, message: e.message });
   }
 });
