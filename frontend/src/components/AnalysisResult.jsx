@@ -233,6 +233,30 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
   };
 
   // JSON 내보내기
+  const [assigning, setAssigning] = useState(false);
+  const assignToBoard = async () => {
+    const tok = localStorage.getItem('ef_token');
+    if (!studentData?.name) { alert('학생 이름이 없어 배정할 수 없습니다.'); return; }
+    setAssigning(true);
+    try {
+      const analysisText = SECTION_MAP.filter(({ key }) => results?.[key])
+        .map(({ key, title }) => `## ${title}\n${results[key]}`).join('\n\n');
+      const res = await fetch(`${API_BASE}/api/board/upsert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
+        body: JSON.stringify({
+          name: studentData.name, school: studentData.school, grade: studentData.grade,
+          major: studentData.major, targetUniv: studentData.targetUniv,
+          record: { type: '생기부 분석', title: `${MODEL_CONFIG[usedModel]?.label || 'AI'} 분석`, content: analysisText },
+        }),
+      });
+      const d = await res.json();
+      if (d.success) alert(`'${studentData.name}' 학생 보드에 배정되었습니다.\n학생 관리 보드에서 카드를 클릭하면 이 분석을 볼 수 있어요.`);
+      else alert('배정 실패: ' + (d.message || '다시 로그인해 주세요'));
+    } catch (e) { alert('배정 오류: ' + e.message); }
+    finally { setAssigning(false); }
+  };
+
   const handleExportJSON = () => {
     const exportData = {
       version: 2,
@@ -1213,6 +1237,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           {pdfCount > 0 && <span className="pdf-badge">📎 PDF {pdfCount}건 분석 포함</span>}
         </div>
         <div className="result-actions">
+          <button className="btn-analyze" onClick={assignToBoard} disabled={assigning} style={{ padding: '8px 16px', fontSize: 13 }}>
+            {assigning ? '배정 중...' : '📋 학생에게 배정'}
+          </button>
           <button className="btn-print-html" onClick={openCoverModal}>
             🖨️ HTML 리포트 / PDF 인쇄
           </button>

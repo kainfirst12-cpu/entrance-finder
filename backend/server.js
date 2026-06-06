@@ -753,8 +753,8 @@ app.get('/api/board/students', requireAuth, async (req, res) => {
 // 자동 연동: 분석/수행평가 완료 시 학생 카드 upsert + 기록 추가 (선생님 전용)
 app.post('/api/board/upsert', requireAuth, async (req, res) => {
   if (!dbEnabled()) return res.json({ success: false, skipped: true });
-  if (req.user.role !== 'user' || !req.user.userId) {
-    return res.json({ success: false, skipped: true, message: '선생님(이용자) 코드로 로그인하면 보드에 자동 기록됩니다' });
+  if (!req.user.userId) {
+    return res.json({ success: false, skipped: true, message: '보드에 배정하려면 다시 로그인해 주세요(토큰 갱신 필요)' });
   }
   try {
     const { name, school, grade, major, targetUniv, record } = req.body || {};
