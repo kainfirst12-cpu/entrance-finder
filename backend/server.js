@@ -16,7 +16,7 @@ import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
-  initDb, dbEnabled, vectorEnabled,
+  initDb, dbEnabled, vectorEnabled, ensureAdminUser,
   findActiveUserByCode, createUserCode, setUserActive, deleteUser,
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
@@ -585,7 +585,7 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
 
 // ── 수행평가: 결과물 작성 / 첨삭·평가 (SSE keepalive) ──────
 app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
-  const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric, images } = req.body || {};
+  const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric, images, current, instruction } = req.body || {};
   const imgList = Array.isArray(images) ? images.slice(0, 8) : [];
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -599,7 +599,30 @@ app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
     ? `\n\n[첨부 이미지] 캡처/사진 ${imgList.length}장이 첨부되었습니다. 이미지 속 글자(과제 양식, 안내문, 손글씨 등)를 꼼꼼히 읽어 내용에 반영하십시오.`
     : '';
 
-  if (mode === 'review') {
+  if (mode === 'verify') {
+    if (!current?.trim()) return res.status(400).json({ success: false, message: '검증할 결과물이 없습니다' });
+    systemPrompt = `당신은 수행평가 결과물을 검토하는 전문 교사입니다. 아래 결과물을 꼼꼼히 검토하여 피드백을 제시합니다.
+
+[출력 — 마크다운, 이모지 금지]
+## 강점 — 잘 작성된 점 2~3가지
+## 점검이 필요한 점 — 사실/논리 오류, 근거 부족, 과장 등 (있으면 구체적으로)
+## 보완 제안 — 더 좋게 만들 구체적 방법 (항목별)
+간결하고 실질적으로. 결과물이 충실하면 솔직히 그렇게 평가.`;
+    userMsg = `${head}\n[검토 대상 결과물]\n${current}`;
+    maxTokens = 5000;
+  } else if (mode === 'revise') {
+    if (!current?.trim()) return res.status(400).json({ success: false, message: '수정할 결과물이 없습니다' });
+    systemPrompt = `당신은 수행평가 결과물을 사용자의 요청대로 다듬는 전문 교사 보조입니다.
+아래 결과물을 사용자의 수정 요청에 맞춰 개선하여 **전체를 다시 출력**합니다.
+
+[원칙]
+- 기존의 구조·분량은 유지하되 요청된 부분을 반영. 요청과 무관한 부분은 그대로 유지.
+- 처음부터 그렇게 작성된 것처럼 자연스럽게 서술(수정·반영 같은 메타 표현 금지).
+- 마크다운(# 제목, ##, 표 |, **굵게**, 목록). 이모지 금지.
+- 결과물 전체를 빠짐없이 출력(잘리지 않게).`;
+    userMsg = `[수정 요청]\n${instruction || '전반적으로 더 완성도 높게 다듬어 주세요.'}\n\n[현재 결과물]\n${current}`;
+    maxTokens = 16000;
+  } else if (mode === 'review') {
     if (!submissionText?.trim() && imgList.length === 0) return res.status(400).json({ success: false, message: '평가할 학생 제출물(텍스트 또는 이미지)이 없습니다' });
     systemPrompt = `당신은 대한민국 학교 수행평가 채점·첨삭 전문 교사입니다.
 학생 제출물을 평가 기준에 따라 공정하고 구체적으로 평가합니다.
@@ -700,24 +723,19 @@ async function canEditStudent(req, studentId) {
   return owner != null && owner === req.user?.userId;
 }
 
-// 관리자: 선생님 목록
+// 관리자: 선생님 목록 (+ 본인 '관리자(나)' 항목)
 app.get('/api/board/teachers', requireAdmin, async (req, res) => {
   try {
-    res.json({ success: true, teachers: await listTeachers() });
+    res.json({ success: true, me: { id: req.user.userId || null, name: '관리자 (나)' }, teachers: await listTeachers() });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 보드 학생 목록 — 선생님은 본인, 관리자는 teacherId 지정
+// 보드 학생 목록 — 선생님은 본인, 관리자는 teacherId 지정(없으면 본인 보드)
 app.get('/api/board/students', requireAuth, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
-    let ownerId;
-    if (req.user.role === 'admin') {
-      ownerId = Number(req.query.teacherId);
-      if (!ownerId) return res.json({ success: true, needTeacher: true, columns: BOARD_COLUMNS, students: [] });
-    } else {
-      ownerId = req.user.userId;
-    }
+    const ownerId = Number(req.query.teacherId) || req.user.userId;
+    if (!ownerId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
     res.json({ success: true, columns: BOARD_COLUMNS, students: await listStudents(ownerId) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -744,12 +762,9 @@ app.post('/api/board/upsert', requireAuth, async (req, res) => {
 app.post('/api/board/students', requireAuth, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
-    let ownerId = req.user.userId;
-    if (req.user.role === 'admin') {
-      ownerId = Number(req.body.teacherId);
-      if (!ownerId) return res.status(400).json({ success: false, message: '관리자는 어떤 선생님의 학생인지 선택해야 합니다' });
-    }
-    if (!ownerId) return res.status(400).json({ success: false, message: '소유자 없음 — 이용자 코드로 로그인해야 보드를 사용할 수 있습니다' });
+    // 관리자가 다른 선생님 보드에 추가하려면 teacherId 지정, 아니면 본인 보드
+    const ownerId = (req.user.role === 'admin' && Number(req.body.teacherId)) ? Number(req.body.teacherId) : req.user.userId;
+    if (!ownerId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
     res.json({ success: true, student: await createStudent(ownerId, req.body) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -1457,7 +1472,8 @@ app.post('/api/login', async (req, res) => {
   // 1) 관리자 코드
   const adminCode = process.env.ADMIN_CODE || process.env.APP_PASSWORD;
   if (adminCode && cred === adminCode) {
-    const token = jwt.sign({ role: 'admin', name: '관리자', jti }, JWT_SECRET, { expiresIn: '7d' });
+    const adminUserId = await ensureAdminUser(); // 관리자도 본인 보드를 가질 수 있게 userId 부여
+    const token = jwt.sign({ role: 'admin', name: '관리자', jti, userId: adminUserId || undefined }, JWT_SECRET, { expiresIn: '7d' });
     logEvent({ userId: null, type: 'login', detail: '관리자 로그인', ip });
     return res.json({ success: true, token, role: 'admin', name: '관리자' });
   }

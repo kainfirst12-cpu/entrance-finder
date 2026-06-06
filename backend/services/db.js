@@ -176,6 +176,21 @@ export function generateCode(len = 8) {
   return out;
 }
 
+// 관리자 본인 보드용 app_users 행 보장 (코드 '__admin__', role admin → 선생님 목록엔 안 뜸)
+export async function ensureAdminUser() {
+  if (!dbEnabled()) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO app_users (code, name, role) VALUES ('__admin__', '관리자', 'admin')
+       ON CONFLICT (code) DO UPDATE SET name = '관리자' RETURNING id`
+    );
+    return rows[0].id;
+  } catch (e) {
+    console.warn('[DB] ensureAdminUser 실패:', e.message);
+    return null;
+  }
+}
+
 // ── 사용자 코드 CRUD ──────────────────────────────────
 export async function findActiveUserByCode(code) {
   if (!dbEnabled() || !code) return null;

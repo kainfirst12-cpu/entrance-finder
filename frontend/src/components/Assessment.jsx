@@ -81,6 +81,10 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [uploading, setUploading] = useState('');
+  const [verifyResult, setVerifyResult] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [reviseInput, setReviseInput] = useState('');
+  const [revising, setRevising] = useState(false);
 
   const refFileRef = useRef(null);
   const subFileRef = useRef(null);
@@ -171,6 +175,40 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
       } else setError(data.message || '생성 실패');
     } catch (e) { setError('요청 실패: ' + e.message); }
     finally { setLoading(false); }
+  };
+
+  const callMode = async (body) => {
+    const apiKey = getActiveKey?.();
+    if (!apiKey) { setError('선택한 AI의 API 키가 설정에 없습니다.'); return null; }
+    return postForResult(`${API_BASE}/api/assessment/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', 'x-api-key': apiKey,
+        'x-ai-model': aiGroup || 'claude', 'x-ai-submodel': selectedModel || 'claude',
+        ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
+  const verify = async () => {
+    setVerifying(true); setError(''); setVerifyResult('');
+    try {
+      const d = await callMode({ mode: 'verify', subject, grade, kind, current: result });
+      if (d?.success) setVerifyResult(d.reply || ''); else if (d) setError(d.message || '검증 실패');
+    } catch (e) { setError('검증 실패: ' + e.message); }
+    finally { setVerifying(false); }
+  };
+
+  const revise = async () => {
+    if (!reviseInput.trim()) return;
+    setRevising(true); setError('');
+    try {
+      const d = await callMode({ mode: 'revise', subject, grade, kind, current: result, instruction: reviseInput });
+      if (d?.success) { setResult(d.reply || result); setReviseInput(''); setVerifyResult(''); }
+      else if (d) setError(d.message || '수정 실패');
+    } catch (e) { setError('수정 실패: ' + e.message); }
+    finally { setRevising(false); }
   };
 
   const docTitle = () => {
@@ -308,6 +346,24 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           <textarea style={S.resultEdit} rows={14} value={result} onChange={e => setResult(e.target.value)} />
           <div style={S.previewLabel}>미리보기</div>
           <div style={S.preview} dangerouslySetInnerHTML={{ __html: mdPreview(result) }} />
+
+          {/* AI 검증 + 수정 요청 */}
+          <div style={S.aiToolRow}>
+            <button style={S.verifyBtn} onClick={verify} disabled={verifying || revising}>{verifying ? '검증 중...' : '🔍 AI 검증 (점검·보완점)'}</button>
+          </div>
+          {verifyResult && (
+            <div style={S.verifyPanel}>
+              <div style={S.verifyTitle}>검증 결과</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: mdPreview(verifyResult) }} />
+              <div style={S.verifyHint}>아래 "수정 요청"에 반영할 내용을 적어 보내면 결과물이 자동으로 다듬어집니다.</div>
+            </div>
+          )}
+          <div style={S.reviseRow}>
+            <input style={S.input} value={reviseInput} onChange={e => setReviseInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && revise()} disabled={revising}
+              placeholder="AI에게 수정 요청 (예: 결론을 더 강하게, 표 추가, 분량 줄이기)" />
+            <button style={S.reviseBtn} onClick={revise} disabled={revising || !reviseInput.trim()}>{revising ? '수정 중...' : '✏️ 수정 요청'}</button>
+          </div>
         </div>
       )}
     </div>
@@ -342,4 +398,11 @@ const STYLES = {
   resultEdit: { width: '100%', padding: '12px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#fcfbf9', color: '#1a1916', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' },
   previewLabel: { fontSize: 12, color: '#9b9890', fontWeight: 600, margin: '16px 0 6px' },
   preview: { border: '1px solid #e8e6df', borderRadius: 9, padding: '16px 18px', background: '#fff', fontSize: 14, lineHeight: 1.6, color: '#1a1916' },
+  aiToolRow: { display: 'flex', gap: 8, marginTop: 16 },
+  verifyBtn: { background: '#f4edff', color: '#7c3aed', border: '1px solid #dccdf6', borderRadius: 9, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
+  verifyPanel: { marginTop: 12, padding: '14px 16px', borderRadius: 10, border: '1px solid #dccdf6', background: '#faf7ff' },
+  verifyTitle: { fontSize: 13.5, fontWeight: 700, color: '#7c3aed', marginBottom: 8 },
+  verifyHint: { fontSize: 12, color: '#9b9890', marginTop: 10 },
+  reviseRow: { display: 'flex', gap: 8, marginTop: 12 },
+  reviseBtn: { background: '#2d5be3', color: '#fff', border: 'none', borderRadius: 9, padding: '10px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5, whiteSpace: 'nowrap' },
 };

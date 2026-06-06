@@ -12,9 +12,15 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-const COLUMN_COLORS = {
-  '신규': '#6b6860', '생기부 분석': '#2d5be3', '보완 중': '#d97706', '수행평가': '#7c3aed', '완료': '#16a34a',
+// 파스텔 칸반 테마 (배경 / 강조색 / 카드 상단 띠)
+const COL_THEME = {
+  '신규':       { bg: '#f3f1ee', accent: '#8a857c', bar: '#d8d3ca' },
+  '생기부 분석': { bg: '#eaf1ff', accent: '#5b86d6', bar: '#bcd3f5' },
+  '보완 중':     { bg: '#fff4e6', accent: '#e0993f', bar: '#f6dbb0' },
+  '수행평가':    { bg: '#f4edff', accent: '#9070d8', bar: '#dccdf6' },
+  '완료':       { bg: '#e9f7ee', accent: '#46a571', bar: '#bfe6cd' },
 };
+const theme = (col) => COL_THEME[col] || { bg: '#f3f1ee', accent: '#8a857c', bar: '#d8d3ca' };
 
 // 성적 추이 SVG (내신 등급: 낮을수록 좋음 → 위로 갈수록 향상)
 function GradeGraph({ grades }) {
@@ -55,7 +61,7 @@ export default function Board({ onAuthError }) {
   const isAdmin = role === 'admin';
   const [columns, setColumns] = useState(['신규', '생기부 분석', '보완 중', '수행평가', '완료']);
   const [students, setStudents] = useState([]);
-  const [teachers, setTeachers] = useState([]);
+  const [teachers, setTeachers] = useState([]); // [{id,name}]
   const [teacherId, setTeacherId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -63,6 +69,7 @@ export default function Board({ onAuthError }) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [dragId, setDragId] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
 
   const handleErr = useCallback((e) => { if (e.auth) onAuthError?.(); else setError(e.message || '오류'); }, [onAuthError]);
 
@@ -86,10 +93,14 @@ export default function Board({ onAuthError }) {
         try {
           const t = await api('/api/board/teachers');
           if (t.success) {
-            setTeachers(t.teachers || []);
-            const first = (t.teachers || [])[0];
-            if (first) { setTeacherId(String(first.id)); loadStudents(first.id); }
-            else { setLoading(false); setError('발급된 선생님(이용자) 코드가 없습니다. 관리자 화면에서 코드를 발급하세요.'); }
+            // 관리자 본인 보드 + 선생님들
+            const opts = [];
+            if (t.me?.id) opts.push({ id: t.me.id, name: t.me.name || '관리자 (나)' });
+            opts.push(...(t.teachers || []));
+            setTeachers(opts);
+            const startId = t.me?.id || (t.teachers || [])[0]?.id;
+            if (startId) { setTeacherId(String(startId)); loadStudents(startId); }
+            else { setLoading(false); }
           }
         } catch (e) { handleErr(e); setLoading(false); }
       } else {
@@ -108,7 +119,7 @@ export default function Board({ onAuthError }) {
       const body = { name: newName.trim(), status: columns[0] };
       if (isAdmin) body.teacherId = Number(teacherId);
       const d = await api('/api/board/students', { method: 'POST', body: JSON.stringify(body) });
-      if (d.success) { setStudents(s => [...s, d.student]); setNewName(''); setAdding(false); }
+      if (d.success) { setStudents(s => [...s, d.student]); setNewName(''); /* 연속 입력 위해 입력창 유지 */ }
       else setError(d.message || '추가 실패');
     } catch (e) { handleErr(e); }
   };
@@ -141,49 +152,62 @@ export default function Board({ onAuthError }) {
       {error && <div style={S.error}>{error}</div>}
       {loading ? <div style={S.muted}>불러오는 중...</div> : (
         <div style={S.board}>
-          {columns.map(col => (
-            <div key={col} style={S.column}
-              onDragOver={e => e.preventDefault()}
-              onDrop={() => { if (dragId != null) { moveStudent(dragId, col); setDragId(null); } }}>
-              <div style={{ ...S.colHead, color: COLUMN_COLORS[col] || '#1a1916' }}>
-                <span style={{ ...S.colDot, background: COLUMN_COLORS[col] || '#999' }} />
-                {col} <span style={S.colCount}>{byColumn(col).length}</span>
-              </div>
-              <div style={S.colBody}>
-                {byColumn(col).map(s => {
-                  const last = s.grades?.filter(g => g.gpa != null).slice(-1)[0];
-                  const first = s.grades?.filter(g => g.gpa != null)[0];
-                  const trend = first && last && Number(last.gpa) < Number(first.gpa) ? '↑' : (first && last && Number(last.gpa) > Number(first.gpa) ? '↓' : '');
-                  return (
-                    <div key={s.id} style={S.card} draggable
-                      onDragStart={() => setDragId(s.id)} onClick={() => setDetail(s)}>
-                      <div style={S.cardName}>{s.name}</div>
-                      <div style={S.cardSub}>{[s.grade, s.major].filter(Boolean).join(' · ') || '정보 없음'}</div>
-                      <div style={S.cardMeta}>
-                        {last && <span style={S.gradeChip}>내신 {Number(last.gpa)} {trend && <b style={{ color: trend === '↑' ? '#16a34a' : '#dc2626' }}>{trend}</b>}</span>}
-                        {s.records?.length > 0 && <span style={S.recChip}>기록 {s.records.length}</span>}
+          {columns.map(col => {
+            const th = theme(col);
+            const over = dragOver === col;
+            return (
+              <div key={col}
+                style={{ ...S.column, background: th.bg, outline: over ? `2px dashed ${th.accent}` : 'none', outlineOffset: -2 }}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOver !== col) setDragOver(col); }}
+                onDragLeave={() => setDragOver(o => (o === col ? null : o))}
+                onDrop={e => {
+                  e.preventDefault();
+                  const id = dragId ?? Number(e.dataTransfer.getData('text/plain'));
+                  if (id) moveStudent(id, col);
+                  setDragId(null); setDragOver(null);
+                }}>
+                <div style={{ ...S.colHead, color: th.accent }}>
+                  <span style={{ ...S.colDot, background: th.accent }} />
+                  {col} <span style={{ ...S.colCount, color: th.accent }}>{byColumn(col).length}</span>
+                </div>
+                <div style={S.colBody}>
+                  {byColumn(col).map(s => {
+                    const gs = s.grades?.filter(g => g.gpa != null) || [];
+                    const last = gs.slice(-1)[0], first = gs[0];
+                    const trend = first && last && Number(last.gpa) < Number(first.gpa) ? '↑' : (first && last && Number(last.gpa) > Number(first.gpa) ? '↓' : '');
+                    return (
+                      <div key={s.id} style={{ ...S.card, borderTop: `3px solid ${th.bar}` }} draggable
+                        onDragStart={e => { setDragId(s.id); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(s.id)); } catch {} }}
+                        onDragEnd={() => { setDragId(null); setDragOver(null); }}
+                        onClick={() => setDetail(s)} title="클릭: 상세 / 드래그: 단계 이동">
+                        <div style={S.cardName}>{s.name}</div>
+                        <div style={S.cardSub}>{[s.grade, s.major].filter(Boolean).join(' · ') || '정보 없음'}</div>
+                        <div style={S.cardMeta}>
+                          {last && <span style={S.gradeChip}>내신 {Number(last.gpa)} {trend && <b style={{ color: trend === '↑' ? '#16a34a' : '#dc2626' }}>{trend}</b>}</span>}
+                          {s.records?.length > 0 && <span style={S.recChip}>기록 {s.records.length}</span>}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-                {col === columns[0] && (
-                  adding ? (
-                    <div style={S.addBox}>
-                      <input autoFocus style={S.addInput} value={newName} onChange={e => setNewName(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') addStudent(); if (e.key === 'Escape') { setAdding(false); setNewName(''); } }}
-                        placeholder="학생 이름" />
-                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                        <button style={S.addConfirm} onClick={addStudent}>추가</button>
-                        <button style={S.addCancel} onClick={() => { setAdding(false); setNewName(''); }}>취소</button>
+                    );
+                  })}
+                  {col === columns[0] && (
+                    adding ? (
+                      <div style={S.addBox}>
+                        <input autoFocus style={S.addInput} value={newName} onChange={e => setNewName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') addStudent(); if (e.key === 'Escape') { setAdding(false); setNewName(''); } }}
+                          placeholder="학생 이름 (Enter로 연속 추가)" />
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                          <button style={S.addConfirm} onClick={addStudent}>추가</button>
+                          <button style={S.addCancel} onClick={() => { setAdding(false); setNewName(''); }}>닫기</button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <button style={S.addBtn} onClick={() => setAdding(true)}>+ 학생 추가</button>
-                  )
-                )}
+                    ) : (
+                      <button style={S.addBtn} onClick={() => setAdding(true)}>+ 학생 추가</button>
+                    )
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -9,6 +9,7 @@ import ChatInterface from './components/ChatInterface';
 import Assessment from './components/Assessment';
 import Board from './components/Board';
 import Admissions from './components/Admissions';
+import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { API_BASE } from './apiBase';
 import './App.css';
@@ -28,7 +29,7 @@ export default function App() {
     } catch {}
     return null;
   })();
-  const [view, setView]               = useState(recovered ? 'result' : 'list');
+  const [view, setView]               = useState(recovered ? 'result' : 'dashboard');
   const [analysisData, setAnalysisData] = useState(recovered);
   const partialRef = useRef(null);
   const [progressSteps, setProgressSteps] = useState([]);
@@ -273,7 +274,7 @@ export default function App() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="logo">
+        <div className="logo" style={{ cursor: 'pointer' }} onClick={() => setView('dashboard')} title="대시보드로">
           <span className="logo-icon">🎯</span>
           <div>
             <div className="logo-title">입시-Finder</div>
@@ -297,17 +298,8 @@ export default function App() {
         </div>
 
         <nav className="nav">
-          <button className={`nav-item ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>
-            <span>👥</span> 학생 목록
-          </button>
-          <button
-            className={`nav-item ${['form', 'analyzing', 'result'].includes(view) ? 'active' : ''}`}
-            onClick={() => setView('form')}
-          >
-            <span>✨</span> 새 분석 시작
-          </button>
-          <button className="nav-item" onClick={() => fileInputRef.current?.click()}>
-            <span>📂</span> 분석 불러오기
+          <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
+            <span>🏠</span> 대시보드
           </button>
           <input
             ref={fileInputRef}
@@ -316,18 +308,6 @@ export default function App() {
             style={{ display: 'none' }}
             onChange={handleImportJSON}
           />
-          <button className={`nav-item ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
-            <span>💬</span> 입시 상담
-          </button>
-          <button className={`nav-item ${view === 'assessment' ? 'active' : ''}`} onClick={() => setView('assessment')}>
-            <span>📝</span> 수행평가
-          </button>
-          <button className={`nav-item ${view === 'board' ? 'active' : ''}`} onClick={() => setView('board')}>
-            <span>📋</span> 학생 관리 보드
-          </button>
-          <button className={`nav-item ${view === 'admissions' ? 'active' : ''}`} onClick={() => setView('admissions')}>
-            <span>🎓</span> 대학 입결 조회
-          </button>
           <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
             <span>⚙️</span> 설정
           </button>
@@ -354,6 +334,9 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {view === 'dashboard' && (
+          <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout} />
+        )}
         {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} />}
         {view === 'form'      && (
           <StudentForm
