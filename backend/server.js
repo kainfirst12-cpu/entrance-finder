@@ -10,6 +10,7 @@ import {
   addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
   upsertStudentByName,
 } from './services/boardStore.js';
+import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
@@ -1653,6 +1654,52 @@ app.delete('/api/admin/kb', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   }
 });
+// ══════════════════════════════════════════════════════
+// 대학 입결 (어디가 등 공식자료 업로드 → 검색)
+// ══════════════════════════════════════════════════════
+
+// 관리자: 입결 자료 업로드 (엑셀/CSV)
+app.post('/api/admin/admissions/upload', requireAdmin, upload.single('file'), async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  if (!req.file) return res.status(400).json({ success: false, message: '파일이 없습니다' });
+  try {
+    const rows = parseSheet(req.file.buffer);
+    if (rows.length === 0) return res.status(400).json({ success: false, message: '읽을 수 있는 행이 없습니다 (엑셀/CSV 형식 확인)' });
+    const meta = {
+      year: parseInt(req.body.year, 10) || null,
+      univType: (req.body.univType || '').trim(),
+      track: (req.body.track || '').trim(),
+    };
+    const inserted = await ingestRows(rows, meta);
+    logEvent({ userId: null, type: 'admissions', detail: `${req.file.originalname} → ${inserted}행 (${meta.track}/${meta.univType}/${meta.year || '-'})`, ip: getIp(req) });
+    res.json({ success: true, inserted, stats: await admissionStats() });
+  } catch (e) {
+    console.error('[admissions/upload] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 입결 검색 (로그인 사용자 누구나)
+app.get('/api/admissions/search', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    const { univ, dept, track, year, univType, limit } = req.query;
+    res.json({ success: true, rows: await searchAdmissions({ univ, dept, track, year, univType, limit }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 입결 통계 (총건수/연도)
+app.get('/api/admissions/stats', requireAuth, async (req, res) => {
+  try { res.json({ success: true, stats: await admissionStats() }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 관리자: 입결 전체 삭제
+app.delete('/api/admin/admissions', requireAdmin, async (req, res) => {
+  try { await clearAdmissions(); res.json({ success: true, stats: await admissionStats() }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
   await initDb();

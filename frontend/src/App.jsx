@@ -8,6 +8,7 @@ import StudentList from './components/StudentList';
 import ChatInterface from './components/ChatInterface';
 import Assessment from './components/Assessment';
 import Board from './components/Board';
+import Admissions from './components/Admissions';
 import AdminDashboard from './components/AdminDashboard';
 import { API_BASE } from './apiBase';
 import './App.css';
@@ -324,6 +325,9 @@ export default function App() {
           <button className={`nav-item ${view === 'board' ? 'active' : ''}`} onClick={() => setView('board')}>
             <span>📋</span> 학생 관리 보드
           </button>
+          <button className={`nav-item ${view === 'admissions' ? 'active' : ''}`} onClick={() => setView('admissions')}>
+            <span>🎓</span> 대학 입결 조회
+          </button>
           <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
             <span>⚙️</span> 설정
           </button>
@@ -390,6 +394,9 @@ export default function App() {
         )}
         {view === 'board' && (
           <Board onAuthError={handleLogout} />
+        )}
+        {view === 'admissions' && (
+          <Admissions onAuthError={handleLogout} />
         )}
         {view === 'admin' && role === 'admin' && (
           <AdminDashboard onAuthError={handleLogout} />

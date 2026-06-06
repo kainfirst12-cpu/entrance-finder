@@ -112,6 +112,23 @@ export async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_grades_student ON ef_grades(student_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_records_student ON ef_records(student_id);`);
 
+    // 대학 입결 (어디가 등 공식 자료 업로드)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_admissions (
+        id             SERIAL PRIMARY KEY,
+        year           INTEGER,
+        univ_type      TEXT,
+        track          TEXT,
+        univ           TEXT,
+        dept           TEXT,
+        admission_type TEXT,
+        raw            JSONB DEFAULT '{}'::jsonb,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_adm_univ ON ef_admissions(univ);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_adm_dept ON ef_admissions(dept);`);
+
     ready = true;
     console.log('[DB] Postgres 연결 및 인증/보드 스키마 준비 완료');
 
