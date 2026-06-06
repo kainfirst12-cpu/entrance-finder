@@ -6,6 +6,7 @@ import AnalysisProgress from './components/AnalysisProgress';
 import AnalysisResult from './components/AnalysisResult';
 import StudentList from './components/StudentList';
 import ChatInterface from './components/ChatInterface';
+import Assessment from './components/Assessment';
 import AdminDashboard from './components/AdminDashboard';
 import { API_BASE } from './apiBase';
 import './App.css';
@@ -304,6 +305,9 @@ export default function App() {
           <button className={`nav-item ${view === 'chat' ? 'active' : ''}`} onClick={() => setView('chat')}>
             <span>💬</span> 입시 상담
           </button>
+          <button className={`nav-item ${view === 'assessment' ? 'active' : ''}`} onClick={() => setView('assessment')}>
+            <span>📝</span> 수행평가
+          </button>
           <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
             <span>⚙️</span> 설정
           </button>
@@ -357,6 +361,13 @@ export default function App() {
         )}
         {view === 'chat' && (
           <ChatInterface getActiveKey={getActiveKey} selectedModel={selectedModel} analysisData={analysisData} />
+        )}
+        {view === 'assessment' && (
+          <Assessment
+            getActiveKey={getActiveKey}
+            selectedModel={selectedModel}
+            aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+          />
         )}
         {view === 'settings' && (
           <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />

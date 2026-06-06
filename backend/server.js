@@ -530,6 +530,141 @@ function getModelId(group, submodel) {
   return MODEL_IDS[submodel] || MODEL_IDS[group] || MODEL_IDS.claude;
 }
 
+// ── 공통 AI 텍스트 호출 (claude/gpt/gemini) ───────────────
+async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens = 8000 }) {
+  if (aiModel === 'gemini') {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: getModelId('gemini', submodel || aiModel),
+      generationConfig: { maxOutputTokens: Math.min(maxTokens, 32000) },
+    });
+    const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
+    return result.response.text();
+  }
+  if (aiModel === 'gpt') {
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey });
+    const response = await openai.chat.completions.create({
+      model: getModelId('gpt', submodel || aiModel),
+      max_completion_tokens: Math.min(maxTokens, 16384),
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+    });
+    return response.choices[0].message.content;
+  }
+  const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
+  const client = new AnthropicSDK({ apiKey });
+  const stream = client.messages.stream({
+    model: getModelId('claude', submodel || aiModel),
+    max_tokens: maxTokens,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMsg }],
+  });
+  const final = await stream.finalMessage();
+  return final.content.map(b => (b.type === 'text' ? b.text : '')).join('');
+}
+
+// ── 수행평가: 결과물 작성 / 첨삭·평가 (SSE keepalive) ──────
+app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
+  const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric } = req.body || {};
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  let systemPrompt, userMsg, maxTokens;
+  const head = `[과목] ${subject || '미입력'} / [학년] ${grade || '미입력'} / [유형] ${kind || '미입력'}`;
+
+  if (mode === 'review') {
+    if (!submissionText?.trim()) return res.status(400).json({ success: false, message: '평가할 학생 제출물이 없습니다' });
+    systemPrompt = `당신은 대한민국 학교 수행평가 채점·첨삭 전문 교사입니다.
+학생 제출물을 평가 기준에 따라 공정하고 구체적으로 평가합니다.
+
+[출력 형식 — 마크다운]
+1. ## 평가 요약  — 표로: | 평가 항목 | 배점 | 획득 | 코멘트 |
+2. ## 잘된 점 — 구체적으로 3가지 내외
+3. ## 개선이 필요한 점 — 항목별 구체적 지적 + 어떻게 고치면 좋을지
+4. ## 개선 예시 — 학생 글에서 약한 문장/문단을 골라 Before → After로 다듬은 예시
+[원칙] 이모지 금지. 합니다체. 표는 마크다운(| |). 학년 수준을 고려해 현실적으로 평가.`;
+    userMsg = `${head}\n[수행평가 주제/과제]\n${topic || '미입력'}\n\n[평가 기준/루브릭]\n${rubric || requirements || '일반적인 학교 수행평가 기준에 따라 평가'}\n\n[학생 제출물]\n${submissionText}`;
+    maxTokens = 12000;
+  } else {
+    systemPrompt = `당신은 대한민국 ${subject || ''} 과목 수행평가를 돕는 전문 교사 보조입니다.
+${grade || ''} 학생 수준에 맞춰 완성도 높은 수행평가 결과물을 작성합니다.
+
+[출력 형식 — 마크다운]
+- 맨 위에 # 제목
+- 필요하면 ## 개요/목차
+- 본문 전체를 완성형으로 작성(서론·본론·결론 또는 과제 성격에 맞는 구조)
+- 표가 필요하면 마크다운 표(| |), 강조는 **굵게**, 목록은 - 또는 1.
+[원칙] 이모지 금지. 합니다체(또는 과제 성격에 맞는 문체). 요구 분량·형식을 지킬 것.
+주의: 학생이 그대로 베끼는 용도가 아니라 교사가 검토·수정할 초안이므로, 충실하고 구체적으로 작성하되 출처가 필요한 수치는 일반적 표현을 사용.`;
+    userMsg = `${head}\n[주제/과제 설명]\n${topic || '미입력'}\n\n[요구사항(분량·형식 등)]\n${requirements || '제한 없음'}${referenceText ? `\n\n[참고 자료 — 반드시 활용]\n${referenceText.slice(0, 12000)}` : ''}\n\n위 수행평가의 완성된 결과물을 작성해 주세요.`;
+    maxTokens = 16000;
+  }
+
+  // 긴 생성 동안 프록시 타임아웃(Failed to fetch) 방지
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+
+  try {
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens });
+    if (req.user?.role === 'user' && req.user?.userId) {
+      logEvent({ userId: req.user.userId, type: 'assessment', detail: `${mode === 'review' ? '첨삭' : '작성'} / ${subject || ''} ${kind || ''}`, ip: getIp(req) });
+      if (req.user.jti) touchSession(req.user.jti);
+    }
+    sendDone({ success: true, reply });
+  } catch (err) {
+    console.error('[assessment/generate] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// ── 수행평가: 업로드 파일에서 텍스트 추출 (pdf/docx/txt) ──
+app.post('/api/assessment/extract', upload.array('files', 10), async (req, res) => {
+  try {
+    const files = req.files || [];
+    const parts = [];
+    for (const f of files) {
+      let text = '';
+      if (f.mimetype === 'application/pdf') {
+        try { text = (await pdfParse(f.buffer)).text || ''; } catch { text = ''; }
+      } else if (f.mimetype.includes('wordprocessingml') || /\.docx$/i.test(f.originalname)) {
+        const mammoth = await import('mammoth');
+        text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
+      } else {
+        text = f.buffer.toString('utf-8');
+      }
+      if (text.trim()) parts.push(`[${f.originalname}]\n${text.trim()}`);
+    }
+    res.json({ success: true, text: parts.join('\n\n') });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── 수행평가/분석 결과 → Word(.docx) 다운로드 ──────────────
+app.post('/api/assessment/docx', async (req, res) => {
+  try {
+    const { title, markdown } = req.body || {};
+    if (!markdown) return res.status(400).json({ success: false, message: '내용 없음' });
+    const { markdownToDocxBuffer } = await import('./services/docxService.js');
+    const buffer = await markdownToDocxBuffer(title || '수행평가', markdown);
+    const filename = encodeURIComponent(`${(title || '수행평가').replace(/[\\/:*?"<>|]/g, '_')}.docx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.setHeader('Content-Length', buffer.length);
+    res.end(buffer);
+  } catch (err) {
+    console.error('[assessment/docx] 오류:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ── 채팅 파일 업로드 (PDF 텍스트 추출 / 이미지 base64 변환) ──
 const chatUpload = upload.array('files', 5);
 app.post('/api/chat-upload', chatUpload, async (req, res) => {
