@@ -165,6 +165,18 @@ export default function App() {
               localStorage.removeItem(INPROGRESS_KEY); // 정상 완료 → 임시 저장 삭제
               setFormPrefill(null); // 사용 완료된 prefill 해제
               setView('result');
+              // 학생 보드에 자동 기록 (선생님 코드 로그인 시)
+              if ((localStorage.getItem('ef_role') || 'user') === 'user' && token) {
+                fetch(`${API_BASE}/api/board/upsert`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({
+                    name: studentData.name, school: studentData.school, grade: studentData.grade,
+                    major: studentData.major, targetUniv: studentData.targetUniv,
+                    record: { type: '생기부 분석', title: `${selectedModel} 분석${pdfCount ? ` · PDF ${pdfCount}건` : ''}` },
+                  }),
+                }).catch(() => {});
+              }
             }
             if (data.type === 'error') {
               completed = true;

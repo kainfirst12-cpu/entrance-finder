@@ -22,6 +22,26 @@ export async function listStudents(ownerId) {
   return students.map(s => ({ ...s, grades: gByS[s.id] || [], records: rByS[s.id] || [] }));
 }
 
+// 이름으로 찾아 없으면 생성, 있으면 빈 필드만 보완 (자동 연동용)
+export async function upsertStudentByName(ownerId, f = {}) {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT * FROM ef_students WHERE owner_id = $1 AND name = $2 ORDER BY id LIMIT 1`,
+    [ownerId, f.name || '이름없음']
+  );
+  let student = rows[0];
+  if (!student) {
+    return createStudent(ownerId, f);
+  }
+  const upd = {};
+  const pairs = { school: 'school', grade: 'grade', major: 'major', targetUniv: 'target_univ' };
+  for (const [k, col] of Object.entries(pairs)) {
+    if ((!student[col] || student[col] === '') && f[k]) upd[k] = f[k];
+  }
+  if (Object.keys(upd).length) await updateStudent(student.id, upd);
+  return student;
+}
+
 export async function getStudentOwner(id) {
   if (!dbEnabled()) return null;
   const { rows } = await getPool().query(`SELECT owner_id FROM ef_students WHERE id = $1`, [id]);

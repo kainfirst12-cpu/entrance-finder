@@ -8,6 +8,7 @@ import { refreshKbCount, countByType, clearKnowledge, ingestDocuments } from './
 import {
   BOARD_COLUMNS, listStudents, getStudentOwner, createStudent, updateStudent, deleteStudent,
   addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
+  upsertStudentByName,
 } from './services/boardStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
@@ -534,8 +535,11 @@ function getModelId(group, submodel) {
   return MODEL_IDS[submodel] || MODEL_IDS[group] || MODEL_IDS.claude;
 }
 
-// ── 공통 AI 텍스트 호출 (claude/gpt/gemini) ───────────────
-async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens = 8000 }) {
+// ── 공통 AI 텍스트 호출 (claude/gpt/gemini) — 이미지(비전) 지원 ──
+// images: [{ mimeType, base64 }]  — 캡처/사진을 모델이 직접 읽음(고해상도 인식)
+async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens = 8000, images = [] }) {
+  const hasImages = Array.isArray(images) && images.length > 0;
+
   if (aiModel === 'gemini') {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -543,26 +547,36 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
       model: getModelId('gemini', submodel || aiModel),
       generationConfig: { maxOutputTokens: Math.min(maxTokens, 32000) },
     });
-    const result = await model.generateContent([{ text: systemPrompt }, { text: userMsg }]);
+    const parts = [{ text: systemPrompt }, { text: userMsg }];
+    if (hasImages) for (const img of images) parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+    const result = await model.generateContent(parts);
     return result.response.text();
   }
   if (aiModel === 'gpt') {
     const OpenAI = (await import('openai')).default;
     const openai = new OpenAI({ apiKey });
+    const userContent = hasImages
+      ? [{ type: 'text', text: userMsg },
+         ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' } }))]
+      : userMsg;
     const response = await openai.chat.completions.create({
       model: getModelId('gpt', submodel || aiModel),
       max_completion_tokens: Math.min(maxTokens, 16384),
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMsg }],
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
     });
     return response.choices[0].message.content;
   }
   const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
   const client = new AnthropicSDK({ apiKey });
+  const userContent = hasImages
+    ? [...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.base64 } })),
+       { type: 'text', text: userMsg }]
+    : userMsg;
   const stream = client.messages.stream({
     model: getModelId('claude', submodel || aiModel),
     max_tokens: maxTokens,
     system: systemPrompt,
-    messages: [{ role: 'user', content: userMsg }],
+    messages: [{ role: 'user', content: userContent }],
   });
   const final = await stream.finalMessage();
   return final.content.map(b => (b.type === 'text' ? b.text : '')).join('');
@@ -570,7 +584,8 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
 
 // ── 수행평가: 결과물 작성 / 첨삭·평가 (SSE keepalive) ──────
 app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
-  const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric } = req.body || {};
+  const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric, images } = req.body || {};
+  const imgList = Array.isArray(images) ? images.slice(0, 8) : [];
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
@@ -579,8 +594,12 @@ app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
   let systemPrompt, userMsg, maxTokens;
   const head = `[과목] ${subject || '미입력'} / [학년] ${grade || '미입력'} / [유형] ${kind || '미입력'}`;
 
+  const imgNote = imgList.length > 0
+    ? `\n\n[첨부 이미지] 캡처/사진 ${imgList.length}장이 첨부되었습니다. 이미지 속 글자(과제 양식, 안내문, 손글씨 등)를 꼼꼼히 읽어 내용에 반영하십시오.`
+    : '';
+
   if (mode === 'review') {
-    if (!submissionText?.trim()) return res.status(400).json({ success: false, message: '평가할 학생 제출물이 없습니다' });
+    if (!submissionText?.trim() && imgList.length === 0) return res.status(400).json({ success: false, message: '평가할 학생 제출물(텍스트 또는 이미지)이 없습니다' });
     systemPrompt = `당신은 대한민국 학교 수행평가 채점·첨삭 전문 교사입니다.
 학생 제출물을 평가 기준에 따라 공정하고 구체적으로 평가합니다.
 
@@ -590,7 +609,7 @@ app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
 3. ## 개선이 필요한 점 — 항목별 구체적 지적 + 어떻게 고치면 좋을지
 4. ## 개선 예시 — 학생 글에서 약한 문장/문단을 골라 Before → After로 다듬은 예시
 [원칙] 이모지 금지. 합니다체. 표는 마크다운(| |). 학년 수준을 고려해 현실적으로 평가.`;
-    userMsg = `${head}\n[수행평가 주제/과제]\n${topic || '미입력'}\n\n[평가 기준/루브릭]\n${rubric || requirements || '일반적인 학교 수행평가 기준에 따라 평가'}\n\n[학생 제출물]\n${submissionText}`;
+    userMsg = `${head}\n[수행평가 주제/과제]\n${topic || '미입력'}\n\n[평가 기준/루브릭]\n${rubric || requirements || '일반적인 학교 수행평가 기준에 따라 평가'}\n\n[학생 제출물]\n${submissionText || '(텍스트 없음 — 첨부 이미지에서 읽어 평가)'}${imgNote}`;
     maxTokens = 12000;
   } else {
     systemPrompt = `당신은 대한민국 ${subject || ''} 과목 수행평가를 돕는 전문 교사 보조입니다.
@@ -603,7 +622,7 @@ ${grade || ''} 학생 수준에 맞춰 완성도 높은 수행평가 결과물�
 - 표가 필요하면 마크다운 표(| |), 강조는 **굵게**, 목록은 - 또는 1.
 [원칙] 이모지 금지. 합니다체(또는 과제 성격에 맞는 문체). 요구 분량·형식을 지킬 것.
 주의: 학생이 그대로 베끼는 용도가 아니라 교사가 검토·수정할 초안이므로, 충실하고 구체적으로 작성하되 출처가 필요한 수치는 일반적 표현을 사용.`;
-    userMsg = `${head}\n[주제/과제 설명]\n${topic || '미입력'}\n\n[요구사항(분량·형식 등)]\n${requirements || '제한 없음'}${referenceText ? `\n\n[참고 자료 — 반드시 활용]\n${referenceText.slice(0, 12000)}` : ''}\n\n위 수행평가의 완성된 결과물을 작성해 주세요.`;
+    userMsg = `${head}\n[주제/과제 설명]\n${topic || '미입력'}\n\n[요구사항(분량·형식 등)]\n${requirements || '제한 없음'}${referenceText ? `\n\n[참고 자료 — 반드시 활용]\n${referenceText.slice(0, 12000)}` : ''}${imgNote}\n\n위 수행평가의 완성된 결과물을 작성해 주세요.`;
     maxTokens = 16000;
   }
 
@@ -616,7 +635,7 @@ ${grade || ''} 학생 수준에 맞춰 완성도 높은 수행평가 결과물�
   const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
 
   try {
-    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens });
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens, images: imgList });
     if (req.user?.role === 'user' && req.user?.userId) {
       logEvent({ userId: req.user.userId, type: 'assessment', detail: `${mode === 'review' ? '첨삭' : '작성'} / ${subject || ''} ${kind || ''}`, ip: getIp(req) });
       if (req.user.jti) touchSession(req.user.jti);
@@ -700,6 +719,24 @@ app.get('/api/board/students', requireAuth, async (req, res) => {
     }
     res.json({ success: true, columns: BOARD_COLUMNS, students: await listStudents(ownerId) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 자동 연동: 분석/수행평가 완료 시 학생 카드 upsert + 기록 추가 (선생님 전용)
+app.post('/api/board/upsert', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.json({ success: false, skipped: true });
+  if (req.user.role !== 'user' || !req.user.userId) {
+    return res.json({ success: false, skipped: true, message: '선생님(이용자) 코드로 로그인하면 보드에 자동 기록됩니다' });
+  }
+  try {
+    const { name, school, grade, major, targetUniv, record } = req.body || {};
+    if (!name?.trim()) return res.json({ success: false, skipped: true });
+    const student = await upsertStudentByName(req.user.userId, { name: name.trim(), school, grade, major, targetUniv });
+    if (record?.title || record?.type) await addRecord(student.id, record);
+    res.json({ success: true, studentId: student.id });
+  } catch (e) {
+    console.error('[board/upsert] 오류:', e.message);
+    res.json({ success: false, message: e.message });
+  }
 });
 
 // 학생 카드 생성

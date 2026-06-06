@@ -72,6 +72,8 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   const [referenceText, setReferenceText] = useState('');
   const [submissionText, setSubmissionText] = useState('');
   const [rubric, setRubric] = useState('');
+  const [images, setImages] = useState([]); // {name, mimeType, base64, preview}
+  const [studentName, setStudentName] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState('');
@@ -82,8 +84,33 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
 
   const refFileRef = useRef(null);
   const subFileRef = useRef(null);
+  const imgRef = useRef(null);
 
   const token = () => localStorage.getItem('ef_token');
+
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+
+  const addImages = async (fileList) => {
+    const imgs = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
+    const added = [];
+    for (const f of imgs) {
+      try { added.push({ name: f.name || 'capture.png', mimeType: f.type || 'image/png', base64: await fileToBase64(f), preview: URL.createObjectURL(f) }); }
+      catch {}
+    }
+    if (added.length) setImages(prev => [...prev, ...added].slice(0, 8));
+  };
+  const removeImage = (i) => setImages(prev => { const t = prev[i]; if (t?.preview) URL.revokeObjectURL(t.preview); return prev.filter((_, idx) => idx !== i); });
+  const onPaste = (e) => {
+    const items = e.clipboardData?.items; if (!items) return;
+    const files = [];
+    for (const it of items) if (it.kind === 'file' && it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) files.push(f); }
+    if (files.length) { e.preventDefault(); addImages(files); }
+  };
 
   const extractFiles = async (fileList, target) => {
     const files = Array.from(fileList || []);
@@ -110,8 +137,8 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
 
   const generate = async () => {
     if (!subject.trim()) { setError('과목을 입력해주세요.'); return; }
-    if (mode === 'create' && !topic.trim()) { setError('주제/과제 설명을 입력해주세요.'); return; }
-    if (mode === 'review' && !submissionText.trim()) { setError('평가할 학생 제출물을 입력하거나 파일로 올려주세요.'); return; }
+    if (mode === 'create' && !topic.trim() && images.length === 0) { setError('주제/과제 설명을 입력하거나 양식 캡처를 올려주세요.'); return; }
+    if (mode === 'review' && !submissionText.trim() && images.length === 0) { setError('평가할 학생 제출물을 입력/업로드하거나 캡처를 올려주세요.'); return; }
     const apiKey = getActiveKey?.();
     if (!apiKey) { setError('선택한 AI의 API 키가 설정에 없습니다.'); return; }
 
@@ -126,10 +153,22 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           'x-ai-submodel': selectedModel || 'claude',
           ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
         },
-        body: JSON.stringify({ mode, subject, grade, kind, topic, requirements, referenceText, submissionText, rubric }),
+        body: JSON.stringify({
+          mode, subject, grade, kind, topic, requirements, referenceText, submissionText, rubric,
+          images: images.map(i => ({ mimeType: i.mimeType, base64: i.base64 })),
+        }),
       });
-      if (data.success) setResult(data.reply || '');
-      else setError(data.message || '생성 실패');
+      if (data.success) {
+        setResult(data.reply || '');
+        // 학생 이름이 있으면 보드에 자동 기록 (선생님 코드 로그인 시)
+        if (studentName.trim() && (localStorage.getItem('ef_role') || 'user') === 'user' && token()) {
+          fetch(`${API_BASE}/api/board/upsert`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+            body: JSON.stringify({ name: studentName.trim(), grade, record: { type: '수행평가', title: `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}` } }),
+          }).catch(() => {});
+        }
+      } else setError(data.message || '생성 실패');
     } catch (e) { setError('요청 실패: ' + e.message); }
     finally { setLoading(false); }
   };
@@ -194,6 +233,9 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           </div>
         </div>
 
+        <label style={S.label}>학생 이름 <span style={S.opt}>선택 — 입력하면 학생 보드에 자동 기록</span></label>
+        <input style={S.input} value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="예: 유석형" />
+
         <label style={S.label}>주제 / 과제 설명</label>
         <textarea style={S.textarea} rows={3} value={topic} onChange={e => setTopic(e.target.value)}
           placeholder={mode === 'create' ? '예: 기후변화가 우리 지역에 미치는 영향을 조사하고 대응 방안을 제시하시오.' : '학생이 수행한 과제의 주제를 적어주세요.'} />
@@ -229,6 +271,23 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
             <textarea style={S.textarea} rows={2} value={rubric} onChange={e => setRubric(e.target.value)} placeholder="예: 내용 충실성 40, 논리성 30, 표현 20, 형식 10" />
           </>
         )}
+
+        <label style={S.label}>양식·자료 캡처 / 이미지 첨부 <span style={S.opt}>선택 — 과제 안내문, 손글씨, 표 등을 사진/캡처로. AI가 직접 읽습니다 (Ctrl+V 붙여넣기 가능)</span></label>
+        <div style={S.fileRow} onPaste={onPaste}>
+          <button style={S.fileBtn} onClick={() => imgRef.current?.click()}>📷 이미지/캡처 첨부</button>
+          <input ref={imgRef} type="file" accept="image/*" multiple capture="environment" style={{ display: 'none' }}
+            onChange={e => { addImages(e.target.files); e.target.value = ''; }} />
+          {images.length > 0 && (
+            <div style={S.thumbs}>
+              {images.map((img, i) => (
+                <div key={i} style={S.thumb}>
+                  <img src={img.preview} alt={img.name} style={S.thumbImg} />
+                  <button style={S.thumbDel} onClick={() => removeImage(i)} title="삭제">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {error && <div style={S.error}>{error}</div>}
 
@@ -270,6 +329,10 @@ const STYLES = {
   textarea: { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#fff', color: '#1a1916', fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 },
   fileRow: { marginTop: 8 },
   fileBtn: { background: '#f5f4f0', color: '#1a1916', border: '1px solid #d8d5cc', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13 },
+  thumbs: { display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 },
+  thumb: { position: 'relative', width: 72, height: 72, borderRadius: 8, overflow: 'hidden', border: '1px solid #d8d5cc' },
+  thumbImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  thumbDel: { position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: 0 },
   error: { background: '#fef2f2', border: '1px solid #fca5a5', color: '#dc2626', padding: '10px 14px', borderRadius: 9, fontSize: 13.5, marginTop: 14 },
   genBtn: { width: '100%', marginTop: 18, padding: '14px', borderRadius: 10, border: 'none', background: '#2d5be3', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' },
   resultHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 },
