@@ -8,3 +8,7 @@ dist/
 !**/vercel.json
 
 *.json
+
+# 대학어디가(adiga.kr) 입시정보 스냅샷 — 앱 기능에 필요하므로 배포에 포함
+!backend/data/adiga/univ-list.json
+!backend/data/adiga/univ/*.json

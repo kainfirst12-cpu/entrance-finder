@@ -9,6 +9,7 @@ import ChatInterface from './components/ChatInterface';
 import Assessment from './components/Assessment';
 import Board from './components/Board';
 import Admissions from './components/Admissions';
+import UnivInfo from './components/UnivInfo';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { API_BASE } from './apiBase';
@@ -382,6 +383,9 @@ export default function App() {
         )}
         {view === 'admissions' && (
           <Admissions onAuthError={handleLogout} />
+        )}
+        {view === 'univinfo' && (
+          <UnivInfo onAuthError={handleLogout} />
         )}
         {view === 'admin' && role === 'admin' && (
           <AdminDashboard onAuthError={handleLogout} />

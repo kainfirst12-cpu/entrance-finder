@@ -27,7 +27,8 @@ import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js'
 import { searchAdmissionCases } from './services/searchService.js';
 import { execSync } from 'child_process';
 import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, rmdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 
 // ── PDF → 이미지 변환 (poppler pdftoppm 사용) ──────────
@@ -999,13 +1000,34 @@ ${kb.합격자사례 || '(자료 없음)'}${analysisSection}${fileSection}`;
         ...history.map(h => ({ role: h.role, content: h.content })),
         { role: 'user', content: userContent },
       ];
-      const response = await client.messages.create({
-        model: getModelId('claude', submodel),
-        max_tokens: 8000,
-        system: systemPrompt,
-        messages,
-      });
-      reply = response.content[0].text;
+
+      // web_search 도구 활성화 (tool use loop)
+      const webSearchTool = { type: 'web_search_20250305', name: 'web_search', max_uses: 5 };
+      let currentMessages = messages;
+      let response;
+      for (let i = 0; i < 10; i++) {
+        response = await client.messages.create({
+          model: getModelId('claude', submodel),
+          max_tokens: 8000,
+          system: systemPrompt,
+          tools: [webSearchTool],
+          messages: currentMessages,
+        });
+        if (response.stop_reason !== 'tool_use') break;
+
+        // tool_use 블록 처리 → tool_result로 응답
+        currentMessages = [
+          ...currentMessages,
+          { role: 'assistant', content: response.content },
+          {
+            role: 'user',
+            content: response.content
+              .filter(b => b.type === 'tool_use')
+              .map(b => ({ type: 'tool_result', tool_use_id: b.id, content: b.content ?? '' })),
+          },
+        ];
+      }
+      reply = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
     }
 
     res.json({ success: true, reply });
@@ -1502,6 +1524,39 @@ app.get('/api/students', async (req, res) => {
     res.status(500).json({ success: false, error: err.message, students: [] });
   }
 });
+
+// ── 대학별 입시정보 (대학어디가 adiga.kr 스냅샷) ──────────────
+const ADIGA_DIR = join(dirname(fileURLToPath(import.meta.url)), 'data', 'adiga');
+let _univList = null;
+function getUnivList() {
+  if (!_univList) _univList = JSON.parse(readFileSync(join(ADIGA_DIR, 'univ-list.json'), 'utf8'));
+  return _univList;
+}
+// 대학 목록 (검색어 q로 필터)
+app.get('/api/univ-info/list', requireAuth, (req, res) => {
+  try {
+    const data = getUnivList();
+    const q = (req.query.q || '').trim();
+    let unis = data.universities;
+    if (q) unis = unis.filter(u => u.name.includes(q) || (u.region || '').includes(q));
+    res.json({ success: true, source: data.source, years: data.years, count: unis.length, universities: unis });
+  } catch (err) {
+    console.error('[/api/univ-info/list] 오류:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// 대학별 상세 (입시가이드/평가기준·전년도결과/장애인전형)
+app.get('/api/univ-info/:unvCd', requireAuth, (req, res) => {
+  const { unvCd } = req.params;
+  if (!/^[0-9]+$/.test(unvCd)) return res.status(400).json({ success: false, error: '잘못된 대학 코드' });
+  try {
+    const data = JSON.parse(readFileSync(join(ADIGA_DIR, 'univ', `${unvCd}.json`), 'utf8'));
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(404).json({ success: false, error: '해당 대학 정보를 찾을 수 없습니다.' });
+  }
+});
+
 // ── 로그인 (코드 기반) ────────────────────────────────
 // - 관리자: ADMIN_CODE(환경변수) 또는 기존 APP_PASSWORD
 // - 이용자: 관리자가 발급한 코드 (DB 조회)

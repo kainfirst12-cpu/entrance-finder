@@ -5,6 +5,7 @@ const ACTIONS = [
   { key: 'assessment', icon: '📝', label: '수행평가 도우미', desc: '작성·첨삭·문서화', color: '#9070d8', bg: 'rgba(144,112,216,0.16)' },
   { key: 'chat', icon: '💬', label: '입시 상담', desc: 'AI에게 상담', color: '#46a571', bg: 'rgba(70,165,113,0.16)' },
   { key: 'admissions', icon: '🎓', label: '대학 입결 조회', desc: '정시·수시·논술 입결', color: '#e0993f', bg: 'rgba(224,153,63,0.16)' },
+  { key: 'univinfo', icon: '🏫', label: '대학별 입시정보', desc: '전형방법·평가기준·장애인전형', color: '#3f9ee0', bg: 'rgba(63,158,224,0.16)' },
   { key: 'list', icon: '👥', label: '학생 목록', desc: '저장된 분석 목록', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];
