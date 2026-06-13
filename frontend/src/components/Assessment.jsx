@@ -40,7 +40,7 @@ function mdPreview(md) {
         const cells = r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
         html += '<tr>' + cells.map(c => {
           const inner = esc(c).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-          return `<${ri === 0 ? 'th' : 'td'} style="border:1px solid #d8d5cc;padding:6px 9px;text-align:left;background:${ri === 0 ? '#243341' : '#fff'}">${inner}</${ri === 0 ? 'th' : 'td'}>`;
+          return `<${ri === 0 ? 'th' : 'td'} style="border:1px solid #d8d5cc;padding:6px 9px;text-align:left;background:${ri === 0 ? '#243341' : '#fff'};color:${ri === 0 ? '#fff' : '#1a2530'}">${inner}</${ri === 0 ? 'th' : 'td'}>`;
         }).join('') + '</tr>';
       });
       html += '</table>';
