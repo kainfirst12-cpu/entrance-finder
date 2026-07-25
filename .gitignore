@@ -12,3 +12,6 @@ dist/
 # 대학어디가(adiga.kr) 입시정보 스냅샷 — 앱 기능에 필요하므로 배포에 포함
 !backend/data/adiga/univ-list.json
 !backend/data/adiga/univ/*.json
+
+# 학생 분석 리포트(개인정보) — 커밋 금지
+*_분석결과.*

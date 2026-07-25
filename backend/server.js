@@ -1388,6 +1388,18 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
         });
         send({ type: 'progress', step: 0, label: `이전 분석의 PDF 텍스트 재사용 (${reusedPdfTexts.length}자)`, total: 9 });
         console.log(`[Analyze] 재분석 모드: PDF 텍스트 ${reusedPdfTexts.length}자 재사용`);
+      } else if (studentDriveFiles && studentDriveFiles.trim()) {
+        // 업로드 PDF가 없어도, 드라이브 학생폴더에서 불러온 생기부를 '학생 원문'으로 주입한다.
+        // (이 처리가 없으면 학생 이름만으로 분석 시 AI에 생기부가 안 들어가 '원문 없음'으로 나온다.)
+        // reusedPdfTexts 에도 담아 아래 preExtractedPdfText 초기화·pdf.preExtractedText 재설정에서 그대로 쓰이게 한다.
+        reusedPdfTexts = studentDriveFiles.slice(0, 30000);
+        pdfDocuments.push({
+          label: '드라이브 생기부',
+          base64: '',
+          preExtractedText: reusedPdfTexts,
+        });
+        send({ type: 'progress', step: 0, label: `드라이브 생기부 사용 (${reusedPdfTexts.length}자)`, total: 9 });
+        console.log(`[Analyze] 드라이브 생기부 ${reusedPdfTexts.length}자를 학생 원문으로 주입`);
       } else {
         console.warn('[Analyze] 경고: PDF 파일이 하나도 수신되지 않았습니다!');
       }
