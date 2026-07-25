@@ -15,11 +15,13 @@ const C = {
 
 function findKoreanFont() {
   const candidates = [
+    // 레포에 번들한 나눔고딕(OFL) — 맥·리눅스·Railway 어디서든 동일하게 잡히도록 최우선.
+    path.join(__dirname, '../fonts/NanumGothic.ttf'),
+    // 시스템 설치 폰트 폴백 (리눅스)
     '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
     '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf',
     '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-    path.join(__dirname, '../fonts/NanumGothic.ttf'),
-    // macOS(로컬 개발) 한글 폰트 폴백 — 위 리눅스/번들 폰트가 없을 때 사용.
+    // macOS(로컬 개발) 폴백
     '/System/Library/Fonts/Supplemental/AppleGothic.ttf',
     '/Library/Fonts/AppleGothic.ttf',
   ];
