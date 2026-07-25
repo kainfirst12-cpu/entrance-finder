@@ -79,10 +79,38 @@ export function mockExamGuide(gradeSystem) {
   ].join('\n');
 }
 
+// 입력된 성적(내신·모의고사)을 시스템 프롬프트에 실어 모든 단계가 같은 성적을 보고 쓰게 한다.
+// 예전에는 일부 단계 프롬프트에만 모의고사가 들어가, 다른 단계에서 "수능최저 확인 불가"로 처리되곤 했다.
+export function scoreBlock(studentData = {}) {
+  const mock = String(studentData.mockExam || '').trim();
+  const gpa = String(studentData.gpa || '').trim();
+  const lines = [
+    '=== 학생 성적 (분석에 반드시 반영) ===',
+    `- 내신: ${gpa || '미입력'}`,
+    `- 모의고사: ${mock || '미입력'}`,
+  ];
+  if (mock) {
+    lines.push(
+      '',
+      '=== 수능최저 판정 (필수) ===',
+      '- 위 모의고사 성적이 입력되어 있으므로 "수능 성적이 없어 확인할 수 없다"고 쓰지 마라.',
+      '- 국어·수학·영어·탐구 등급으로 2개 합, 3개 합을 직접 계산해 표로 제시하라 (탐구는 대학 기준에 맞춰 1과목 또는 2과목 평균).',
+      '- 지원 카드마다 그 대학·전형의 수능최저 기준과 비교해 충족/미충족/경계 중 하나로 판정하고 근거(등급 합)를 함께 쓰라.',
+      '- 지식베이스에 그 대학의 최저 기준이 없으면 임의로 지어내지 말고, 학생의 등급 합이 어느 수준의 최저까지 충족 가능한지를 제시하고 기준은 모집요강 확인이 필요하다고 명시하라.',
+      '- 확정 성적과 예상 성적을 구분해 신뢰도를 달리 서술하라.',
+    );
+  } else {
+    lines.push('- 모의고사 미입력 상태이므로 수능최저 충족 여부는 단정하지 말고, 필요한 등급 수준을 목표로 제시하라.');
+  }
+  return lines.join('\n');
+}
+
 // 학생 기준 정보 블록 — 시스템 프롬프트에 붙여 모든 단계가 같은 전제로 쓰게 한다.
 export function studentContextBlock(studentData = {}) {
   const months = buildPlanMonths(studentData.planStartYm, 6);
   return [
+    '',
+    scoreBlock(studentData),
     '',
     gradeSystemGuide(studentData.gradeSystem),
     '',
