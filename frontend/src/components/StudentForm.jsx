@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 
 const GRADES = ['고1','고2','고3'];
+// 희망 전공 계열 최대 선택 수
+const MAX_MAJORS = 6;
 const MAJORS = [
   '컴퓨터공학/SW', '전기/전자공학', '반도체공학', '기계/로봇공학',
   '화학/신소재공학', '산업/시스템공학', '건축/토목공학',
@@ -127,7 +129,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
       specialNotes: sd.specialNotes || prev.specialNotes,
     }));
     if (sd.major) {
-      const majors = sd.major.split(/[,\s]+/).map(m => m.trim()).filter(Boolean).slice(0, 3);
+      const majors = sd.major.split(/[,\s]+/).map(m => m.trim()).filter(Boolean).slice(0, MAX_MAJORS);
       setSelectedMajors(majors);
     }
     setReuseMode(true);
@@ -190,7 +192,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
   const toggleMajor = (m) => {
     setSelectedMajors(prev => {
       if (prev.includes(m)) return prev.filter(x => x !== m);
-      if (prev.length >= 3) { alert('최대 3개까지 선택 가능합니다.'); return prev; }
+      if (prev.length >= MAX_MAJORS) { alert(`최대 ${MAX_MAJORS}개까지 선택 가능합니다.`); return prev; }
       return [...prev, m];
     });
   };
@@ -396,7 +398,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
               <input type="month" value={form.planStartYm} onChange={e=>set('planStartYm',e.target.value)} />
               <span className="field-hint">이 달부터 6개월 월별 계획을 세웁니다 (예: 2학기 상담이면 9월)</span>
             </div>
-            <div className="field full"><label>희망 전공 계열 (최대 3개)</label>
+            <div className="field full"><label>희망 전공 계열 (최대 {MAX_MAJORS}개)</label>
               <div className="major-tags">
                 {selectedMajors.map(m => (
                   <span key={m} className="major-tag selected" onClick={() => toggleMajor(m)}>
