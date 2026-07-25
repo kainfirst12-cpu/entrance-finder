@@ -59,7 +59,7 @@ function generateAnalysisPDF(analysisData, studentData) {
       // ── 커버 헤더 ──
       doc.rect(0, 0, PW, 180).fill(C.NAVY);
       doc.rect(0, 0, 8, 180).fill(C.BLUE);
-      doc.fontSize(8).fillColor(C.ACCENT).text('입시-Finder  |  AI 생기부 분석 리포트', ML + 8, 18);
+      doc.fontSize(8).fillColor(C.ACCENT).text('입시-Finder  |  생기부 종합 분석 리포트', ML + 8, 18);
       doc.fontSize(22).fillColor(C.WHITE).text(`${studentData.name || ''} 학생`, ML + 8, 40);
       doc.fontSize(14).fillColor('#93c5fd').text('입시 컨설팅 종합 리포트', ML + 8, 70);
       doc.moveTo(ML + 8, 92).lineTo(PW - MR, 92).strokeColor(C.ACCENT).lineWidth(1).stroke();
@@ -79,7 +79,7 @@ function generateAnalysisPDF(analysisData, studentData) {
 
       const dateStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
       doc.fontSize(7).fillColor(C.GRAY).text(`분석일: ${dateStr}`, ML + 8, 130);
-      doc.fontSize(7).fillColor('#4b5563').text('정보 출처: AI 드라이브 합격자 사례 기반 + 일반 입시 데이터 보완', ML + 8, 143);
+      doc.fontSize(7).fillColor('#4b5563').text('정보 출처: 합격자 사례 기반 + 일반 입시 데이터 보완', ML + 8, 143);
 
       let curY = 190;
 
@@ -265,7 +265,7 @@ function _extractList(data, keywords) {
 function _parseSections(data) {
   if (!data || typeof data !== 'object') return [];
   const nameMap = {
-    caseMatching:   'AI 드라이브 합격자 사례 매칭',
+    caseMatching:   '합격자 사례 매칭',
     academic:       '학업역량 심층 분석',
     activity:       '비교과 활동 분석',
     career:         '진로 역량 및 전공 적합성',

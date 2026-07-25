@@ -197,7 +197,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
 
 export const step0_caseMatching = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
   const prompt = `
-[0단계: AI 드라이브 사례 매칭 분석]
+[0단계: 합격자 사례 매칭 분석]
 
 === 학생 핵심 정보 (모든 분석의 기준 — 절대 변경 금지) ===
 - 학생명: ${studentData.name}
@@ -315,7 +315,7 @@ ${pdfDocuments.length ? `첨부 PDF(${pdfDocuments.map(p=>p.label).join(', ')})�
 **현재 학생 세특 수준** (교과별)
 - PDF 내용 기반으로 교과별 세특 수준을 분석하라
 
-**합격자 세특 비교** (AI 드라이브 사례)
+**합격자 세특 비교** (합격자 사례)
 - 매칭된 합격자 사례의 세특 수준과 비교하라
 
 **갭 분석 및 개선 방향**
@@ -336,7 +336,7 @@ export const step2_activity = async (systemPrompt, studentData, pdfDocuments, ap
 ${pdfDocuments.length ? `첨부 PDF에서 비교과 활동 내용을 직접 읽고 분석하라.` : ''}
 입력 데이터: 동아리-${studentData.club} / 봉사-${studentData.volunteer} / 리더십-${studentData.leadership} / 수상-${studentData.awards} / 특기-${studentData.talent}
 
-### 2.1 활동 유사도 매칭 결과 (AI 드라이브 사례 기준)
+### 2.1 활동 유사도 매칭 결과 (합격자 사례 기준)
 
 | 현재 학생 활동 | 매칭된 합격자 활동 | 유사도 | 차이점 |
 |--------------|------------------|--------|--------|

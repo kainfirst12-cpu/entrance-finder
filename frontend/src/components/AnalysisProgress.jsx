@@ -16,7 +16,7 @@ export default function AnalysisProgress({ steps, currentStep }) {
   return (
     <div className="progress-page">
       <div className="progress-header">
-        <div className="progress-badge">AI 분석 진행 중</div>
+        <div className="progress-badge">종합 분석 진행 중</div>
         <h1 className="progress-title">Drive 자료 기반 분석 중...</h1>
         <p className="progress-desc">합격자 사례와 대입 정책 자료를 참조하여 분석하고 있어요</p>
       </div>

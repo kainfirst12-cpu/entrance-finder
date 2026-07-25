@@ -145,7 +145,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 
   const steps = [
     { key: 'caseMatching', label: 'Drive 사례 매칭 탐색', step: 1,
-      prompt: `${pdfNote}[0단계: AI 드라이브 사례 매칭 분석]
+      prompt: `${pdfNote}[0단계: 합격자 사례 매칭 분석]
 
 === 학생 핵심 정보 (절대 변경 금지) ===
 - 학생명: ${studentData.name}

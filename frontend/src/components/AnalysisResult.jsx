@@ -41,7 +41,7 @@ const MODEL_CONFIG = {
 };
 
 const SECTION_MAP = [
-  { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+  { key: 'caseMatching',   num: '0', title: '합격자 사례 매칭 분석' },
   { key: 'academic',       num: '1', title: '학업역량 종합 분석' },
   { key: 'activity',       num: '2', title: '비교과 활동 평가' },
   { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성' },
@@ -316,7 +316,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
 
     // 섹션 타이틀 매핑 (PDF 시안 스타일)
     const sectionTitles = [
-      { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+      { key: 'caseMatching',   num: '0', title: '합격자 사례 매칭 분석' },
       { key: 'academic',       num: '1', title: '학업역량 심층 분석' },
       { key: 'activity',       num: '2', title: '비교과 활동 분석' },
       { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성 분석' },
@@ -1269,7 +1269,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
       {/* AI 교차 검증 패널 */}
       <div className="verify-panel">
         <div className="verify-panel-header">
-          <span className="verify-title">🔎 다른 AI로 검증</span>
+          <span className="verify-title">🔎 교차 검증</span>
           <span className="verify-desc">
             분석 결과를 다른 AI가 교차 검증합니다
           </span>

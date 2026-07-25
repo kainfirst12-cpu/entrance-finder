@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { API_BASE } from '../apiBase';
 
 const SECTION_MAP = [
-  { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+  { key: 'caseMatching',   num: '0', title: '합격자 사례 매칭 분석' },
   { key: 'academic',       num: '1', title: '학업역량 종합 분석' },
   { key: 'activity',       num: '2', title: '비교과 활동 평가' },
   { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성' },
@@ -307,7 +307,7 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   };
 
   const copyAllChat = async () => {
-    const text = messages.map(m => `[${m.role === 'user' ? '나' : 'AI 컨설턴트'}]\n${m.content}`).join('\n\n---\n\n');
+    const text = messages.map(m => `[${m.role === 'user' ? '나' : '컨설턴트'}]\n${m.content}`).join('\n\n---\n\n');
     await navigator.clipboard.writeText(text);
     setCopiedIdx('all');
     setTimeout(() => setCopiedIdx(null), 2000);
@@ -668,7 +668,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
             <div key={i} className={`chat-bubble ${msg.role} ${msg.isVerify ? 'verify' : ''} ${msg.isSystem ? 'system-msg' : ''}`}
               style={editingIdx === i ? { maxWidth: '100%', width: '100%', alignSelf: 'stretch' } : undefined}>
               <div className="chat-bubble-label">
-                {msg.role === 'user' ? '나' : msg.isVerify ? `${MODEL_CFG[msg.verifyModel]?.label || 'AI'} 교차 검증` : msg.isSystem ? '시스템' : 'AI 컨설턴트'}
+                {msg.role === 'user' ? '나' : msg.isVerify ? `${MODEL_CFG[msg.verifyModel]?.label || 'AI'} 교차 검증` : msg.isSystem ? '시스템' : '컨설턴트'}
                 {msg.edited && <span style={{ marginLeft: 6, color: '#f59e0b', fontSize: 11 }}>[수정됨]</span>}
                 {msg.files && <span style={{ marginLeft: 6, color: '#64748b', fontSize: 11 }}>[{msg.files.map(f => f.name).join(', ')}]</span>}
               </div>
@@ -725,7 +725,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
           ))}
           {loading && (
             <div className="chat-bubble assistant">
-              <div className="chat-bubble-label">AI 컨설턴트</div>
+              <div className="chat-bubble-label">컨설턴트</div>
               <div className="chat-bubble-content chat-typing"><span></span><span></span><span></span></div>
             </div>
           )}

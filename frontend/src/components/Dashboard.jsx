@@ -1,7 +1,7 @@
 import Board from './Board';
 
 const ACTIONS = [
-  { key: 'form', icon: '✨', label: '새 분석', desc: '생기부 AI 분석 시작', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
+  { key: 'form', icon: '✨', label: '새 분석', desc: '생기부 종합 분석 시작', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
   { key: 'assessment', icon: '📝', label: '수행평가 도우미', desc: '작성·첨삭·문서화', color: '#9070d8', bg: 'rgba(144,112,216,0.16)' },
   { key: 'chat', icon: '💬', label: '입시 상담', desc: 'AI에게 상담', color: '#46a571', bg: 'rgba(70,165,113,0.16)' },
   { key: 'admissions', icon: '🎓', label: '대학 입결 조회', desc: '정시·수시·논술 입결', color: '#e0993f', bg: 'rgba(224,153,63,0.16)' },

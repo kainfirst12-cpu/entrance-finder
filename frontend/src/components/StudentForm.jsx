@@ -21,7 +21,7 @@ const MAJORS = [
 
 // 분석 섹션 — JSON 재분석 시 어떤 섹션을 다시 돌릴지 선택용
 const SECTION_DEFS = [
-  { key: 'caseMatching',   num: '0', title: 'AI 드라이브 사례 매칭 분석' },
+  { key: 'caseMatching',   num: '0', title: '합격자 사례 매칭 분석' },
   { key: 'academic',       num: '1', title: '학업역량 종합 분석' },
   { key: 'activity',       num: '2', title: '비교과 활동 평가' },
   { key: 'career',         num: '3', title: '진로 역량 및 전공 적합성' },
@@ -563,7 +563,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
             : <button className="btn-analyze" onClick={handleSubmit}>
                 {reuseMode
                   ? (analysisMode==='full' ? '전체 재분석 시작' : analysisMode==='missing' ? `누락 ${missingCount}개 섹션 분석 시작` : `선택한 ${customSections.size}개 섹션 분석 시작`)
-                  : 'AI 분석 시작'}
+                  : '분석 시작'}
               </button>
           }
         </div>
