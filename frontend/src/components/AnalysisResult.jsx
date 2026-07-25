@@ -150,7 +150,13 @@ function mdToHtml(raw) {
     i++;
   }
 
-  return out.join('\n');
+  // 본문은 white-space: pre-wrap 으로 그려지므로 빈 줄이 그대로 여백이 된다.
+  // 연속된 빈 줄과 블록 요소(표·구분선·소제목) 앞뒤 빈 줄을 정리해 인쇄 시 낭비를 줄인다.
+  return out.join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n+(<(?:div class="md-table-wrap"|hr class="md-hr"|div class="md-h))/g, '\n$1')
+    .replace(/(<\/table><\/div>|<hr class="md-hr">|<\/div>)\n+/g, '$1\n')
+    .trim();
 }
 
 export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyze, selectedModel, apiKey, geminiKey, gptKey }) {
@@ -536,36 +542,48 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
   }
 
   /* ── 섹션 ─────────────────────────────── */
+  /* 섹션 전체를 page-break-inside:avoid 하면 페이지 끝에 큰 여백이 생기므로
+     내용은 자유롭게 넘기고, 제목만 본문과 붙여 둔다. */
   .section {
-    margin-bottom: 4px;
-    padding: 40px 0 20px;
-    page-break-inside: avoid;
+    margin-bottom: 0;
+    padding: 20px 0 6px;
+    break-inside: auto;
   }
+  .section:first-of-type { padding-top: 4px; }
   .section-title {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 900;
     color: var(--blue);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    break-after: avoid;
+    page-break-after: avoid;
   }
-  .section-line { height: 3px; background: var(--red); margin-bottom: 20px; }
+  .section-line {
+    height: 3px; background: var(--red); margin-bottom: 12px;
+    break-after: avoid; page-break-after: avoid;
+  }
   .section-body {
     font-size: 13.5px;
-    line-height: 1.9;
+    line-height: 1.65;
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--text);
     padding: 0;
+    orphans: 3;
+    widows: 3;
   }
 
   /* 마크다운 변환된 테이블 */
   .md-table {
     width: 100%;
     border-collapse: collapse;
-    margin: 14px 0;
+    margin: 10px 0;
     font-size: 12.5px;
     line-height: 1.5;
     white-space: normal;
+    break-inside: auto;
   }
+  .md-table tr { break-inside: avoid; page-break-inside: avoid; }
   .md-table th {
     background: var(--navy);
     color: #fff;
@@ -580,15 +598,17 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
     vertical-align: top;
   }
   .md-table tr:nth-child(even) td { background: #f8fafc; }
-  .md-hr { border: none; height: 1px; background: #e2e8f0; margin: 14px 0; }
+  .md-hr { border: none; height: 1px; background: #e2e8f0; margin: 10px 0; }
   .md-h1, .md-h2 {
     font-size: 16px; font-weight: 700; color: var(--navy);
-    margin: 22px 0 8px; padding-bottom: 6px;
+    margin: 14px 0 6px; padding-bottom: 5px;
     border-bottom: 2px solid var(--blue); white-space: normal;
+    break-after: avoid; page-break-after: avoid;
   }
   .md-h3, .md-h4 {
     font-size: 14px; font-weight: 600; color: var(--navy);
-    margin: 16px 0 6px; white-space: normal;
+    margin: 10px 0 4px; white-space: normal;
+    break-after: avoid; page-break-after: avoid;
   }
   strong { font-weight: 700; }
   em { font-style: italic; }
@@ -627,12 +647,25 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
 
   @media print {
     .print-bar { display: none !important; }
-    .report { margin-top: 0; padding: 0; }
-    .cover { min-height: auto; padding: 50px 0 30px; }
-    .section { break-inside: avoid; }
+    .report { margin: 0 auto; padding: 0; max-width: none; }
+    .cover { min-height: auto; padding: 40px 0 24px; }
+    /* 단계(섹션)는 페이지를 이어서 채운다 — 통째로 넘기면 앞 페이지가 비어 버린다 */
+    .section { break-inside: auto; padding: 14px 0 4px; }
+    .section:first-of-type { padding-top: 0; }
+    .section-title { font-size: 17px; margin-bottom: 5px; }
+    .section-line { margin-bottom: 9px; }
+    .section-body { font-size: 12.5px; line-height: 1.6; }
+    .toc { padding: 20px 0; }
+    .toc-item { padding: 7px 0 7px 12px; font-size: 13px; }
+    .md-table { margin: 8px 0; font-size: 11.5px; }
+    .md-table th { padding: 6px 9px; }
+    .md-table td { padding: 5px 9px; }
+    .md-h1, .md-h2 { margin: 11px 0 5px; font-size: 14px; }
+    .md-h3, .md-h4 { margin: 8px 0 3px; font-size: 12.5px; }
+    .report-footer { margin-top: 20px; padding: 16px 0; }
     body { font-size: 12px; }
   }
-  @page { size: A4; margin: 18mm 15mm; }
+  @page { size: A4; margin: 13mm 12mm; }
 </style>
 </head>
 <body>

@@ -112,8 +112,10 @@ function generateAnalysisPDF(analysisData, studentData) {
       // ── 분석 섹션들 ──
       const sections = _parseSections(analysisData);
       sections.forEach((section, idx) => {
-        doc.addPage();
-        curY = 20;
+        // 단계마다 무조건 새 페이지를 열면 앞 페이지 아래쪽이 통째로 비어 종이가 낭비된다.
+        // 남은 공간이 부족할 때(헤더+최소 본문이 안 들어갈 때)만 페이지를 넘긴다.
+        if (curY > 660) { doc.addPage(); curY = 20; }
+        else if (idx > 0) { curY += 16; }
         curY = _drawSectionHeader(doc, `제${idx + 1}장`, section.title, curY, ML, BODY_W);
         curY += 8;
 
