@@ -3,6 +3,48 @@ import { useState, useEffect, useRef } from 'react';
 const GRADES = ['고1','고2','고3'];
 // 희망 전공 계열 최대 선택 수
 const MAX_MAJORS = 6;
+
+// ── 모의고사 입력 체계 ───────────────────────────────────────────
+// 수능 체제가 학년도별로 다르다.
+//  · 2027학년도까지(9등급제): 국어·수학에 선택과목, 탐구는 사/과탐 중 2과목 선택
+//  · 2028학년도부터(5등급제, 2022 개정): 선택과목 폐지 → 공통(통합)과목, 탐구는 통합사회·통합과학
+// absolute=true 는 절대평가(영어·한국사·제2외국어) — 표준점수/백분위가 산출되지 않는다.
+const MOCK_PRESETS = {
+  '9등급제': {
+    label: '2027학년도 이전 (선택과목 체계)',
+    maxGrade: 9,
+    rows: [
+      { key: 'korean',  label: '국어', max: 100, choices: ['화법과 작문', '언어와 매체'] },
+      { key: 'math',    label: '수학', max: 100, choices: ['확률과 통계', '미적분', '기하'] },
+      { key: 'english', label: '영어', max: 100, absolute: true },
+      { key: 'history', label: '한국사', max: 50, absolute: true },
+      { key: 'explore1', label: '탐구1', max: 50, free: true, placeholder: '예: 생명과학Ⅰ' },
+      { key: 'explore2', label: '탐구2', max: 50, free: true, placeholder: '예: 사회문화' },
+      { key: 'second',  label: '제2외국어/한문', max: 50, absolute: true, free: true, placeholder: '예: 일본어Ⅰ' },
+    ],
+  },
+  '5등급제': {
+    label: '2028학년도 이후 (공통·통합과목)',
+    maxGrade: 5,
+    rows: [
+      { key: 'korean',  label: '국어', max: 100, note: '화법과 언어·독서와 작문·문학' },
+      { key: 'math',    label: '수학', max: 100, note: '대수·미적분Ⅰ·확률과 통계' },
+      { key: 'english', label: '영어', max: 100, absolute: true, note: '영어Ⅰ·Ⅱ' },
+      { key: 'history', label: '한국사', max: 50, absolute: true },
+      { key: 'social',  label: '통합사회', max: 50 },
+      { key: 'science', label: '통합과학', max: 50 },
+      { key: 'second',  label: '제2외국어/한문', max: 50, absolute: true, free: true, placeholder: '예: 일본어' },
+    ],
+  },
+};
+const buildMockRows = (gradeSystem) => {
+  const preset = MOCK_PRESETS[gradeSystem] || MOCK_PRESETS['9등급제'];
+  const out = {};
+  for (const r of preset.rows) {
+    out[r.key] = { score: '', standard: '', percentile: '', grade: '', gradeType: 'confirmed', subject: '', ...r };
+  }
+  return out;
+};
 const MAJORS = [
   '컴퓨터공학/SW', '전기/전자공학', '반도체공학', '기계/로봇공학',
   '화학/신소재공학', '산업/시스템공학', '건축/토목공학',
@@ -78,14 +120,9 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
   });
   const [selectedMajors, setSelectedMajors] = useState([]);
   const [mockExamName, setMockExamName] = useState('');
-  // 과목별 점수: { score: 원점수, grade: 등급, gradeType: 'confirmed'|'expected' }
-  const DEFAULT_MOCK = { score:'', grade:'', gradeType:'confirmed' };
-  const [mockSubjects, setMockSubjects] = useState({
-    korean:  { ...DEFAULT_MOCK, label: '국어', max: 100 },
-    math:    { ...DEFAULT_MOCK, label: '수학', max: 100 },
-    english: { ...DEFAULT_MOCK, label: '영어', max: 100 },
-    history: { ...DEFAULT_MOCK, label: '한국사', max: 50 },
-  });
+  // 과목별 점수 — 학년도(등급제)에 따라 행 구성이 다르다.
+  // { score: 원점수, standard: 표준점수, percentile: 백분위, grade: 등급, subject: 선택과목명 }
+  const [mockSubjects, setMockSubjects] = useState(() => buildMockRows('9등급제'));
   const [mockElectives, setMockElectives] = useState([]);
   const [files, setFiles] = useState({
     recordPdf: null,
@@ -157,6 +194,19 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill]);
 
+  // 등급제(=수능 체제)가 바뀌면 모의고사 입력 행을 그 체계로 갈아끼운다.
+  // 같은 과목(key)에 이미 입력한 점수는 그대로 살린다.
+  useEffect(() => {
+    setMockSubjects(prev => {
+      const next = buildMockRows(form.gradeSystem);
+      for (const key of Object.keys(next)) {
+        const old = prev[key];
+        if (old) next[key] = { ...next[key], score: old.score, standard: old.standard, percentile: old.percentile, grade: old.grade, gradeType: old.gradeType, subject: old.subject };
+      }
+      return next;
+    });
+  }, [form.gradeSystem]);
+
   const handleJsonImport = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -209,15 +259,23 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
   const updateMockSubject = (key, field, value) => {
     setMockSubjects(prev => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
   };
+  // 현재 체계의 등급 상한(9 또는 5)
+  const maxGrade = (MOCK_PRESETS[form.gradeSystem] || MOCK_PRESETS['9등급제']).maxGrade;
 
   const buildMockExamText = () => {
     const parts = [];
     for (const [, sub] of Object.entries(mockSubjects)) {
-      if (!sub.score && !sub.grade) continue;
+      if (!sub.score && !sub.grade && !sub.standard && !sub.percentile) continue;
       const gradeLabel = sub.gradeType === 'expected' ? '예상' : '확정';
-      const scoreStr = sub.score ? `원점수 ${sub.score}/${sub.max}` : '';
-      const gradeStr = sub.grade ? `${gradeLabel}${sub.grade}등급` : '';
-      parts.push(`${sub.label}: ${[scoreStr, gradeStr].filter(Boolean).join(', ')}`);
+      // 과목명 — 선택과목/탐구는 실제 과목명을 함께 표기(예: 수학(미적분))
+      const name = sub.subject ? `${sub.label}(${sub.subject})` : sub.label;
+      const bits = [];
+      if (sub.score) bits.push(`원점수 ${sub.score}/${sub.max}`);
+      if (sub.standard) bits.push(`표준점수 ${sub.standard}`);
+      if (sub.percentile) bits.push(`백분위 ${sub.percentile}`);
+      if (sub.grade) bits.push(`${gradeLabel}${sub.grade}등급`);
+      if (sub.absolute) bits.push('절대평가');
+      parts.push(`${name}: ${bits.join(', ')}`);
     }
     for (const el of mockElectives) {
       if (!el.name || (!el.score && !el.grade)) continue;
@@ -228,7 +286,9 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
     }
     if (parts.length === 0) return form.mockExam || '';
     const exam = mockExamName ? `[${mockExamName}] ` : '';
-    return `${exam}${parts.join(' / ')}`;
+    // 어떤 수능 체제의 성적인지 함께 넘긴다(선택과목 체계 vs 공통·통합과목).
+    const system = `(${(MOCK_PRESETS[form.gradeSystem] || MOCK_PRESETS['9등급제']).label}) `;
+    return `${exam}${system}${parts.join(' / ')}`;
   };
 
   const toggleCustomSection = (key) => {
@@ -443,13 +503,20 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
                   style={{marginBottom:12, width:'100%'}}
                 />
 
-                <div className="mock-section-label">주요 과목 (만점 기준 자동 적용)</div>
+                <div className="mock-section-label">
+                  수능 과목 — {(MOCK_PRESETS[form.gradeSystem] || MOCK_PRESETS['9등급제']).label}
+                </div>
+                <div className="mock-score-hint" style={{marginBottom:8}}>
+                  성적표가 나오면 <b>표준점수·백분위</b>까지 입력하세요. 대학마다 표준점수/백분위 중 무엇을 반영하는지가 달라 당락이 갈립니다.
+                  영어·한국사·제2외국어는 절대평가라 등급만 산출됩니다.
+                </div>
                 <table className="mock-table">
                   <thead>
                     <tr>
                       <th>과목</th>
-                      <th>만점</th>
                       <th>원점수</th>
+                      <th>표준점수</th>
+                      <th>백분위</th>
                       <th>등급</th>
                       <th>구분</th>
                     </tr>
@@ -457,10 +524,36 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
                   <tbody>
                     {Object.entries(mockSubjects).map(([key, sub]) => (
                       <tr key={key}>
-                        <td className="mock-subj-name">{sub.label}</td>
-                        <td className="mock-max">{sub.max}점</td>
+                        <td className="mock-subj-name">
+                          <div>{sub.label} <span style={{color:'#94a3b8',fontWeight:400}}>({sub.max})</span></div>
+                          {/* 2027 체제: 국어·수학 선택과목 / 탐구·제2외국어는 과목명 직접 입력 */}
+                          {sub.choices && (
+                            <select className="mock-el-name" value={sub.subject} onChange={e => updateMockSubject(key, 'subject', e.target.value)}>
+                              <option value="">선택과목</option>
+                              {sub.choices.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          )}
+                          {sub.free && (
+                            <input className="mock-el-name" placeholder={sub.placeholder || '과목명'} value={sub.subject}
+                              onChange={e => updateMockSubject(key, 'subject', e.target.value)} />
+                          )}
+                          {sub.note && <div style={{fontSize:11,color:'#94a3b8'}}>{sub.note}</div>}
+                        </td>
                         <td><input type="number" min="0" max={sub.max} placeholder={`0~${sub.max}`} value={sub.score} onChange={e => updateMockSubject(key, 'score', e.target.value)} /></td>
-                        <td><input type="number" min="1" max="9" placeholder="1~9" value={sub.grade} onChange={e => updateMockSubject(key, 'grade', e.target.value)} /></td>
+                        <td>
+                          {sub.absolute
+                            ? <span className="mock-max">절대평가</span>
+                            : <input type="number" min="0" max="200" placeholder="표준" value={sub.standard} onChange={e => updateMockSubject(key, 'standard', e.target.value)} />}
+                        </td>
+                        <td>
+                          {sub.absolute
+                            ? <span className="mock-max">—</span>
+                            : <input type="number" min="0" max="100" placeholder="0~100" value={sub.percentile} onChange={e => updateMockSubject(key, 'percentile', e.target.value)} />}
+                        </td>
+                        <td>
+                          <input type="number" min="1" max={maxGrade} placeholder={`1~${maxGrade}`} value={sub.grade}
+                            onChange={e => updateMockSubject(key, 'grade', e.target.value)} />
+                        </td>
                         <td>
                           <select value={sub.gradeType} onChange={e => updateMockSubject(key, 'gradeType', e.target.value)}>
                             <option value="confirmed">확정</option>
