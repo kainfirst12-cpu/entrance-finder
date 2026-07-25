@@ -4,6 +4,19 @@ const GRADES = ['고1','고2','고3'];
 // 희망 전공 계열 최대 선택 수
 const MAX_MAJORS = 6;
 
+// 희망 전형 — 지원 카드 6장을 이 전형 위주로 구성한다(복수 선택).
+const TRACKS = [
+  '학생부종합', '학생부교과', '논술', '정시(수능)',
+  '지역균형/추천', '고른기회/기회균형', '특기자/실기', '재외국민/특례',
+];
+
+// 수능 탐구 과목 — 직접 타이핑 대신 목록에서 고른다(사탐/과탐 그룹).
+const EXPLORE_GROUPS = {
+  '사회탐구': ['생활과 윤리', '윤리와 사상', '한국지리', '세계지리', '동아시아사', '세계사', '경제', '정치와 법', '사회·문화'],
+  '과학탐구': ['물리학Ⅰ', '화학Ⅰ', '생명과학Ⅰ', '지구과학Ⅰ', '물리학Ⅱ', '화학Ⅱ', '생명과학Ⅱ', '지구과학Ⅱ'],
+};
+const SECOND_LANGS = ['독일어Ⅰ', '프랑스어Ⅰ', '스페인어Ⅰ', '중국어Ⅰ', '일본어Ⅰ', '러시아어Ⅰ', '아랍어Ⅰ', '베트남어Ⅰ', '한문Ⅰ'];
+
 // ── 모의고사 입력 체계 ───────────────────────────────────────────
 // 수능 체제가 학년도별로 다르다.
 //  · 2027학년도까지(9등급제): 국어·수학에 선택과목, 탐구는 사/과탐 중 2과목 선택
@@ -18,9 +31,9 @@ const MOCK_PRESETS = {
       { key: 'math',    label: '수학', max: 100, choices: ['확률과 통계', '미적분', '기하'] },
       { key: 'english', label: '영어', max: 100, absolute: true },
       { key: 'history', label: '한국사', max: 50, absolute: true },
-      { key: 'explore1', label: '탐구1', max: 50, free: true, placeholder: '예: 생명과학Ⅰ' },
-      { key: 'explore2', label: '탐구2', max: 50, free: true, placeholder: '예: 사회문화' },
-      { key: 'second',  label: '제2외국어/한문', max: 50, absolute: true, free: true, placeholder: '예: 일본어Ⅰ' },
+      { key: 'explore1', label: '탐구1', max: 50, groups: EXPLORE_GROUPS },
+      { key: 'explore2', label: '탐구2', max: 50, groups: EXPLORE_GROUPS },
+      { key: 'second',  label: '제2외국어/한문', max: 50, absolute: true, choices: SECOND_LANGS },
     ],
   },
   '5등급제': {
@@ -33,7 +46,7 @@ const MOCK_PRESETS = {
       { key: 'history', label: '한국사', max: 50, absolute: true },
       { key: 'social',  label: '통합사회', max: 50 },
       { key: 'science', label: '통합과학', max: 50 },
-      { key: 'second',  label: '제2외국어/한문', max: 50, absolute: true, free: true, placeholder: '예: 일본어' },
+      { key: 'second',  label: '제2외국어/한문', max: 50, absolute: true, choices: SECOND_LANGS },
     ],
   },
 };
@@ -119,6 +132,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
     specialNotes:'', subjectPlan:'',
   });
   const [selectedMajors, setSelectedMajors] = useState([]);
+  const [selectedTracks, setSelectedTracks] = useState([]);   // 희망 전형(복수)
   const [mockExamName, setMockExamName] = useState('');
   // 과목별 점수 — 학년도(등급제)에 따라 행 구성이 다르다.
   // { score: 원점수, standard: 표준점수, percentile: 백분위, grade: 등급, subject: 선택과목명 }
@@ -165,6 +179,9 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
       club: sd.club || prev.club,
       specialNotes: sd.specialNotes || prev.specialNotes,
     }));
+    if (sd.targetTracks) {
+      setSelectedTracks(String(sd.targetTracks).split(/\s*,\s*/).map(s => s.trim()).filter(Boolean));
+    }
     if (sd.major) {
       const majors = sd.major.split(/[,\s]+/).map(m => m.trim()).filter(Boolean).slice(0, MAX_MAJORS);
       setSelectedMajors(majors);
@@ -239,6 +256,9 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
   const tabs = ['기본 정보','생기부 & 자료 업로드'];
   const uploadedCount = Object.values(files).filter(Boolean).length;
 
+  const toggleTrack = (v) => {
+    setSelectedTracks(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  };
   const toggleMajor = (m) => {
     setSelectedMajors(prev => {
       if (prev.includes(m)) return prev.filter(x => x !== m);
@@ -329,7 +349,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
     }
 
     const mockExamText = buildMockExamText();
-    const studentData = { ...form, major: selectedMajors.join(', '), mockExam: mockExamText };
+    const studentData = { ...form, major: selectedMajors.join(', '), targetTracks: selectedTracks.join(', '), mockExam: mockExamText };
     const extras = reuseMode
       ? {
           pdfTexts: reusedPdfTexts || undefined,
@@ -483,6 +503,27 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
             <div className="field full"><label>목표 대학 (상향 기준) *</label>
               <input placeholder="예: 서울대학교 / 연세대학교 / KAIST" {...input('targetUniv')} />
             </div>
+            <div className="field full"><label>희망 전형 (복수 선택)</label>
+              <div className="major-tags">
+                {selectedTracks.map(t => (
+                  <span key={t} className="major-tag selected" onClick={() => toggleTrack(t)}>
+                    {t} <span className="major-tag-x">X</span>
+                  </span>
+                ))}
+                {selectedTracks.length === 0 && <span className="major-tag-hint">선택하지 않으면 전 전형을 검토합니다</span>}
+              </div>
+              <div className="major-grid">
+                {TRACKS.map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`major-chip ${selectedTracks.includes(t) ? 'active' : ''}`}
+                    onClick={() => toggleTrack(t)}
+                  >{t}</button>
+                ))}
+              </div>
+              <span className="field-hint">고른 전형 위주로 지원 카드 6장을 구성합니다</span>
+            </div>
             <div className="field full"><label>내신 평균 등급</label>
               <input type="number" min="1" max="9" step="0.1" placeholder="예: 1.8" {...input('gpa')} />
             </div>
@@ -529,13 +570,20 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
                           {/* 2027 체제: 국어·수학 선택과목 / 탐구·제2외국어는 과목명 직접 입력 */}
                           {sub.choices && (
                             <select className="mock-el-name" value={sub.subject} onChange={e => updateMockSubject(key, 'subject', e.target.value)}>
-                              <option value="">선택과목</option>
+                              <option value="">과목 선택</option>
                               {sub.choices.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           )}
-                          {sub.free && (
-                            <input className="mock-el-name" placeholder={sub.placeholder || '과목명'} value={sub.subject}
-                              onChange={e => updateMockSubject(key, 'subject', e.target.value)} />
+                          {/* 탐구 — 사탐/과탐을 그룹으로 묶어 목록에서 고른다 */}
+                          {sub.groups && (
+                            <select className="mock-el-name" value={sub.subject} onChange={e => updateMockSubject(key, 'subject', e.target.value)}>
+                              <option value="">과목 선택</option>
+                              {Object.entries(sub.groups).map(([g, list]) => (
+                                <optgroup key={g} label={g}>
+                                  {list.map(c => <option key={c} value={c}>{c}</option>)}
+                                </optgroup>
+                              ))}
+                            </select>
                           )}
                           {sub.note && <div style={{fontSize:11,color:'#94a3b8'}}>{sub.note}</div>}
                         </td>

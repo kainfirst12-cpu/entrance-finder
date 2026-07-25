@@ -84,11 +84,22 @@ export function mockExamGuide(gradeSystem) {
 export function scoreBlock(studentData = {}) {
   const mock = String(studentData.mockExam || '').trim();
   const gpa = String(studentData.gpa || '').trim();
+  const tracks = String(studentData.targetTracks || '').trim();
   const lines = [
     '=== 학생 성적 (분석에 반드시 반영) ===',
     `- 내신: ${gpa || '미입력'}`,
     `- 모의고사: ${mock || '미입력'}`,
   ];
+  if (tracks) {
+    lines.push(
+      '',
+      '=== 희망 전형 (필수 반영) ===',
+      `- 학생이 희망하는 전형: ${tracks}`,
+      '- 지원 카드 6장은 이 전형 위주로 구성하고, 각 카드에 어떤 전형인지 명시하라.',
+      '- 희망 전형이 학생의 성적·생기부 구조상 불리하면 그 이유를 밝히고, 대안 전형을 함께 제시하라(희망을 무시하지는 마라).',
+      '- 전형 유형별 적합도 분석에서도 희망 전형을 우선 배치해 설명하라.',
+    );
+  }
   if (mock) {
     lines.push(
       '',
