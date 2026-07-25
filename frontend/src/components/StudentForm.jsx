@@ -38,7 +38,7 @@ const MOCK_PRESETS = {
   },
   '5등급제': {
     label: '2028학년도 이후 (공통·통합과목)',
-    maxGrade: 5,
+    maxGrade: 9,   // 내신만 5등급제이고 수능·모의고사는 2028학년도에도 9등급을 유지한다
     rows: [
       { key: 'korean',  label: '국어', max: 100, note: '화법과 언어·독서와 작문·문학' },
       { key: 'math',    label: '수학', max: 100, note: '대수·미적분Ⅰ·확률과 통계' },
@@ -549,7 +549,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
                 </div>
                 <div className="mock-score-hint" style={{marginBottom:8}}>
                   성적표가 나오면 <b>표준점수·백분위</b>까지 입력하세요. 대학마다 표준점수/백분위 중 무엇을 반영하는지가 달라 당락이 갈립니다.
-                  영어·한국사·제2외국어는 절대평가라 등급만 산출됩니다.
+                  영어·한국사·제2외국어는 절대평가라 등급만 산출됩니다. 수능·모의고사 등급은 2028학년도 이후에도 9등급 체계입니다(5등급제는 내신에만 적용).
                 </div>
                 <table className="mock-table">
                   <thead>
