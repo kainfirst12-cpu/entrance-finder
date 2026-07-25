@@ -66,6 +66,8 @@ const PdfUploader = ({ label, fileKey, files, onChange, hint }) => {
 export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefill }) {
   const [form, setForm] = useState({
     name:'', grade:'고1', school:'', region:'',
+    // 내신 등급제(9/5)와 월별 실행계획 시작월 — 분석 기준이 달라진다
+    gradeSystem:'9등급제', planStartYm: new Date().toISOString().slice(0,7),
     major:'', targetUniv:'',
     gpa:'', mockExam:'',
     club:'', volunteer:'', leadership:'',
@@ -114,6 +116,8 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
       ...prev,
       name: sd.name || '',
       grade: sd.grade || '고1',
+      gradeSystem: sd.gradeSystem || '9등급제',
+      planStartYm: sd.planStartYm || new Date().toISOString().slice(0,7),
       school: sd.school || '',
       region: sd.region || '',
       targetUniv: sd.targetUniv || '',
@@ -381,6 +385,17 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
             </div>
             <div className="field"><label>학교명</label><input placeholder="OO고등학교" {...input('school')} /></div>
             <div className="field"><label>지역</label><input placeholder="부천 / 서울 / 경기" {...input('region')} /></div>
+            <div className="field"><label>내신 등급제</label>
+              <select value={form.gradeSystem} onChange={e=>set('gradeSystem',e.target.value)}>
+                <option value="9등급제">9등급제 (2027학년도 대입까지)</option>
+                <option value="5등급제">5등급제 (2028학년도 대입부터)</option>
+              </select>
+              <span className="field-hint">선택한 체계에 맞춰 등급·목표·지원선을 산출합니다</span>
+            </div>
+            <div className="field"><label>실행 계획 시작</label>
+              <input type="month" value={form.planStartYm} onChange={e=>set('planStartYm',e.target.value)} />
+              <span className="field-hint">이 달부터 6개월 월별 계획을 세웁니다 (예: 2학기 상담이면 9월)</span>
+            </div>
             <div className="field full"><label>희망 전공 계열 (최대 3개)</label>
               <div className="major-tags">
                 {selectedMajors.map(m => (

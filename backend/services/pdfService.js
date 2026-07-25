@@ -223,14 +223,29 @@ function _extractScores(data) {
   ];
   if (!data) return defaults;
   try {
-    const text = typeof data === 'string' ? data : JSON.stringify(data);
-    const pat = /([가-힣a-zA-Z\s]{2,8})[:\s]+([\d.]+)\s*[\/]\s*([\d.]+)/g;
+    // 원본 텍스트로 본다(JSON.stringify 하면 \n 이 이스케이프돼 줄 단위 표 파싱이 깨진다).
+    const text = typeof data === 'string'
+      ? data
+      : Object.values(data).filter(v => typeof v === 'string').join('\n');
+    // 리포트는 마크다운 표로 나온다: | 학업역량 | 7.8 / 10 | 우수 | ... 또는 | 학업역량 | 7.8 | ...
+    // 강조 기호(**)가 남아 있어도 잡히도록 정리 후 매칭한다.
+    const clean = text.replace(/\*\*/g, '');
+    const WANT = [
+      { key: '학업', label: '학업역량' },
+      { key: '비교과', label: '비교과' },
+      { key: '진로', label: '진로역량' },
+      { key: '세특', label: '세특 질' },
+      { key: '전공', label: '전공적합성' },
+    ];
     const found = [];
-    let m;
-    while ((m = pat.exec(text)) !== null && found.length < 5) {
-      const score = parseFloat(m[2]), max = parseFloat(m[3]);
-      if (!isNaN(score) && !isNaN(max) && max > 0 && score <= max)
-        found.push({ label: m[1].trim().slice(-5), score, max });
+    for (const w of WANT) {
+      // 같은 줄에서 '항목명 ... 숫자[ /최대]' 를 찾는다. 표(|)·콜론·공백 구분 모두 허용.
+      const re = new RegExp(`^[^\\n]*${w.key}[^\\n]*?([0-9]+(?:\\.[0-9]+)?)\\s*(?:/\\s*([0-9]+(?:\\.[0-9]+)?))?\\s*(?:점|/\\s*10)?[^\\n]*$`, 'm');
+      const m = re.exec(clean);
+      if (!m) continue;
+      const score = parseFloat(m[1]);
+      const max = m[2] ? parseFloat(m[2]) : 10;
+      if (!isNaN(score) && max > 0 && score <= max) found.push({ label: w.label, score, max });
     }
     return found.length >= 3 ? found : defaults;
   } catch { return defaults; }

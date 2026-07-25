@@ -2837,3 +2837,11 @@ body {
   font-size: 11px;
   color: #999;
 }
+/* 입력 필드 아래 보조 설명 — 등급제/실행계획 시작월 안내 */
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.4;
+}

@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths } from './reportUtils.js';
 
 // 2026-05 기준 최신 GPT 모델 매핑 (frontend 키는 호환을 위해 유지)
 const GPT_MODELS = {
@@ -68,7 +69,7 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
     };
     imgParams.max_completion_tokens = maxTokens;
     const response = await openai.chat.completions.create(imgParams);
-    return response.choices[0].message.content;
+    return stripBoldMarkers(response.choices[0].message.content);
   }
 
   const params = {
@@ -80,7 +81,7 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
   };
   params.max_completion_tokens = maxTokens;
   const response = await openai.chat.completions.create(params);
-  return response.choices[0].message.content;
+  return stripBoldMarkers(response.choices[0].message.content);
 }
 
 export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey, submodel = 'gpt', options = {}) {
@@ -91,6 +92,7 @@ export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriv
   console.log(`[GPT] 모드: ${sectionsToRun ? `부분 재분석 (${sectionsToRun.join(', ')})` : '전체 분석'}`);
 
   const systemPrompt = `당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
+${studentContextBlock(studentData)}
 
 === 문체·톤 원칙 (필수) ===
 - 담백하고 절제된 서술을 유지하라. 과장된 미사여구·극적 표현·감탄조를 쓰지 마라
@@ -104,7 +106,7 @@ export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriv
 - 이모티콘, 이모지, 유니코드 특수기호를 절대 사용하지 마라 (예: 📊🔍✅❌🎯📚🏃✏️☁️🗓️💬🚨⚠️👍👎🔴🟡🟢📌✨🚀 등 모든 이모지/이모티콘 금지)
 - 노션 스타일 아이콘 절대 금지
 - 허용되는 기호: 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──), 표 구분(|)만 사용
-- 강조는 **볼드**만 사용하고 이모지로 강조하지 마라
+- 마크다운 강조 기호(**, __)를 절대 쓰지 마라. 굵게 표시하지 말고 담백한 문장으로 쓰라 (표의 항목명도 ** 없이 그대로 쓴다)
 - 전문 컨설팅 보고서 톤을 유지하되, 출력 문체는 반드시 '~합니다', '~됩니다', '~있습니다' 같은 합니다체(격식체)를 사용하라. 반말(~하다, ~이다, ~한다, ~된다, ~임, ~함)이나 명령체(~하라, ~마라)로 출력하지 마라
 
 [표 형식 출력 원칙 — 필수]
@@ -190,7 +192,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
     { key: 'roadmap', label: '핵심 리스크 및 대응 방안', step: 6,
       prompt: `[5단계: 핵심 리스크 및 대응 방안] 학생: ${studentData.name} / ${studentData.grade}학년\n핵심 리스크 3가지를 분석하고 대응 방안을 제시하라. 5.1~5.4 소제목 구조, 리스크별 상세/우려사항/대응방안/면접대응 포함. 자소서는 폐지됨 — 언급 금지.` },
     { key: 'recordFeedback', label: '실행 계획', step: 7,
-      prompt: `[6단계: 실행 계획] 학생: ${studentData.name} / ${studentData.grade}학년\n3학년 실행 계획을 수립하라. 6.1 월별 실행 계획(3~8월, 주차별 표), 6.2 성적 목표 및 관리 전략(표), 6.3 비교과 활동 체계화, 6.4 독서 및 탐구 계획(표)` },
+      prompt: `[6단계: 실행 계획] 학생: ${studentData.name} / ${studentData.grade}학년\n3학년 실행 계획을 수립하라. 6.1 월별 실행 계획(${buildPlanMonths(studentData.planStartYm,6).join(", ")} 순서, 주차별 표), 6.2 성적 목표 및 관리 전략(표), 6.3 비교과 활동 체계화, 6.4 독서 및 탐구 계획(표)` },
     { key: 'dashboard', label: '종합 평가 및 권고사항', step: 8,
       prompt: `[7단계: 종합 평가 및 권고사항] 지금까지 분석 결과를 종합하여 종합 평가를 작성하라.\n7.1 5개 영역 평가표(학업/비교과/진로/세특/전공적합성, 10점 척도), 합격 가능성 분석. 7.2 즉시 실행 과제 3가지 + 유지 강점. 7.3 차기 상담 일정. 7.4 맺음말` },
   ];
@@ -246,5 +248,5 @@ export async function testGPTConnection(apiKey) {
     max_completion_tokens: 20,
     messages: [{ role: 'user', content: '안녕하세요. "연결성공"이라고만 답하세요.' }],
   });
-  return response.choices[0].message.content;
+  return stripBoldMarkers(response.choices[0].message.content);
 }

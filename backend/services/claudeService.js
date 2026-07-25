@@ -1,9 +1,11 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
 import pdfParse from 'pdf-parse';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths } from './reportUtils.js';
 
 // ── System Prompt 생성 ─────────────────────────────────
-const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
+const buildSystemPrompt = (knowledgeBase, studentDriveFiles, studentData = {}) => `${studentContextBlock(studentData)}
+
 당신은 대한민국 최고 수준의 입시 전문 컨설턴트입니다.
 15년 이상의 학생부종합전형 컨설팅 경험을 보유하고 있으며 서울대·연세대·고려대 합격자를 다수 배출했습니다.
 
@@ -20,7 +22,7 @@ const buildSystemPrompt = (knowledgeBase, studentDriveFiles) => `
 - 노션 스타일 아이콘(📌, ✨, 🚀 등) 절대 금지
 - 허용되는 기호: 번호(1. 2. 3.), 기호(-, *, >), 대괄호([항목]), 구분선(──), 표 구분(|)만 사용
 - 섹션 제목은 [대괄호]와 번호를 조합하여 표시 (예: [1단계] 학업역량 심층 분석)
-- 강조는 **볼드**만 사용하고 이모지로 강조하지 마라
+- 마크다운 강조 기호(**, __)를 절대 쓰지 마라. 굵게 표시하지 말고 담백한 문장으로 쓰라 (표의 항목명도 ** 없이 그대로 쓴다)
 - 전문 컨설팅 보고서 톤을 유지하되, 출력 문체는 반드시 '~합니다', '~됩니다', '~있습니다' 같은 합니다체(격식체)를 사용하라. 반말(~하다, ~이다, ~한다, ~된다, ~임, ~함)이나 명령체(~하라, ~마라)로 출력하지 마라
 
 === 표 형식 출력 원칙 (필수) ===
@@ -176,7 +178,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
       messages,
     });
     const final = await stream.finalMessage();
-    return final.content.map(b => b.type === 'text' ? b.text : '').join('');
+    return stripBoldMarkers(final.content.map(b => b.type === 'text' ? b.text : '').join(''));
   } catch (err) {
     console.error(`[callClaude] document 타입 실패 (${err.status || 'unknown'}):`, err.message);
 
@@ -191,7 +193,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
         messages,
       });
       const final = await stream.finalMessage();
-      return final.content.map(b => b.type === 'text' ? b.text : '').join('');
+      return stripBoldMarkers(final.content.map(b => b.type === 'text' ? b.text : '').join(''));
     } catch (err2) {
       console.error(`[callClaude] 2차 시도도 실패:`, err2.message);
       throw err2;
@@ -518,21 +520,17 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 };
 
 export const step6_recordFeedback = async (systemPrompt, studentData, pdfDocuments, apiKey) => {
+  const planMonths = buildPlanMonths(studentData.planStartYm, 6);
   const prompt = `
 [6단계] 실행 계획
 ${pdfDocuments.length ? `생기부 PDF 기반으로 작성하십시오.` : ''}
 학생: ${studentData.name} / ${studentData.grade} / 희망전공: ${studentData.major}
 
-### 6.1 월별 핵심 실행 계획 (3월~8월)
+### 6.1 월별 핵심 실행 계획 (${planMonths[0]}부터 6개월)
 
 | 월 | 학업 목표 | 비교과/세특 과제 | 핵심 체크포인트 |
 |----|----------|---------------|--------------|
-| 3월 | ... | ... | ... |
-| 4월 | ... | ... | ... |
-| 5월 | ... | ... | ... |
-| 6월 | ... | ... | ... |
-| 7월 | ... | ... | ... |
-| 8월 | ... | ... | ... |
+${planMonths.map(m => `| ${m} | ... | ... | ... |`).join("\n")}
 
 ### 6.2 성적 목표
 
@@ -607,7 +605,7 @@ ${studentData.name} 입시 컨설팅 종합 리포트
 
 // ── 전체 분석 오케스트레이터 (병렬 + 섹션별 오류 격리 + 증분 전송) ──
 export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFiles, onProgress, pdfDocuments = [], apiKey, options = {}) => {
-  const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles);
+  const systemPrompt = buildSystemPrompt(knowledgeBase, studentDriveFiles, studentData);
   const { existingResults = {}, sectionsToRun = null } = options;
   // sectionsToRun이 null이면 전부 실행, 배열이면 그 키만 실행. 기존 결과가 있고 실행 대상이 아니면 그대로 보존.
   const shouldRun = (key) => {
