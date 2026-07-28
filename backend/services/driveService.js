@@ -355,10 +355,33 @@ export const loadStudentFiles = async (studentName) => {
       files.map(f => extractText(drive, f.id, f.mimeType, f.name))
     );
 
+    // 학생 폴더에는 생기부 같은 '원본 자료'와 이 앱이 예전에 뽑아준 '분석 리포트'가 섞여 있다.
+    // 둘을 구분하지 않고 넘기면, 과거 리포트의 오류(예: 1학년만 반영한 내신)가
+    // 다음 분석의 입력이 되어 그대로 되물림된다. 실제로 그 사고가 있었다.
+    const isPastReport = (name) => /리포트|report|분석\s*결과|분석결과|pathfinder/i.test(name || '');
+
     let combined = '';
+    let derived = '';
     files.forEach((f, i) => {
-      combined += `\n--- ${f.name} ---\n${texts[i]}\n`;
+      if (isPastReport(f.name)) {
+        derived += `\n--- ${f.name} ---\n${texts[i]}\n`;
+      } else {
+        combined += `\n--- ${f.name} ---\n${texts[i]}\n`;
+      }
     });
+
+    if (derived) {
+      combined += [
+        '',
+        '=== 아래는 과거에 이 앱이 생성한 분석 리포트다 (2차 자료) ===',
+        '- 이것은 원본 자료가 아니라 AI가 만든 결과물이며, 오류가 포함돼 있을 수 있다.',
+        '- 생기부 원본(첨부 PDF·이미지)과 내용이 다르면 무조건 원본을 따르라.',
+        '- 여기 적힌 내신 등급·이수과목·석차를 사실로 인용하지 마라. 원본에서 다시 확인하라.',
+        '- 원본에서 확인되지 않는 항목을 이 리포트만 근거로 단정하지 마라.',
+        derived,
+        '=== 과거 리포트 끝 ===',
+      ].join('\n');
+    }
     return combined;
   } catch (err) {
     console.error('[Drive] 학생 파일 로딩 오류:', err.message);
