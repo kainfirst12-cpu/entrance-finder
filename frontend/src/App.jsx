@@ -77,7 +77,7 @@ export default function App() {
   };
 
   const startAnalysis = async (studentData, files, extras = {}) => {
-    // extras = { pdfTexts, existingResults, sectionsToRun }
+    // extras = { pdfTexts, existingResults, sectionsToRun, pdfPassword }
     setView('analyzing');
     setProgressSteps([]);
     setAnalysisWarnings([]);
@@ -109,6 +109,8 @@ export default function App() {
       if (extras.pdfTexts) formData.append('pdfTexts', extras.pdfTexts);
       if (extras.existingResults) formData.append('existingResults', JSON.stringify(extras.existingResults));
       if (extras.sectionsToRun?.length) formData.append('sectionsToRun', JSON.stringify(extras.sectionsToRun));
+      // 비밀번호 걸린 정부24 생기부 해제용. 서버는 poppler에 인자로만 넘기고 저장하지 않는다.
+      if (extras.pdfPassword) formData.append('pdfPassword', extras.pdfPassword);
 
       const pdfCount = Object.values(files).filter(Boolean).length;
       console.log(`[Upload] 총 ${pdfCount}개 PDF 첨부 (재분석: ${!!extras.pdfTexts}, 부분: ${extras.sectionsToRun?.length || '전체'})`);

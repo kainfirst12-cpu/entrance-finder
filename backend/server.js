@@ -25,25 +25,43 @@ import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
 import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js';
 import { searchAdmissionCases } from './services/searchService.js';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, rmdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 
-// PDF 총 페이지 수 (pdfinfo). 실패하면 0 — 호출부에서 상한만 적용한다.
-function getPdfPageCount(pdfBuffer) {
+// 비밀번호는 사용자 입력이라 셸에 문자열로 붙이면 명령 주입이 된다.
+// poppler 계열은 전부 execFileSync(인자 배열)로 호출해 셸을 아예 거치지 않는다.
+const upwArgs = (password) => (password ? ['-upw', String(password)] : []);
+
+// PDF 총 페이지 수 + 암호화 여부. 정부24 생기부는 기본이 비밀번호 보호라
+// 이걸 구분하지 않으면 "빈 PDF"로 처리돼 근거 없는 리포트가 나간다.
+function inspectPdf(pdfBuffer, password = '') {
   const tmpPdf = join(tmpdir(), `pginfo-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
   try {
     writeFileSync(tmpPdf, pdfBuffer);
-    const out = execSync(`pdfinfo "${tmpPdf}"`, { timeout: 10000 }).toString();
-    const m = /^Pages:\s+(\d+)/m.exec(out);
-    return m ? Number(m[1]) : 0;
+    try {
+      const out = execFileSync('pdfinfo', [...upwArgs(password), tmpPdf], { timeout: 10000 }).toString();
+      const m = /^Pages:\s+(\d+)/m.exec(out);
+      const enc = /^Encrypted:\s+yes/mi.test(out);
+      return { pages: m ? Number(m[1]) : 0, encrypted: enc, needsPassword: false };
+    } catch (e) {
+      const msg = String(e.stderr || e.message || '');
+      // 비번이 없거나 틀리면 poppler가 'Incorrect password'를 낸다.
+      if (/password/i.test(msg)) return { pages: 0, encrypted: true, needsPassword: true };
+      return { pages: 0, encrypted: false, needsPassword: false };
+    }
   } catch {
-    return 0;
+    return { pages: 0, encrypted: false, needsPassword: false };
   } finally {
     try { unlinkSync(tmpPdf); } catch {}
   }
+}
+
+// 기존 호출부 호환용
+function getPdfPageCount(pdfBuffer, password = '') {
+  return inspectPdf(pdfBuffer, password).pages;
 }
 
 // 스캔 생기부는 20~30페이지가 기본이다. 상한을 낮게 잡으면 뒷학년(2·3학년 교과 성적표·세특)이
@@ -58,7 +76,7 @@ const PDF_TEXT_CHAR_CAP = 120000;
 // ── PDF → 이미지 변환 (poppler pdftoppm 사용) ──────────
 // PNG 200DPI는 장당 3~5MB라 페이지가 늘면 요청이 터진다. JPEG 150DPI로 낮춰
 // 화질(표의 숫자·등급 판독)은 유지하면서 전체 페이지를 담을 수 있게 한다.
-async function convertPdfToImages(pdfBuffer, maxPages = 16) {
+async function convertPdfToImages(pdfBuffer, maxPages = 16, password = '') {
   const tmpDir = join(tmpdir(), `pdf-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpDir, { recursive: true });
   const pdfPath = join(tmpDir, 'input.pdf');
@@ -69,15 +87,13 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
     // png는 장당 용량이 커서 해상도를 함께 낮춰야 전체 페이지가 요청에 들어간다.
     let ext = /\.jpe?g$/, fmt = 'jpeg';
     try {
-      execSync(`pdftoppm -jpeg -jpegopt quality=82 -r 150 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
-        timeout: 180000,
-      });
+      execFileSync('pdftoppm', ['-jpeg', '-jpegopt', 'quality=82', '-r', '150', '-l', String(maxPages),
+        ...upwArgs(password), pdfPath, join(tmpDir, 'page')], { timeout: 180000 });
     } catch (jpegErr) {
       console.warn(`[PDF→Image] jpeg 변환 실패 → png 폴백: ${jpegErr.message}`);
       readdirSync(tmpDir).filter(f => f.startsWith('page')).forEach(f => { try { unlinkSync(join(tmpDir, f)); } catch {} });
-      execSync(`pdftoppm -png -r 120 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
-        timeout: 180000,
-      });
+      execFileSync('pdftoppm', ['-png', '-r', '120', '-l', String(maxPages),
+        ...upwArgs(password), pdfPath, join(tmpDir, 'page')], { timeout: 180000 });
       ext = /\.png$/; fmt = 'png';
     }
 
@@ -1276,11 +1292,13 @@ priority 설명:
 app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
   let studentData;
   let reusedPdfTexts = '';
+  let pdfPassword = '';   // 비밀번호 걸린 정부24 생기부용
   let existingResults = null;
   let sectionsToRun = null;
   try {
     studentData = JSON.parse(req.body.studentData);
     if (req.body.pdfTexts) reusedPdfTexts = String(req.body.pdfTexts);
+    if (req.body.pdfPassword) pdfPassword = String(req.body.pdfPassword).trim();
     if (req.body.existingResults) existingResults = JSON.parse(req.body.existingResults);
     if (req.body.sectionsToRun) {
       const parsed = JSON.parse(req.body.sectionsToRun);
@@ -1455,12 +1473,32 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
         const buffer = Buffer.from(pdf.base64, 'base64');
         let text = '';
 
+        // 0차: 암호화 여부 확인. 정부24 생기부는 기본이 비밀번호 보호(보통 생년월일 6자리)라
+        // 이걸 구분하지 않으면 텍스트도 이미지도 못 뽑고 근거 없는 리포트가 조용히 나간다.
+        const info = inspectPdf(buffer, pdfPassword);
+        if (info.needsPassword) {
+          const msg = pdfPassword
+            ? `${pdf.label}: 비밀번호가 맞지 않습니다. 정부24 생기부는 보통 생년월일 6자리(예: 080220)입니다.`
+            : `${pdf.label}: 비밀번호가 걸린 PDF입니다. 업로드 화면의 'PDF 비밀번호'란에 입력한 뒤 다시 분석해 주세요.`;
+          console.warn(`[Analyze] ${msg}`);
+          send({ type: 'warning', step: 0, label: msg, total: 9 });
+          preExtractedPdfText += `[${pdf.label}] 비밀번호가 걸려 있어 내용을 읽지 못했습니다. 이 자료는 분석에 반영되지 않았습니다.\n\n`;
+          // 잠긴 PDF를 그대로 첨부하면 모델도 못 읽으면서 토큰만 태운다. 첨부 대상에서 뺀다.
+          pdf.locked = true;
+          pdf.base64 = '';
+          continue;
+        }
+        if (info.encrypted && pdfPassword) {
+          console.log(`[Analyze] ${pdf.label}: 비밀번호로 복호화 성공 (${info.pages}페이지)`);
+          send({ type: 'progress', step: 0, label: `${pdf.label} 비밀번호 해제 완료 (${info.pages}페이지)`, total: 9 });
+        }
+
         // 1차: pdftotext (poppler) — 스캔 PDF가 아닌 경우 가장 정확
         try {
           const tmpPdf = join(tmpdir(), `analyze-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
           const tmpTxt = tmpPdf.replace('.pdf', '.txt');
           writeFileSync(tmpPdf, buffer);
-          execSync(`pdftotext -enc UTF-8 "${tmpPdf}" "${tmpTxt}"`, { timeout: 10000 });
+          execFileSync('pdftotext', ['-enc', 'UTF-8', ...upwArgs(pdfPassword), tmpPdf, tmpTxt], { timeout: 20000 });
           text = readFileSync(tmpTxt, 'utf-8').trim().slice(0, PDF_TEXT_CHAR_CAP);
           try { unlinkSync(tmpPdf); unlinkSync(tmpTxt); } catch {}
           console.log(`[Analyze] pdftotext: ${pdf.label} → ${text.length}자`);
@@ -1489,12 +1527,12 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
         console.log(`[Analyze] ${pdf.label}: 최종 한글 ${koreanChars}자 / 전체 ${text.length}자`);
 
         // 3차: 텍스트 추출 실패 → 스캔 PDF → 이미지 변환
-        const totalPages = getPdfPageCount(buffer);
+        const totalPages = info.pages || getPdfPageCount(buffer, pdfPassword);
         if (koreanChars < 50) {
           console.warn(`[Analyze] ${pdf.label}: 스캔 PDF로 판단 → 이미지 변환 시도! (총 ${totalPages || '?'}페이지)`);
           send({ type: 'progress', step: 0, label: `${pdf.label} 스캔 PDF ${totalPages || ''}페이지 이미지 변환 중...`, total: 9 });
           try {
-            const images = await convertPdfToImages(buffer, PDF_IMAGE_PAGE_CAP);
+            const images = await convertPdfToImages(buffer, PDF_IMAGE_PAGE_CAP, pdfPassword);
             pdf.images = images;
             pdf.totalPages = totalPages;
             console.log(`[Analyze] ${pdf.label}: ${images.length}/${totalPages || '?'}페이지 이미지 변환 성공`);

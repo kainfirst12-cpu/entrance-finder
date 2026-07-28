@@ -134,6 +134,8 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
   const [selectedMajors, setSelectedMajors] = useState([]);
   const [selectedTracks, setSelectedTracks] = useState([]);   // 희망 전형(복수)
   const [mockExamName, setMockExamName] = useState('');
+  // 정부24 생기부는 기본이 비밀번호 보호(보통 생년월일 6자리)라 입력받아 서버로 넘긴다.
+  const [pdfPassword, setPdfPassword] = useState('');
   // 과목별 점수 — 학년도(등급제)에 따라 행 구성이 다르다.
   // { score: 원점수, standard: 표준점수, percentile: 백분위, grade: 등급, subject: 선택과목명 }
   const [mockSubjects, setMockSubjects] = useState(() => buildMockRows('9등급제'));
@@ -357,6 +359,7 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
           sectionsToRun: resolveSectionsToRun(),
         }
       : {};
+    if (pdfPassword.trim()) extras.pdfPassword = pdfPassword.trim();
     onSubmit(studentData, files, extras);
   };
 
@@ -684,6 +687,23 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
 
             <div className="field full">
               <PdfUploader label={reuseMode ? "생기부 PDF (선택 — 업로드 시 우선 사용)" : "생기부 원본 PDF (핵심)"} fileKey="recordPdf" files={files} onChange={setFile} hint="학교생활기록부 전체 PDF" />
+            </div>
+
+            <div className="field full" style={{marginTop:'8px'}}>
+              <label>PDF 비밀번호 (선택)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="예: 080220 (생년월일 6자리)"
+                value={pdfPassword}
+                onChange={e => setPdfPassword(e.target.value)}
+              />
+              <div className="pdf-hint" style={{marginTop:'6px'}}>
+                정부24에서 발급한 생기부는 대부분 비밀번호가 걸려 있습니다(보통 생년월일 6자리).
+                비밀번호를 입력하면 원본을 그대로 올려도 분석됩니다 — 화면을 캡처하거나 다시 인쇄한
+                사본은 글자를 읽지 못해 정확도가 떨어지니, 되도록 원본을 올려주세요.
+              </div>
             </div>
 
             <div className="field full" style={{marginTop:'8px'}}>
