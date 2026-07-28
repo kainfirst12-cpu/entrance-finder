@@ -17,7 +17,7 @@ async function extractPdfTexts(pdfDocuments) {
     try {
       const buffer = Buffer.from(pdf.base64, 'base64');
       const data = await pdfParse(buffer);
-      texts.push(`[${pdf.label} 내용]\n${data.text.slice(0, 25000)}`);
+      texts.push(`[${pdf.label} 내용]\n${data.text.slice(0, 120000)}`);
     } catch (e) {
       texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
     }
@@ -130,7 +130,9 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 
 === 보고서 구조 원칙 ===
 - 각 단계 내에서 소제목 번호를 사용하라 (예: 1.1, 1.2, 2.1)
-- 자기소개서(자소서)는 2025학년도부터 대입에서 완전 폐지되었으므로 자소서 관련 내용을 절대 언급하지 마라
+- 자기소개서(자소서)는 2025학년도부터 '교육부 소관 일반 대학'의 대입에서 폐지되었으므로, 일반 대학 지원 전략에서는 자소서를 언급하지 마라
+- 다만 과학기술원(KAIST/GIST/DGIST/UNIST), POSTECH, 한국에너지공대는 교육부 소관이 아니어서 자소서(자기소개서·지원동기서)를 요구하는 전형이 있다.
+  이들 대학을 지원 카드에 포함할 때는 '자소서 폐지'라고 쓰지 말고, 해당 대학의 서류 제출 요건을 모집요강에서 확인하도록 안내하라.
 - 면접 대응은 예상 질문과 답변 구조(키워드)만 제시하라`;
 
   const pdfNote = pdfDocuments.length > 0
@@ -190,7 +192,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 | 리스크 | 심각도 | 대응 방안 |
 |--------|--------|----------|` },
     { key: 'roadmap', label: '핵심 리스크 및 대응 방안', step: 6,
-      prompt: `[5단계: 핵심 리스크 및 대응 방안] 학생: ${studentData.name} / ${studentData.grade}학년\n핵심 리스크 3가지를 분석하고 대응 방안을 제시하라. 5.1~5.4 소제목 구조, 리스크별 상세/우려사항/대응방안/면접대응 포함. 자소서는 폐지됨 — 언급 금지.` },
+      prompt: `[5단계: 핵심 리스크 및 대응 방안] 학생: ${studentData.name} / ${studentData.grade}학년\n핵심 리스크 3가지를 분석하고 대응 방안을 제시하라. 5.1~5.4 소제목 구조, 리스크별 상세/우려사항/대응방안/면접대응 포함. 자소서는 일반 대학에서는 폐지됨 — 일반 대학 관련해서는 언급 금지(과기원·POSTECH 등은 예외).` },
     { key: 'recordFeedback', label: '실행 계획', step: 7,
       prompt: `[6단계: 실행 계획] 학생: ${studentData.name} / ${studentData.grade}학년\n3학년 실행 계획을 수립하라. 6.1 월별 실행 계획(${buildPlanMonths(studentData.planStartYm,6).join(", ")} 순서, 주차별 표), 6.2 성적 목표 및 관리 전략(표), 6.3 비교과 활동 체계화, 6.4 독서 및 탐구 계획(표)` },
     { key: 'dashboard', label: '종합 평가 및 권고사항', step: 8,

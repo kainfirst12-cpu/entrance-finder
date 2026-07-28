@@ -37,7 +37,9 @@ const buildSystemPrompt = (knowledgeBase, studentDriveFiles, studentData = {}) =
 - 각 단계 내에서 소제목 번호를 사용하라 (예: 1.1, 1.2, 2.1, 2.2)
 - 소제목은 ### 마크다운 헤더를 사용하라
 - 분석은 '표 → 해석 → 개선방향' 순서로 구성하라
-- 자기소개서(자소서)는 2025학년도부터 대입에서 완전 폐지되었으므로 자소서 관련 내용을 절대 언급하지 마라
+- 자기소개서(자소서)는 2025학년도부터 '교육부 소관 일반 대학'의 대입에서 폐지되었으므로, 일반 대학 지원 전략에서는 자소서를 언급하지 마라
+- 다만 과학기술원(KAIST/GIST/DGIST/UNIST), POSTECH, 한국에너지공대는 교육부 소관이 아니어서 자소서(자기소개서·지원동기서)를 요구하는 전형이 있다.
+  이들 대학을 지원 카드에 포함할 때는 '자소서 폐지'라고 쓰지 말고, 해당 대학의 서류 제출 요건을 모집요강에서 확인하도록 안내하라.
 - 면접 대응은 예상 질문과 답변 구조(키워드)만 제시하라
 - 전문 컨설팅 보고서 수준의 깊이와 구체성을 유지하라
 
@@ -72,7 +74,7 @@ async function extractPdfText(pdfDocuments) {
     try {
       const buffer = Buffer.from(pdf.base64, 'base64');
       const data = await pdfParse(buffer);
-      const truncated = data.text.slice(0, 25000);
+      const truncated = data.text.slice(0, 120000);
       texts.push(`[${pdf.label} 내용]\n${truncated}`);
     } catch (e) {
       texts.push(`[${pdf.label}] PDF 텍스트 추출 실패`);
@@ -493,7 +495,7 @@ export const step5_roadmap = async (systemPrompt, studentData, pdfDocuments, api
 
 - **리스크 상세**: 해당 리스크의 구체적 내용을 서술하라
 - **입학사정관 관점의 우려사항**: 입학사정관이 어떻게 평가할지 분석하라
-- **대응 방안**: 구체적 실행 단계를 제시하라 (자소서는 폐지됨 — 언급 금지)
+- **대응 방안**: 구체적 실행 단계를 제시하라 (일반 대학 자소서는 폐지됨 — 언급 금지, 과기원·POSTECH은 예외)
 - **면접 대응**: 예상 질문 + 답변 구조(키워드)만 제시하라
 
 ### 5.2 리스크 2: (구체적 리스크명)

@@ -12,7 +12,7 @@ const STEP_INFO = [
   { icon: '🎓', label: '종합 대시보드 생성' },
 ];
 
-export default function AnalysisProgress({ steps, currentStep }) {
+export default function AnalysisProgress({ steps, currentStep, warnings = [] }) {
   return (
     <div className="progress-page">
       <div className="progress-header">
@@ -20,6 +20,15 @@ export default function AnalysisProgress({ steps, currentStep }) {
         <h1 className="progress-title">Drive 자료 기반 분석 중...</h1>
         <p className="progress-desc">합격자 사례와 대입 정책 자료를 참조하여 분석하고 있어요</p>
       </div>
+
+      {warnings.length > 0 && (
+        <div className="analysis-warnings">
+          <strong>자료 반영 경고</strong>
+          <ul>
+            {warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* 진행 바 */}
       <div className="progress-bar-wrap">

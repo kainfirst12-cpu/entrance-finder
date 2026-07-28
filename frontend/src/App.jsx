@@ -34,6 +34,8 @@ export default function App() {
   const [analysisData, setAnalysisData] = useState(recovered);
   const partialRef = useRef(null);
   const [progressSteps, setProgressSteps] = useState([]);
+  // 자료 누락 경고(페이지 잘림 등) — 조용히 삼키면 잘린 줄 모르고 리포트가 나간다.
+  const [analysisWarnings, setAnalysisWarnings] = useState([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [formPrefill, setFormPrefill] = useState(null); // JSON 불러오기 시 폼에 미리 채울 데이터
   const [apiKey, setApiKey]           = useState(localStorage.getItem('ef_apikey')    || '');
@@ -78,6 +80,7 @@ export default function App() {
     // extras = { pdfTexts, existingResults, sectionsToRun }
     setView('analyzing');
     setProgressSteps([]);
+    setAnalysisWarnings([]);
     setCurrentStep(0);
 
     const pdfCountInit = Object.values(files).filter(Boolean).length;
@@ -148,6 +151,9 @@ export default function App() {
                 ...prev.filter(s => s.step !== data.step),
                 { step: data.step, label: data.label, total: data.total },
               ]);
+            }
+            if (data.type === 'warning') {
+              setAnalysisWarnings(prev => prev.includes(data.label) ? prev : [...prev, data.label]);
             }
             if (data.type === 'section') {
               // 한 섹션이 완료될 때마다 즉시 누적 + 로컬 저장 (중간에 끊겨도 보존)
@@ -349,7 +355,7 @@ export default function App() {
             onClearPrefill={() => setFormPrefill(null)}
           />
         )}
-        {view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} />}
+        {view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} warnings={analysisWarnings} />}
         {view === 'result' && analysisData && (
           <AnalysisResult
             data={analysisData}

@@ -31,7 +31,33 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 
+// PDF 총 페이지 수 (pdfinfo). 실패하면 0 — 호출부에서 상한만 적용한다.
+function getPdfPageCount(pdfBuffer) {
+  const tmpPdf = join(tmpdir(), `pginfo-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+  try {
+    writeFileSync(tmpPdf, pdfBuffer);
+    const out = execSync(`pdfinfo "${tmpPdf}"`, { timeout: 10000 }).toString();
+    const m = /^Pages:\s+(\d+)/m.exec(out);
+    return m ? Number(m[1]) : 0;
+  } catch {
+    return 0;
+  } finally {
+    try { unlinkSync(tmpPdf); } catch {}
+  }
+}
+
+// 스캔 생기부는 20~30페이지가 기본이다. 상한을 낮게 잡으면 뒷학년(2·3학년 교과 성적표·세특)이
+// 통째로 잘려 AI가 "1학년 내신"을 최종 내신으로, 뒷학년 이수과목을 "미이수"로 단정한다.
+// 이미지 1장당 토큰 비용이 있으므로 무한정 늘리지는 않되, 생기부 전체는 반드시 덮는다.
+const PDF_IMAGE_PAGE_CAP = 40;
+
+// 텍스트 생기부도 마찬가지다. 3개 학년 세특이 다 붙은 생기부는 5~6만자가 예사라
+// 3만자에서 끊으면 딱 2학년 초입에서 잘린다. 컨텍스트가 감당하는 선까지 올린다.
+const PDF_TEXT_CHAR_CAP = 120000;
+
 // ── PDF → 이미지 변환 (poppler pdftoppm 사용) ──────────
+// PNG 200DPI는 장당 3~5MB라 페이지가 늘면 요청이 터진다. JPEG 150DPI로 낮춰
+// 화질(표의 숫자·등급 판독)은 유지하면서 전체 페이지를 담을 수 있게 한다.
 async function convertPdfToImages(pdfBuffer, maxPages = 16) {
   const tmpDir = join(tmpdir(), `pdf-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(tmpDir, { recursive: true });
@@ -39,20 +65,33 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16) {
   writeFileSync(pdfPath, pdfBuffer);
 
   try {
-    execSync(`pdftoppm -png -r 200 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
-      timeout: 60000,
-    });
+    // poppler가 jpeg 없이 빌드된 환경도 있어 실패하면 png로 떨어뜨린다.
+    // png는 장당 용량이 커서 해상도를 함께 낮춰야 전체 페이지가 요청에 들어간다.
+    let ext = /\.jpe?g$/, fmt = 'jpeg';
+    try {
+      execSync(`pdftoppm -jpeg -jpegopt quality=82 -r 150 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
+        timeout: 180000,
+      });
+    } catch (jpegErr) {
+      console.warn(`[PDF→Image] jpeg 변환 실패 → png 폴백: ${jpegErr.message}`);
+      readdirSync(tmpDir).filter(f => f.startsWith('page')).forEach(f => { try { unlinkSync(join(tmpDir, f)); } catch {} });
+      execSync(`pdftoppm -png -r 120 -l ${maxPages} "${pdfPath}" "${join(tmpDir, 'page')}"`, {
+        timeout: 180000,
+      });
+      ext = /\.png$/; fmt = 'png';
+    }
 
     const files = readdirSync(tmpDir)
-      .filter(f => f.startsWith('page') && f.endsWith('.png'))
-      .sort();
+      .filter(f => f.startsWith('page') && ext.test(f))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
     const images = files.map(f => {
       const imgBuffer = readFileSync(join(tmpDir, f));
       return imgBuffer.toString('base64');
     });
 
-    console.log(`[PDF→Image] ${images.length}페이지 변환 완료`);
+    const mb = images.reduce((s, b) => s + b.length, 0) / 1024 / 1024;
+    console.log(`[PDF→Image] ${images.length}페이지 변환 완료 (${fmt}, base64 ${mb.toFixed(1)}MB)`);
     return images;
   } finally {
     try {
@@ -1392,7 +1431,7 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
         // 업로드 PDF가 없어도, 드라이브 학생폴더에서 불러온 생기부를 '학생 원문'으로 주입한다.
         // (이 처리가 없으면 학생 이름만으로 분석 시 AI에 생기부가 안 들어가 '원문 없음'으로 나온다.)
         // reusedPdfTexts 에도 담아 아래 preExtractedPdfText 초기화·pdf.preExtractedText 재설정에서 그대로 쓰이게 한다.
-        reusedPdfTexts = studentDriveFiles.slice(0, 30000);
+        reusedPdfTexts = studentDriveFiles.slice(0, PDF_TEXT_CHAR_CAP);
         pdfDocuments.push({
           label: '드라이브 생기부',
           base64: '',
@@ -1422,7 +1461,7 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
           const tmpTxt = tmpPdf.replace('.pdf', '.txt');
           writeFileSync(tmpPdf, buffer);
           execSync(`pdftotext -enc UTF-8 "${tmpPdf}" "${tmpTxt}"`, { timeout: 10000 });
-          text = readFileSync(tmpTxt, 'utf-8').trim().slice(0, 30000);
+          text = readFileSync(tmpTxt, 'utf-8').trim().slice(0, PDF_TEXT_CHAR_CAP);
           try { unlinkSync(tmpPdf); unlinkSync(tmpTxt); } catch {}
           console.log(`[Analyze] pdftotext: ${pdf.label} → ${text.length}자`);
         } catch (e) {
@@ -1434,7 +1473,7 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
         if (koreanChars1 < 50) {
           try {
             const data = await pdfParseFunc(buffer);
-            const parsed = data.text.slice(0, 30000);
+            const parsed = data.text.slice(0, PDF_TEXT_CHAR_CAP);
             const koreanParsed = (parsed.match(/[가-힣]/g) || []).length;
             if (koreanParsed > koreanChars1) {
               text = parsed;
@@ -1449,24 +1488,42 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
         const koreanChars = (text.match(/[가-힣]/g) || []).length;
         console.log(`[Analyze] ${pdf.label}: 최종 한글 ${koreanChars}자 / 전체 ${text.length}자`);
 
-        // 3차: 텍스트 추출 실패 → 스캔 PDF → 이미지 변환 (200 DPI)
+        // 3차: 텍스트 추출 실패 → 스캔 PDF → 이미지 변환
+        const totalPages = getPdfPageCount(buffer);
         if (koreanChars < 50) {
-          console.warn(`[Analyze] ${pdf.label}: 스캔 PDF로 판단 → 이미지 변환 시도!`);
-          send({ type: 'progress', step: 0, label: `${pdf.label} 스캔 PDF 이미지 변환 중...`, total: 9 });
+          console.warn(`[Analyze] ${pdf.label}: 스캔 PDF로 판단 → 이미지 변환 시도! (총 ${totalPages || '?'}페이지)`);
+          send({ type: 'progress', step: 0, label: `${pdf.label} 스캔 PDF ${totalPages || ''}페이지 이미지 변환 중...`, total: 9 });
           try {
-            const images = await convertPdfToImages(buffer, 12);
+            const images = await convertPdfToImages(buffer, PDF_IMAGE_PAGE_CAP);
             pdf.images = images;
-            console.log(`[Analyze] ${pdf.label}: ${images.length}페이지 이미지 변환 성공`);
-            send({ type: 'progress', step: 0, label: `${pdf.label} ${images.length}페이지 이미지 변환 완료`, total: 9 });
+            pdf.totalPages = totalPages;
+            console.log(`[Analyze] ${pdf.label}: ${images.length}/${totalPages || '?'}페이지 이미지 변환 성공`);
+            if (totalPages && images.length < totalPages) {
+              // 잘렸으면 반드시 알린다. 조용히 자르면 뒷학년 성적·이수과목이 통째로 사라진 채 분석이 나간다.
+              console.warn(`[Analyze] ${pdf.label}: ${totalPages}페이지 중 ${images.length}페이지만 전달 (상한 ${PDF_IMAGE_PAGE_CAP})`);
+              send({ type: 'warning', step: 0, label: `${pdf.label}: 총 ${totalPages}페이지 중 ${images.length}페이지만 분석에 반영됩니다. 나머지는 나눠서 추가 업로드해 주세요.`, total: 9 });
+            } else {
+              send({ type: 'progress', step: 0, label: `${pdf.label} ${images.length}페이지 전체 변환 완료`, total: 9 });
+            }
           } catch (imgErr) {
             console.error(`[Analyze] 이미지 변환 실패: ${pdf.label}`, imgErr.message);
           }
         }
 
         if (koreanChars >= 50) {
-          preExtractedPdfText += `[${pdf.label} 내용]\n${text}\n\n`;
+          const cut = text.length >= PDF_TEXT_CHAR_CAP;
+          if (cut) {
+            console.warn(`[Analyze] ${pdf.label}: 텍스트가 상한(${PDF_TEXT_CHAR_CAP}자)에 걸려 잘렸습니다`);
+            send({ type: 'warning', step: 0, label: `${pdf.label}: 원문이 길어 앞 ${PDF_TEXT_CHAR_CAP}자까지만 분석에 반영됩니다.`, total: 9 });
+          }
+          preExtractedPdfText += `[${pdf.label} 내용]${cut ? ` (주의: 원문 앞 ${PDF_TEXT_CHAR_CAP}자까지만 포함 — 뒤쪽 학년 자료가 누락되었을 수 있음)` : ` (전문 ${text.length}자, 누락 없음)`}\n${text}\n\n`;
         } else if (pdf.images?.length > 0) {
-          preExtractedPdfText += `[${pdf.label}] 스캔 PDF — AI가 첨부 이미지에서 직접 읽어야 함\n\n`;
+          const cov = pdf.totalPages
+            ? (pdf.images.length >= pdf.totalPages
+                ? `총 ${pdf.totalPages}페이지 전부 첨부 — 누락 없음`
+                : `주의: 총 ${pdf.totalPages}페이지 중 앞 ${pdf.images.length}페이지만 첨부됨. 첨부되지 않은 페이지의 내용은 '없음'이 아니라 '확인 불가'로 처리하라`)
+            : `${pdf.images.length}페이지 첨부`;
+          preExtractedPdfText += `[${pdf.label}] 스캔 PDF — AI가 첨부 이미지에서 직접 읽어야 함 (${cov})\n\n`;
         } else {
           preExtractedPdfText += `[${pdf.label}] PDF 처리 실패\n\n`;
         }

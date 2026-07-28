@@ -292,11 +292,23 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
 
   // 표지 수정 모달 열기
   const year = new Date().getFullYear();
+
+  // 대입 학년도는 학년에서 나온다: 고3은 내년, 고2는 내후년, 고1은 3년 뒤.
+  // 학년을 안 보고 무조건 +2로 찍으면 고3 표지에 "2028학년도"가 박혀 나간다.
+  const admissionYear = () => {
+    if (studentData?.entryYear) return studentData.entryYear;
+    const g = String(studentData?.grade || '');
+    if (/3/.test(g)) return year + 1;
+    if (/2/.test(g)) return year + 2;
+    if (/1/.test(g)) return year + 3;
+    return year + 2;
+  };
+
   const openCoverModal = () => {
     setCoverEdit({
       reportTitle: localStorage.getItem('ef_report_title') || 'PATHFINDER REPORT',
       mainTitle: '입시 컨설팅 종합 분석 리포트',
-      subTitle: `${studentData?.entryYear || year + 2}학년도 대입 대비`,
+      subTitle: `${admissionYear()}학년도 대입 대비`,
       studentName: studentData?.name || '',
       studentSchool: `${studentData?.school || ''}${studentData?.grade ? ' / ' + studentData.grade : ''}`,
       studentMajor: studentData?.major || '',
@@ -318,7 +330,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
     const cvMajor = coverEdit.studentMajor || studentData?.major || '';
     const cvTarget = coverEdit.studentTarget || studentData?.targetUniv || '';
     const cvMainTitle = coverEdit.mainTitle || '입시 컨설팅 종합 분석 리포트';
-    const cvSubTitle = coverEdit.subTitle || `${studentData?.entryYear || yr + 2}학년도 대입 대비`;
+    const cvSubTitle = coverEdit.subTitle || `${admissionYear()}학년도 대입 대비`;
 
     // 섹션 타이틀 매핑 (PDF 시안 스타일)
     const sectionTitles = [
