@@ -48,7 +48,7 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
         parts.push({ text: `[${pdf.label} — ${pdf.images.length}페이지 이미지]` });
         for (const imgBase64 of pdf.images) {
           parts.push({
-            inlineData: { mimeType: 'image/png', data: imgBase64 },
+            inlineData: { mimeType: sniffImageMime(imgBase64), data: imgBase64 },
           });
         }
         console.log(`[Gemini] ${pdf.label}: 이미지 ${pdf.images.length}페이지 전달`);
@@ -94,6 +94,16 @@ async function callGemini(systemPrompt, userPrompt, maxTokens = 2000, apiKey, su
     }
   }
   throw new Error('모든 Gemini 모델이 실패했습니다. 잠시 후 다시 시도해주세요.');
+}
+
+// base64 앞머리로 이미지 포맷 판별 — 하드코딩된 png는 jpeg 전송 시 400을 유발한다.
+function sniffImageMime(b64) {
+  const head = String(b64 || '').slice(0, 12);
+  if (head.startsWith('/9j/')) return 'image/jpeg';
+  if (head.startsWith('iVBOR')) return 'image/png';
+  if (head.startsWith('UklGR')) return 'image/webp';
+  if (head.startsWith('R0lGOD')) return 'image/gif';
+  return 'image/png';
 }
 
 export async function runFullAnalysisGemini(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey, options = {}) {

@@ -52,7 +52,7 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
         for (const imgBase64 of pdf.images) {
           contentParts.push({
             type: 'image_url',
-            image_url: { url: `data:image/png;base64,${imgBase64}`, detail: 'high' },
+            image_url: { url: `data:${sniffImageMime(imgBase64)};base64,${imgBase64}`, detail: 'high' },
           });
         }
       }
@@ -82,6 +82,16 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
   params.max_completion_tokens = maxTokens;
   const response = await openai.chat.completions.create(params);
   return stripBoldMarkers(response.choices[0].message.content);
+}
+
+// base64 앞머리로 이미지 포맷 판별 — 하드코딩된 png는 jpeg 전송 시 400을 유발한다.
+function sniffImageMime(b64) {
+  const head = String(b64 || '').slice(0, 12);
+  if (head.startsWith('/9j/')) return 'image/jpeg';
+  if (head.startsWith('iVBOR')) return 'image/png';
+  if (head.startsWith('UklGR')) return 'image/webp';
+  if (head.startsWith('R0lGOD')) return 'image/gif';
+  return 'image/png';
 }
 
 export async function runFullAnalysisGPT(studentData, knowledgeBase, studentDriveFiles, progressCallback, pdfDocuments, apiKey, submodel = 'gpt', options = {}) {

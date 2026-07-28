@@ -83,6 +83,21 @@ async function extractPdfText(pdfDocuments) {
   return texts.join('\n\n');
 }
 
+// base64 앞머리로 이미지 포맷 판별 (jpeg: /9j/, png: iVBOR, webp: UklGR, gif: R0lGOD)
+function sniffImageMime(b64) {
+  const head = String(b64 || '').slice(0, 12);
+  if (head.startsWith('/9j/')) return 'image/jpeg';
+  if (head.startsWith('iVBOR')) return 'image/png';
+  if (head.startsWith('UklGR')) return 'image/webp';
+  if (head.startsWith('R0lGOD')) return 'image/gif';
+  return 'image/png';
+}
+
+// document 타입으로 붙일 수 있는 base64 PDF의 상한.
+// 스캔 생기부는 원본이 40MB를 넘기도 해서 그대로 붙이면 매번 413이 나고,
+// 그때마다 조용히 텍스트 전용으로 떨어져 분석 근거가 사라진다.
+const MAX_DOC_BASE64 = 12 * 1024 * 1024;
+
 // ── PDF 포함 메시지 빌더 (이미지 폴백 지원) ─────────────
 const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') => {
   const fullPrompt = pdfTextFallback
@@ -107,7 +122,9 @@ const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') =
             type: 'image',
             source: {
               type: 'base64',
-              media_type: 'image/png',
+              // media_type을 png로 박아두면 jpeg를 보낼 때 400으로 전부 거부되고
+              // 조용히 텍스트 폴백으로 떨어져 "판독 불가" 리포트가 나온다. 매직바이트로 판별한다.
+              media_type: sniffImageMime(imgBase64),
               data: imgBase64,
             },
           });
@@ -120,6 +137,10 @@ const buildUserMessage = (promptText, pdfDocuments = [], pdfTextFallback = '') =
     let pdfAttached = 0;
     for (const pdf of pdfDocuments) {
       if (!pdf.base64) continue; // 텍스트 전용(재분석 모드)이면 document 첨부 생략
+      if (pdf.base64.length > MAX_DOC_BASE64) {
+        console.warn(`[buildUserMessage] ${pdf.label}: base64 ${(pdf.base64.length / 1024 / 1024).toFixed(1)}MB — 상한 초과로 document 첨부 생략(413 방지)`);
+        continue;
+      }
       content.push({
         type: 'document',
         source: {
@@ -666,9 +687,11 @@ export const runFullAnalysis = async (studentData, knowledgeBase, studentDriveFi
   console.log(`[Analysis] 모드: ${sectionsToRun ? `부분 재분석 (${sectionsToRun.join(', ')})` : '전체 분석(병렬)'}`);
 
   // 이미지 없는 경량 pdfDocuments (텍스트만, 이미지 제거)
+  // 스캔 PDF는 base64도 같이 버린다. 원본이 수십MB라 document로 붙이면 매 단계 413이 나고,
+  // 그때마다 조용히 텍스트 전용으로 떨어져 정작 근거가 사라진다. 스캔은 0단계 추출 텍스트로 간다.
   const pdfDocsLight = pdfDocuments.map(pdf => ({
     label: pdf.label,
-    base64: pdf.base64,
+    base64: (pdf.images?.length > 0 || (pdf.base64 || '').length > MAX_DOC_BASE64) ? '' : pdf.base64,
     preExtractedText: pdf.preExtractedText,
   }));
 
