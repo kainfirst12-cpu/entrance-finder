@@ -121,6 +121,25 @@ export function scoreBlock(studentData = {}) {
   return lines.join('\n');
 }
 
+// 수시 6회 제한의 예외 — 이공계 학생에게는 카드 설계 자체가 달라지는 사실인데
+// 리포트가 이를 언급하지 않아 지원 기회를 통째로 놓치는 경우가 있었다.
+export function sixCardLimitGuide() {
+  return [
+    '=== 수시 지원 횟수 제한과 그 예외 (지원 전략에 반드시 반영) ===',
+    '- 일반 대학(교육부 소관)의 수시 지원은 6회로 제한된다. 지원 카드 6장은 이 대학들로만 구성하라.',
+    '- 다만 과학기술원(KAIST, GIST대학, DGIST, UNIST), POSTECH, 한국에너지공대(KENTECH)는',
+    '  교육부 소관이 아니어서 이 6회 제한에 포함되지 않는다. 6장을 쓰고도 별도로 지원할 수 있다.',
+    '- 따라서 이공계 지망 학생에게는 이 대학들을 "6장 밖 추가 카드"로 따로 묶어 제시하라.',
+    '  6장 안에 넣어 다른 대학의 자리를 차지하게 만들지 마라.',
+    '- 이 대학들은 대체로 수능최저가 없고(POSTECH 일반II 등 일부 예외) 내신을 정량 반영하지 않는 서류 정성평가다.',
+    '  수능최저나 내신 정량 컷 때문에 일반 대학에서 불리한 학생도 지원 자체는 열려 있다는 점을 설명하라.',
+    '  다만 지원자 풀에 과학고·영재고·전국단위 자사고가 두터우므로 합격 기대치는 냉정하게 제시하라.',
+    '- 자기소개서(지원동기서 등) 제출 요건은 대학마다 다르므로 각 모집요강에서 확인하도록 안내하라.',
+    '- 지역 기반 전형도 함께 점검하라. 학생의 고교 소재지에 따라 지역인재전형 자격이 생기며,',
+    '  이는 경쟁 범위가 좁아 같은 내신에서도 유리하다. 자격이 있으면 반드시 카드 후보에 넣어라.',
+  ].join('\n');
+}
+
 // 생기부 판독 규칙 — 리포트가 "1학년 내신 = 최종 내신", "표에서 못 봤으니 미이수"로
 // 단정해 학생에게 잘못 나간 사고가 있었다. 자료 범위와 결론을 분리하도록 못박는다.
 export function recordReadingGuide(studentData = {}) {
@@ -160,6 +179,8 @@ export function studentContextBlock(studentData = {}) {
     scoreBlock(studentData),
     '',
     recordReadingGuide(studentData),
+    '',
+    sixCardLimitGuide(),
     '',
     gradeSystemGuide(studentData.gradeSystem),
     '',
