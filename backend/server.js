@@ -1858,6 +1858,55 @@ app.get('/api/ipgyeol/:unvCd', requireAuth, (req, res) => {
   }
 });
 
+// 입결 콘솔 AI 종합 판정 — 학생 생기부 분석 내용 + 카드 입결 데이터로 학과별 배치 판정
+app.post('/api/ipgyeol/judge', requireAuth, async (req, res) => {
+  const { studentProfile, cards } = req.body || {};
+  if (!Array.isArray(cards) || !cards.length) return res.status(400).json({ success: false, message: '판정할 카드가 없습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  const systemPrompt = `당신은 대한민국 수시 배치 전문 입시 컨설턴트입니다.
+학생의 생기부 분석 내용(내신·비교과·학업역량)과 각 지원 후보(대학·학과·전형)의 공식 입결 데이터를 종합해
+후보별 배치 판정을 내립니다.
+
+[판정 기준]
+- 4단계: 안정(합격 가능성 높음) / 적정(무난히 노려볼 수준) / 소신(다소 도전적) / 위험(상당히 도전적)
+- 교과전형: 내신 등급 대비 70%컷·경쟁률·충원 흐름 중심
+- 종합전형: 내신뿐 아니라 생기부 분석에 나타난 비교과·전공적합성·학업역량의 강약을 반드시 반영
+- 수능최저가 있으면 충족 가능성도 고려(분석 내용에 모의고사 정보가 있으면 활용)
+
+[출력 — 반드시 JSON 배열만. 다른 텍스트·코드펜스 금지]
+[{"key":"<카드 key 그대로>","verdict":"안정|적정|소신|위험","reason":"판정 근거 한 문장(40자 이내)"}]`;
+
+  const userMsg = `[학생 정보]
+${JSON.stringify({ name: studentProfile?.name, school: studentProfile?.school, grade: studentProfile?.grade, major: studentProfile?.major, 내신: studentProfile?.gpa }, null, 1)}
+
+[생기부 분석 발췌]
+${String(studentProfile?.analysisExcerpt || '(분석 자료 없음 — 내신과 입결 데이터만으로 판정)').slice(0, 9000)}
+
+[지원 후보 카드 — key를 그대로 돌려줄 것]
+${JSON.stringify(cards.slice(0, 15), null, 1)}`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 4000 });
+    const m = String(reply).match(/\[[\s\S]*\]/);
+    if (!m) throw new Error('AI 응답에서 판정 JSON을 찾지 못했습니다');
+    const judgments = JSON.parse(m[0]).filter((j) => j && j.key && j.verdict);
+    sendDone({ success: true, judgments });
+  } catch (err) {
+    console.error('[ipgyeol/judge] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
 // ── 로그인 (코드 기반) ────────────────────────────────
 // - 관리자: ADMIN_CODE(환경변수) 또는 기존 APP_PASSWORD
 // - 이용자: 관리자가 발급한 코드 (DB 조회)

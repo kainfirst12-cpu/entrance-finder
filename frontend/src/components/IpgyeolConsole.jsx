@@ -15,14 +15,56 @@ async function api(path, opts = {}) {
 const ADIGA_URL = 'https://www.adiga.kr/uct/acd/ade/criteriaAndResultView.do?menuId=PCUCTACD3100';
 const PIN_KEY = 'ef_ipgyeol_pins';
 
+// SSE(keepalive) 응답 처리
+async function postForResult(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('text/event-stream')) return res.json();
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', result = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) { try { result = JSON.parse(line.slice(6)); } catch {} }
+    }
+  }
+  return result || { success: false, message: '서버 응답이 비었습니다' };
+}
+
+// 학생 기록(생기부 분석 등) 본문에서 내신 등급 자동 인식
+function extractGradeFromRecords(s) {
+  const texts = (s.records || []).map((r) => r.content || '').join('\n');
+  const patterns = [
+    /(?:전\s*교과|전체|평균)\s*(?:내신|등급)[^0-9\n]{0,10}([1-9](?:\.\d{1,2})?)\s*등급/,
+    /내신[^0-9\n]{0,12}([1-9](?:\.\d{1,2})?)\s*등급/,
+    /(?:평균|전교과)\s*([1-9]\.\d{1,2})\s*등급/,
+  ];
+  for (const p of patterns) {
+    const m = texts.match(p);
+    if (m) { const v = parseFloat(m[1]); if (v >= 1 && v <= 9) return v; }
+  }
+  return null;
+}
+
+const VCOLORS = {
+  '안정': { color: '#1a7f4e', bg: '#e6f6ee', border: '#bfe8d2' },
+  '적정': { color: '#1d6fd6', bg: '#e8f1fc', border: '#c3dcf7' },
+  '소신': { color: '#b7791f', bg: '#fdf3e2', border: '#f3ddb0' },
+  '위험': { color: '#d64545', bg: '#fdeaea', border: '#f5c6c6' },
+};
+const vcolor = (label) => VCOLORS[label] || { color: '#5c6b7c', bg: '#f2f5f9', border: '#e3e9f1' };
+
 // 판정: diff = 70%컷 - 학생등급 (양수 = 학생이 컷보다 좋음)
 function verdict(cut, g) {
   if (cut == null) return null;
   const diff = cut - g;
-  if (diff >= 0.35) return { label: '안정', color: '#1a7f4e', bg: '#e6f6ee', border: '#bfe8d2' };
-  if (diff >= -0.05) return { label: '적정', color: '#1d6fd6', bg: '#e8f1fc', border: '#c3dcf7' };
-  if (diff >= -0.4) return { label: '소신', color: '#b7791f', bg: '#fdf3e2', border: '#f3ddb0' };
-  return { label: '위험', color: '#d64545', bg: '#fdeaea', border: '#f5c6c6' };
+  const label = diff >= 0.35 ? '안정' : diff >= -0.05 ? '적정' : diff >= -0.4 ? '소신' : '위험';
+  return { label, ...VCOLORS[label] };
 }
 
 // 최근 연도 값 + 직전 연도 대비 증감
@@ -96,7 +138,7 @@ function buildSnapshot(entry, baseYear) {
   return { cut70: cut.v, cutYear: cut.y, rate: rate.v, fill: fill.v, recruit: recruit.v, score70: score.v, pct70: pct.v, series };
 }
 
-function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, saved, onDetail }) {
+function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, saved, onDetail, ai }) {
   const { univ, entry, sunung, jonghapSiblings } = card;
   const yearsWindow = [];
   for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWindow.push(String(y));
@@ -126,6 +168,12 @@ function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, s
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           {v && <span style={{ ...S.badge, color: v.color, background: v.bg, borderColor: v.border }}>배치<br /><b style={{ fontSize: 13 }}>{v.label}</b></span>}
+          {ai && (
+            <span style={{ ...S.badge, color: vcolor(ai.verdict).color, background: vcolor(ai.verdict).bg, borderColor: vcolor(ai.verdict).border }}
+              title={ai.reason || 'AI 종합 판정 (생기부 분석 기반)'}>
+              AI<br /><b style={{ fontSize: 13 }}>{ai.verdict}</b>
+            </span>
+          )}
           <button style={S.pinBtn} title={pinned ? '고정 해제' : '카드 고정(다른 대학과 비교)'} onClick={() => onPin(card)}>{pinned ? '📌' : '📍'}</button>
         </div>
       </div>
@@ -144,6 +192,8 @@ function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, s
         <div style={S.metric}><div style={S.mLabel}>환산 득점률</div><div style={S.mValue}>{pct.v != null ? `${pct.v}%` : '—'} <Delta d={pct.d} digits={1} /></div></div>
         <div style={S.metric}><div style={S.mLabel}>모집인원</div><div style={S.mValue}>{recruit.v != null ? `${recruit.v}명` : '—'} <Delta d={recruit.d} digits={0} /></div></div>
       </div>
+
+      {ai?.reason && <div style={S.aiReason}>🤖 {ai.reason}</div>}
 
       {jonghapSiblings?.length > 0 && (
         <div style={S.sibBox}>
@@ -301,6 +351,9 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [student, setStudent] = useState(null);
   const [placements, setPlacements] = useState([]);
   const [savingKey, setSavingKey] = useState('');
+  const [gradeSource, setGradeSource] = useState('');
+  const [aiJudgments, setAiJudgments] = useState({}); // cardKey → {verdict, reason}
+  const [aiJudging, setAiJudging] = useState(false);
 
   useEffect(() => {
     api('/api/ipgyeol/list')
@@ -313,14 +366,65 @@ export default function IpgyeolConsole({ onAuthError }) {
 
   function selectStudent(id) {
     const s = students.find((x) => String(x.id) === String(id)) || null;
-    setStudent(s); setPlacements([]);
+    setStudent(s); setPlacements([]); setAiJudgments({}); setGradeSource('');
     if (!s) return;
-    // 최근 학기 내신이 등록돼 있으면 슬라이더에 자동 반영
+    // 내신 자동 반영: ① 보드에 입력한 성적 → ② 분석 기록 본문에서 인식
     const gpas = (s.grades || []).filter((g) => g.gpa != null);
-    if (gpas.length) setGrade(Math.min(6, Math.max(1, Number(gpas[gpas.length - 1].gpa))));
+    if (gpas.length) {
+      setGrade(Math.min(9, Math.max(1, Number(gpas[gpas.length - 1].gpa))));
+      setGradeSource(`보드 성적(${gpas[gpas.length - 1].term})에서 내신 자동 반영`);
+    } else {
+      const extracted = extractGradeFromRecords(s);
+      if (extracted != null) {
+        setGrade(extracted);
+        setGradeSource('생기부 분석 기록에서 내신 자동 인식');
+      } else {
+        setGradeSource('기록에서 내신을 찾지 못함 — 직접 입력해 주세요');
+      }
+    }
     api(`/api/board/students/${s.id}/placements`)
       .then((j) => { if (j.success) setPlacements(j.placements || []); })
       .catch((e) => { if (e.auth) onAuthError?.(); });
+  }
+
+  // ── AI 종합 판정 (생기부 분석 기반) ──
+  async function runAiJudge() {
+    if (!student || !detail) return;
+    const visible = [...pins.filter((p) => p.univ.unvCd === detail.unvCd), ...unpinnedCards].slice(0, 12);
+    if (!visible.length) { setError('판정할 카드가 없습니다. 대학을 선택하고 전형을 확인하세요.'); return; }
+    const apiKeys = {
+      claude: localStorage.getItem('ef_apikey'), gemini: localStorage.getItem('ef_geminikey'), gpt: localStorage.getItem('ef_gptkey'),
+    };
+    const model = localStorage.getItem('ef_model') || 'claude';
+    const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model === 'o3' || model === 'o4-mini' ? 'gpt' : 'claude';
+    const apiKey = apiKeys[group];
+    if (!apiKey) { setError('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
+    // 최신 생기부 분석 기록 발췌
+    const analysisRec = (student.records || []).find((r) => r.type === '생기부 분석' && r.content) || (student.records || []).find((r) => r.content);
+    setAiJudging(true); setError('');
+    try {
+      const d = await postForResult(`${API_BASE}/api/ipgyeol/judge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model, Authorization: `Bearer ${token()}` },
+        body: JSON.stringify({
+          studentProfile: {
+            name: student.name, school: student.school, grade: student.grade, major: student.major,
+            gpa: grade, analysisExcerpt: analysisRec?.content || '',
+          },
+          cards: visible.map((c) => {
+            const snap = buildSnapshot(c.entry, baseYear);
+            return { key: c.key, univ: c.univ.name, dept: c.entry.dept, track: c.entry.track, typeName: c.entry.typeName,
+              cut70: snap.cut70, cutYear: snap.cutYear, trend: snap.series, rate: snap.rate, fill: snap.fill, recruit: snap.recruit,
+              sunung: c.sunung?.text?.slice(0, 150) || null };
+          }),
+        }),
+      });
+      if (!d.success) throw new Error(d.message || 'AI 판정 실패');
+      const map = {};
+      d.judgments.forEach((j) => { map[j.key] = { verdict: j.verdict, reason: j.reason || '' }; });
+      setAiJudgments(map);
+    } catch (e) { setError('AI 판정 오류: ' + e.message); }
+    finally { setAiJudging(false); }
   }
 
   async function savePlacement(card) {
@@ -328,6 +432,8 @@ export default function IpgyeolConsole({ onAuthError }) {
     setSavingKey(card.key);
     try {
       const snap = buildSnapshot(card.entry, baseYear);
+      const ai = aiJudgments[card.key];
+      if (ai) { snap.aiVerdict = ai.verdict; snap.aiReason = ai.reason; }
       const v = verdict(snap.cut70, grade);
       // 같은 (대학·학과·전형) 기존 기록은 덮어쓰기
       const dup = placements.find((p) => p.unv_cd === card.univ.unvCd && p.dept === card.entry.dept
@@ -453,6 +559,7 @@ export default function IpgyeolConsole({ onAuthError }) {
                 style={S.gradeInput} />
               <span style={{ fontSize: 12, fontWeight: 600, color: '#5c6b7c' }}>등급</span>
             </div>
+            {gradeSource && <span style={{ fontSize: 11, color: '#8492a5' }}>{gradeSource}</span>}
           </div>
           <div style={S.ctrlGroup}>
             <span style={S.ctrlLabel}>기준 연도</span>
@@ -500,6 +607,10 @@ export default function IpgyeolConsole({ onAuthError }) {
           <div style={S.plBox}>
             <div style={S.plHead}>
               🎯 {student.name} 학생의 배치 기록 <span style={S.plCount}>({placements.length}건)</span>
+              <button style={S.aiBtn} onClick={runAiJudge} disabled={aiJudging || !detail}
+                title="학생의 생기부 분석 내용과 카드의 입결 데이터를 종합해 AI가 학과별 배치를 판정합니다">
+                {aiJudging ? '🤖 AI 판정 중…' : '🤖 생기부 기반 AI 종합 판정'}
+              </button>
               <span style={S.plHint}>카드의 💾 버튼으로 추가 · 내신 슬라이더를 움직이면 현재 기준 재평가가 표시됩니다</span>
             </div>
             {!placements.length && <div style={S.plEmpty}>아직 저장된 배치가 없습니다. 아래 카드에서 💾 버튼으로 저장하세요.</div>}
@@ -516,6 +627,10 @@ export default function IpgyeolConsole({ onAuthError }) {
                     return (
                       <div key={p.id} style={S.plRow}>
                         {savedV && <span style={{ ...S.plChip, color: savedV.color, background: savedV.bg, borderColor: savedV.border }}>{savedV.label}</span>}
+                        {snap.aiVerdict && (
+                          <span style={{ ...S.plChip, color: vcolor(snap.aiVerdict).color, background: vcolor(snap.aiVerdict).bg, borderColor: vcolor(snap.aiVerdict).border }}
+                            title={snap.aiReason || ''}>AI {snap.aiVerdict}</span>
+                        )}
                         <span style={S.plName}>
                           <b>{p.univ_name.replace(/\[.*\]$/, '')}</b> {p.dept} <span style={S.plType}>{p.track}({(p.type_name || '').replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '')})</span>
                         </span>
@@ -545,7 +660,8 @@ export default function IpgyeolConsole({ onAuthError }) {
             <div style={S.grid}>
               {pins.map((c) => (
                 <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned
-                  student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail} />
+                  student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail}
+                  ai={aiJudgments[c.key]} />
               ))}
             </div>
           </>
@@ -561,7 +677,8 @@ export default function IpgyeolConsole({ onAuthError }) {
           <div style={S.grid}>
             {unpinnedCards.slice(0, limit).map((c) => (
               <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned={false}
-                student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail} />
+                student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail}
+                ai={aiJudgments[c.key]} />
             ))}
           </div>
         )}
@@ -618,6 +735,8 @@ const S = {
   plType: { color: '#8492a5', fontSize: 11.5 },
   plMeta: { color: '#98a4b3', fontSize: 11.5 },
   plDel: { marginLeft: 'auto', border: 'none', background: 'transparent', color: '#c2cbd8', cursor: 'pointer', fontSize: 13, padding: '0 4px' },
+  aiBtn: { border: '1px solid #c9b8f0', background: '#f4effc', color: '#6b46c1', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  aiReason: { marginTop: 7, fontSize: 11.5, color: '#6b46c1', background: '#f4effc', border: '1px solid #e5dcf7', borderRadius: 8, padding: '5px 9px', lineHeight: 1.5 },
   segBtn: { border: '1px solid #d7dfea', background: '#fff', color: '#3d4a5c', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   segOn: { background: '#2b6fe3', border: '1px solid #2b6fe3', color: '#fff' },
   searchRow: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 },
