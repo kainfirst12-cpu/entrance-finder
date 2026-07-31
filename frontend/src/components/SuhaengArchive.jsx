@@ -18,7 +18,10 @@ async function api(path, opts = {}) {
 async function postForResult(url, opts) {
   const res = await fetch(url, opts);
   const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('text/event-stream')) return res.json();
+  if (!ct.includes('text/event-stream')) {
+    try { return await res.json(); }
+    catch { return { success: false, message: `서버 응답 오류 (HTTP ${res.status}) — 서버 업데이트 적용 중일 수 있습니다. 잠시 후 다시 시도해주세요.` }; }
+  }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '', result = null;

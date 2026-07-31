@@ -18,7 +18,10 @@ async function api(path, opts = {}) {
 async function postForResult(url, opts) {
   const res = await fetch(url, opts);
   const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('text/event-stream')) return res.json();
+  if (!ct.includes('text/event-stream')) {
+    try { return await res.json(); }
+    catch { return { success: false, message: `서버 응답 오류 (HTTP ${res.status}) — 서버 업데이트 적용 중일 수 있습니다. 잠시 후 다시 시도해주세요.` }; }
+  }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '', result = null;
@@ -253,8 +256,13 @@ export default function StudentList({ onNewAnalysis, onAuthError }) {
                           <span style={{ color: '#6b7d8a', fontSize: 11.5 }}>{String(r.created_at).slice(0, 10)}</span>
                           <span style={{ color: '#5b86d6', fontSize: 11.5 }}>{openRec === r.id ? '닫기' : '보기'}</span>
                         </div>
-                        {openRec === r.id && r.content && (
-                          <div style={S.recContent} dangerouslySetInnerHTML={{ __html: mdToHtml(r.content) }} />
+                        {openRec === r.id && (
+                          r.content
+                            ? <div style={S.recContent} dangerouslySetInnerHTML={{ __html: mdToHtml(r.content) }} />
+                            : <div style={{ ...S.recContent, color: '#6b7d8a' }}>
+                                {r.detail ? r.detail : '저장된 본문이 없는 기록입니다.'}
+                                {r.type === '입시상담' && ' — 상담 화면에서 학생을 선택한 뒤 💾 대화 저장을 누르면 전체 대화가 함께 저장됩니다.'}
+                              </div>
                         )}
                       </div>
                     ))}
