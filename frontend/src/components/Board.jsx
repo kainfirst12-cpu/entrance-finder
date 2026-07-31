@@ -273,6 +273,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
   const [rType, setRType] = useState('생기부 분석'); const [rTitle, setRTitle] = useState(''); const [rContent, setRContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [expandedRec, setExpandedRec] = useState(null);
+  const [viewRec, setViewRec] = useState(null); // 큰 화면 본문 뷰어
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState('');
   const fileRef = useRef(null);
@@ -419,7 +420,8 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
               <div style={S.gradeRow}>
                 <span style={S.recType}>{r.type}</span>
                 <span style={{ flex: 1 }}>{r.title}</span>
-                {r.content ? <button style={S.viewBtn} onClick={() => setExpandedRec(expandedRec === r.id ? null : r.id)}>{expandedRec === r.id ? '닫기' : '내용 보기'}</button> : null}
+                {r.content ? <button style={S.viewBtn} onClick={() => setExpandedRec(expandedRec === r.id ? null : r.id)}>{expandedRec === r.id ? '닫기' : '미리 보기'}</button> : null}
+                {r.content ? <button style={S.viewBtn} onClick={() => setViewRec(r)}>🔍 크게 보기</button> : null}
                 <span style={{ color: '#6b7d8a', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
                 <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
               </div>
@@ -461,6 +463,26 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
           <button style={S.saveBtn} onClick={save} disabled={saving}>{saving ? '저장 중...' : '저장'}</button>
         </div>
       </div>
+
+      {/* 기록 본문 큰 화면 뷰어 */}
+      {viewRec && (
+        <div style={S.viewerOverlay} onClick={(e) => { e.stopPropagation(); setViewRec(null); }}>
+          <div style={S.viewerBox} onClick={(e) => e.stopPropagation()}>
+            <div style={S.viewerHead}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={S.recType}>{viewRec.type}</span>
+                <b style={{ color: '#e8eef3', fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{viewRec.title}</b>
+                <span style={{ color: '#6b7d8a', fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(viewRec.created_at).toLocaleDateString('ko-KR')}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={S.viewBtn} onClick={() => navigator.clipboard.writeText(viewRec.content)}>복사</button>
+                <button style={S.viewBtn} onClick={() => setViewRec(null)}>닫기 ✕</button>
+              </div>
+            </div>
+            <div style={S.viewerBody} dangerouslySetInnerHTML={{ __html: mdToHtml(viewRec.content) }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -502,6 +524,10 @@ const STYLES = {
   addCancel: { flex: 1, background: '#131c26', color: '#9db0bd', border: '1px solid #d8d5cc', borderRadius: 7, padding: '6px', cursor: 'pointer', fontSize: 13 },
   // 상세 모달
   overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 1000, overflowY: 'auto', padding: '40px 16px' },
+  viewerOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 18 },
+  viewerBox: { background: '#141f2b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, width: 'min(1150px, 96vw)', height: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 70px rgba(0,0,0,0.5)' },
+  viewerHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid rgba(255,255,255,0.09)' },
+  viewerBody: { flex: 1, overflowY: 'auto', padding: '18px 26px', color: '#dbe4ec', fontSize: 14.5, lineHeight: 1.85 },
   modal: { background: '#16212e', borderRadius: 16, padding: 24, width: 560, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
   modalHead: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 },
   titleInput: { flex: 1, fontSize: 19, fontWeight: 700, border: 'none', borderBottom: '2px solid #2a3a48', padding: '4px 2px', outline: 'none', color: '#e8eef3', background: 'transparent' },

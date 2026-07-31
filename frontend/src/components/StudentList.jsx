@@ -86,6 +86,7 @@ export default function StudentList({ onNewAnalysis, onAuthError }) {
   // 카드 확장/기록 추가/브리핑
   const [openId, setOpenId] = useState(null);
   const [openRec, setOpenRec] = useState(null);
+  const [viewRec, setViewRec] = useState(null); // 큰 화면 본문 뷰어
   const [rec, setRec] = useState({ type: '수행평가', title: '', content: '' });
   const [briefingId, setBriefingId] = useState(null);
 
@@ -255,6 +256,10 @@ export default function StudentList({ onNewAnalysis, onAuthError }) {
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
                           <span style={{ color: '#6b7d8a', fontSize: 11.5 }}>{String(r.created_at).slice(0, 10)}</span>
                           <span style={{ color: '#5b86d6', fontSize: 11.5 }}>{openRec === r.id ? '닫기' : '보기'}</span>
+                          {r.content && (
+                            <span style={{ color: '#8fb8f0', fontSize: 11.5, fontWeight: 700 }}
+                              onClick={(e) => { e.stopPropagation(); setViewRec(r); }}>🔍 크게</span>
+                          )}
                         </div>
                         {openRec === r.id && (
                           r.content
@@ -285,6 +290,26 @@ export default function StudentList({ onNewAnalysis, onAuthError }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 기록 본문 큰 화면 뷰어 */}
+      {viewRec && (
+        <div style={S.viewerOverlay} onClick={() => setViewRec(null)}>
+          <div style={S.viewerBox} onClick={(e) => e.stopPropagation()}>
+            <div style={S.viewerHead}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={S.recType}>{viewRec.type}</span>
+                <b style={{ color: '#e8eef3', fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{viewRec.title}</b>
+                <span style={{ color: '#6b7d8a', fontSize: 12, whiteSpace: 'nowrap' }}>{String(viewRec.created_at).slice(0, 10)}</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={S.smBtn} onClick={() => navigator.clipboard.writeText(viewRec.content)}>복사</button>
+                <button style={S.smBtn} onClick={() => setViewRec(null)}>닫기 ✕</button>
+              </div>
+            </div>
+            <div style={S.viewerBody} dangerouslySetInnerHTML={{ __html: mdToHtml(viewRec.content) }} />
+          </div>
         </div>
       )}
     </div>
@@ -318,4 +343,8 @@ const S = {
   recType: { fontSize: 10.5, fontWeight: 700, color: '#9db0bd', border: '1px solid rgba(255,255,255,0.16)', borderRadius: 5, padding: '1px 6px', whiteSpace: 'nowrap' },
   recContent: { background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 9, padding: '10px 14px', fontSize: 12.5, lineHeight: 1.7, color: '#cfd8e0', maxHeight: 300, overflowY: 'auto', margin: '4px 0 8px' },
   addRec: { marginTop: 8, borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: 8 },
+  viewerOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 18 },
+  viewerBox: { background: '#141f2b', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, width: 'min(1150px, 96vw)', height: '92vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 70px rgba(0,0,0,0.5)' },
+  viewerHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid rgba(255,255,255,0.09)' },
+  viewerBody: { flex: 1, overflowY: 'auto', padding: '18px 26px', color: '#dbe4ec', fontSize: 14.5, lineHeight: 1.85 },
 };
