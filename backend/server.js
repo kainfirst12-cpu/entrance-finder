@@ -10,6 +10,8 @@ import {
   addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
   upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
   listPlacements, addPlacement, deletePlacement, getPlacementOwner,
+  listSuhaeng, getSuhaeng, createSuhaeng, deleteSuhaeng, getSuhaengOwner,
+  setStudentCode, getStudentByCode,
 } from './services/boardStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
@@ -761,6 +763,112 @@ app.post('/api/assessment/extract', upload.array('files', 10), async (req, res) 
   }
 });
 
+// ══════════════════════════════════════════════════════
+// 수행평가 아카이브 — 업로드 자료 AI 정리 → 분야·주제·학교별 보관·재활용
+// ══════════════════════════════════════════════════════
+
+// 업로드 자료(추출 텍스트) → AI가 상세 정리 + 분류 필드 추출
+app.post('/api/suhaeng/analyze', requireAuth, async (req, res) => {
+  const { text, filename } = req.body || {};
+  if (!text?.trim()) return res.status(400).json({ success: false, message: '분석할 텍스트가 없습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  const systemPrompt = `당신은 학원 수행평가 자료를 아카이브로 정리하는 전문 조교입니다.
+업로드된 수행평가 자료(과제 안내문, 학생 결과물, 채점 기준 등)를 나중에 다른 학생 지도에 재활용할 수 있도록 상세히 정리합니다.
+
+[출력 — 반드시 아래 형식. 첫 6줄은 분류 메타데이터, 그 뒤 정리 본문]
+TITLE: (자료를 대표하는 짧은 제목)
+SCHOOL: (자료에서 확인되는 학교명, 없으면 빈칸)
+SUBJECT: (과목/분야 — 예: 국어, 수학, 통합과학, 영어)
+TOPIC: (핵심 주제 한 줄)
+GRADE: (학년 — 예: 고1, 중3, 확인 안 되면 빈칸)
+KIND: (유형 — 보고서/글쓰기/발표/실험보고서/포트폴리오 등)
+
+## 자료 개요
+(무슨 자료인지, 어떤 과제였는지 2~4문장)
+## 과제 요구사항 정리
+(분량·형식·평가 기준 등 확인되는 요구사항. 표가 적절하면 마크다운 표)
+## 내용 상세 정리
+(자료의 핵심 내용을 구조적으로 정리 — 목차·논리 전개·사용된 근거·데이터 등)
+## 재활용 포인트
+(다른 학생을 미리 준비시킬 때 활용할 수 있는 포인트: 자주 나오는 평가 요소, 고득점 요령, 보완할 점)
+[원칙] 이모지 금지, 합니다체, 사실만 정리(추측은 '추정'으로 표시).`;
+  const userMsg = `[파일명] ${filename || '업로드 자료'}\n\n[자료 전문]\n${String(text).slice(0, 50000)}`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 12000 });
+    // 메타데이터 6줄 파싱
+    const meta = {};
+    for (const [key, field] of [['TITLE', 'title'], ['SCHOOL', 'school'], ['SUBJECT', 'subject'], ['TOPIC', 'topic'], ['GRADE', 'grade'], ['KIND', 'kind']]) {
+      const m = reply.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
+      meta[field] = (m?.[1] || '').trim();
+    }
+    const content = reply.replace(/^(TITLE|SCHOOL|SUBJECT|TOPIC|GRADE|KIND):.*$\n?/gm, '').trim();
+    sendDone({ success: true, meta, content });
+  } catch (err) {
+    console.error('[suhaeng/analyze] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// 아카이브 CRUD (선생님별 분리)
+app.get('/api/suhaeng', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    res.json({ success: true, items: await listSuhaeng(req.user.userId, { q: req.query.q, school: req.query.school, subject: req.query.subject }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/suhaeng', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    res.json({ success: true, item: await createSuhaeng(req.user.userId, req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.get('/api/suhaeng/:id', requireAuth, async (req, res) => {
+  try {
+    const item = await getSuhaeng(Number(req.params.id));
+    if (!item) return res.status(404).json({ success: false, message: '자료 없음' });
+    if (req.user.role !== 'admin' && item.owner_id !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, item });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/suhaeng/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getSuhaengOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteSuhaeng(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 아카이브 자료를 학생에게 배정 (미리 준비용)
+app.post('/api/suhaeng/:id/assign', requireAuth, async (req, res) => {
+  try {
+    const item = await getSuhaeng(Number(req.params.id));
+    if (!item) return res.status(404).json({ success: false, message: '자료 없음' });
+    if (req.user.role !== 'admin' && item.owner_id !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    const studentId = Number(req.body.studentId);
+    if (!(await canEditStudent(req, studentId))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    const prefix = req.body.mode === 'prepare' ? '[미리 준비] ' : '';
+    const record = await addRecord(studentId, {
+      type: '수행평가', title: `${prefix}${item.title}${item.school ? ` (${item.school})` : ''}`,
+      detail: [item.subject, item.topic].filter(Boolean).join(' · '),
+      content: item.content,
+    });
+    res.json({ success: true, record });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 수행평가/분석 결과 → Word(.docx) 다운로드 ──────────────
 app.post('/api/assessment/docx', async (req, res) => {
   try {
@@ -907,6 +1015,36 @@ app.delete('/api/board/placements/:id', requireAuth, async (req, res) => {
     if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
     await deletePlacement(Number(req.params.id));
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 셀프 열람 코드 발급/해제 — 학생이 코드만으로 본인 배정 내용을 봄
+app.post('/api/board/students/:id/code', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    const sid = Number(req.params.id);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '권한 없음' });
+    const code = 'S' + crypto.randomBytes(4).toString('hex').toUpperCase(); // 예: S3F9A2C1B
+    await setStudentCode(sid, code);
+    res.json({ success: true, code });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/board/students/:id/code', requireAuth, async (req, res) => {
+  try {
+    const sid = Number(req.params.id);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '권한 없음' });
+    await setStudentCode(sid, null);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 공개 조회 — 코드 자체가 인증 (읽기 전용)
+app.get('/api/student-view/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    if (!/^S[0-9A-F]{8}$/.test(code)) return res.status(400).json({ success: false, message: '유효하지 않은 코드 형식입니다' });
+    const data = await getStudentByCode(code);
+    if (!data) return res.status(404).json({ success: false, message: '해당 코드의 학생을 찾을 수 없습니다' });
+    res.json({ success: true, ...data });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

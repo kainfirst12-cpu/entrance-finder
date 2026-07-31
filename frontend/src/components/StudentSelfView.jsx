@@ -1,0 +1,164 @@
+import { useState } from 'react';
+import { API_BASE } from '../apiBase';
+
+// 학생 셀프 열람 — 선생님이 발급한 열람 코드만으로 본인 배정 내용을 봄 (읽기 전용)
+// 로그인 화면에서 진입. 토큰/계정 불필요 (코드 자체가 인증).
+
+function mdPreview(md) {
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  const lines = String(md || '').replace(/\r\n/g, '\n').split('\n');
+  let html = '', i = 0;
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (!t) { i++; continue; }
+    if (t.startsWith('|')) {
+      const block = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) { block.push(lines[i]); i++; }
+      const rows = block.filter(l => !/^\s*\|?[\s:|-]+\|?\s*$/.test(l));
+      html += '<table style="border-collapse:collapse;width:100%;margin:8px 0">';
+      rows.forEach((r, ri) => {
+        const cells = r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        html += '<tr>' + cells.map(c =>
+          `<${ri === 0 ? 'th' : 'td'} style="border:1px solid #d7dfea;padding:6px 9px;text-align:left;background:${ri === 0 ? '#f2f5f9' : '#fff'}">${inline(c)}</${ri === 0 ? 'th' : 'td'}>`).join('') + '</tr>';
+      });
+      html += '</table>';
+      continue;
+    }
+    const h = t.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { html += `<h${h[1].length + 1} style="margin:14px 0 6px">${inline(h[2])}</h${h[1].length + 1}>`; i++; continue; }
+    const b = t.match(/^[-*]\s+(.*)$/);
+    if (b) { html += `<div style="margin:2px 0 2px 14px">• ${inline(b[1])}</div>`; i++; continue; }
+    html += `<p style="margin:6px 0">${inline(t)}</p>`;
+    i++;
+  }
+  return html;
+}
+
+const VERDICT_COLOR = {
+  '안정': { color: '#1a7f4e', bg: '#e6f6ee', border: '#bfe8d2' },
+  '적정': { color: '#1d6fd6', bg: '#e8f1fc', border: '#c3dcf7' },
+  '소신': { color: '#b7791f', bg: '#fdf3e2', border: '#f3ddb0' },
+  '위험': { color: '#d64545', bg: '#fdeaea', border: '#f5c6c6' },
+};
+
+export default function StudentSelfView({ onBack }) {
+  const [code, setCode] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [data, setData] = useState(null);
+  const [openRec, setOpenRec] = useState(null);
+
+  const lookup = async () => {
+    const c = code.trim().toUpperCase();
+    if (!c) return;
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/student-view/${encodeURIComponent(c)}`);
+      const j = await res.json();
+      if (!j.success) throw new Error(j.message || '조회 실패');
+      setData(j);
+    } catch (e) { setError(e.message); }
+    finally { setLoading(false); }
+  };
+
+  if (!data) {
+    return (
+      <div style={S.center}>
+        <div style={S.loginBox}>
+          <div style={{ textAlign: 'center', marginBottom: 24 }}>
+            <div style={{ fontSize: 34, marginBottom: 8 }}>🎒</div>
+            <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 700, margin: '0 0 6px' }}>내 기록 보기</h1>
+            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, margin: 0 }}>
+              선생님께 받은 학생 열람 코드를 입력하세요
+            </p>
+          </div>
+          <input value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && lookup()}
+            placeholder="예: S3F9A2C1B" style={S.codeInput} />
+          {error && <p style={{ color: '#ff6b6b', fontSize: 13, margin: '10px 0 0', textAlign: 'center' }}>{error}</p>}
+          <button onClick={lookup} disabled={loading} style={S.goBtn}>{loading ? '확인 중…' : '내 기록 보기'}</button>
+          <button onClick={onBack} style={S.backLink}>← 선생님 로그인으로</button>
+        </div>
+      </div>
+    );
+  }
+
+  const { student, records, placements } = data;
+  return (
+    <div style={S.viewPage}>
+      <div style={S.viewShell}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <h1 style={{ fontSize: 21, fontWeight: 800, margin: 0, color: '#1c2733' }}>🎒 {student.name} 학생 페이지</h1>
+            <p style={{ color: '#5c6b7c', fontSize: 13, margin: '4px 0 0' }}>
+              {[student.school, student.grade, student.major && `희망 ${student.major}`, student.target_univ && `목표 ${student.target_univ}`].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+          <button onClick={() => { setData(null); setCode(''); }} style={S.outBtn}>나가기</button>
+        </div>
+
+        {placements.length > 0 && (
+          <>
+            <div style={S.secTitle}>📈 배치 현황 (선생님이 저장한 지원 판정)</div>
+            <div style={S.plList}>
+              {placements.map((p) => {
+                const v = VERDICT_COLOR[p.verdict] || { color: '#5c6b7c', bg: '#f2f5f9', border: '#e3e9f1' };
+                const snap = p.snapshot || {};
+                return (
+                  <div key={p.id} style={S.plRow}>
+                    <span style={{ ...S.plChip, color: v.color, background: v.bg, borderColor: v.border }}>{p.verdict || '—'}</span>
+                    <span style={{ fontWeight: 700 }}>{String(p.univ_name).replace(/\[.*\]$/, '')}</span>
+                    <span>{p.dept}</span>
+                    <span style={{ color: '#8492a5', fontSize: 12 }}>{p.track}{p.type_name ? ` · ${p.type_name}` : ''}</span>
+                    <span style={{ marginLeft: 'auto', color: '#8492a5', fontSize: 12 }}>
+                      70%컷 {snap.cut70 != null ? Number(snap.cut70).toFixed(2) : '—'} · 내 내신 {p.grade != null ? Number(p.grade).toFixed(2) : '—'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <div style={S.secTitle}>📚 나에게 배정된 기록 ({records.length}건)</div>
+        {!records.length && <div style={{ color: '#8492a5', fontSize: 13.5, padding: '8px 2px' }}>아직 배정된 기록이 없습니다.</div>}
+        {records.map((r) => (
+          <div key={r.id} style={S.recBox}>
+            <div style={S.recHead} onClick={() => setOpenRec(openRec === r.id ? null : r.id)}>
+              <span style={S.recType}>{r.type}</span>
+              <span style={{ flex: 1, fontWeight: 700 }}>{r.title}</span>
+              <span style={{ color: '#8492a5', fontSize: 12 }}>{String(r.created_at).slice(0, 10)}</span>
+              <span style={{ color: '#1d6fd6', fontSize: 12, fontWeight: 700 }}>{openRec === r.id ? '닫기 ▲' : '펼치기 ▼'}</span>
+            </div>
+            {openRec === r.id && r.content && (
+              <div style={S.recBody} dangerouslySetInnerHTML={{ __html: mdPreview(r.content) }} />
+            )}
+          </div>
+        ))}
+
+        <p style={{ fontSize: 11.5, color: '#98a4b3', marginTop: 18 }}>
+          이 페이지는 읽기 전용입니다. 내용에 대한 질문은 선생님께 문의하세요. — 패스파인더 에듀
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const S = {
+  center: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'linear-gradient(135deg, #0f1724 0%, #1a2a3a 100%)' },
+  loginBox: { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: '44px 38px', width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.4)' },
+  codeInput: { width: '100%', padding: '14px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 16, letterSpacing: 2, textAlign: 'center', outline: 'none', boxSizing: 'border-box', textTransform: 'uppercase' },
+  goBtn: { width: '100%', padding: 14, marginTop: 14, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #5b86d6, #3a63b5)', color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer' },
+  backLink: { width: '100%', marginTop: 12, border: 'none', background: 'transparent', color: 'rgba(255,255,255,0.45)', fontSize: 13, cursor: 'pointer' },
+  viewPage: { minHeight: '100vh', background: '#eef2f7', padding: '26px 14px' },
+  viewShell: { maxWidth: 820, margin: '0 auto', background: '#fff', borderRadius: 18, padding: '26px 28px', boxShadow: '0 8px 30px rgba(20,40,80,0.08)', color: '#26313e' },
+  outBtn: { border: '1px solid #d7dfea', background: '#f7f9fc', color: '#5c6b7c', borderRadius: 9, padding: '7px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  secTitle: { fontSize: 14.5, fontWeight: 800, color: '#1c2733', margin: '22px 0 10px', paddingBottom: 6, borderBottom: '2px solid #eef2f7' },
+  plList: { display: 'flex', flexDirection: 'column', gap: 6 },
+  plRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5, padding: '8px 10px', background: '#f7f9fc', border: '1px solid #eef2f7', borderRadius: 10, flexWrap: 'wrap' },
+  plChip: { fontSize: 11.5, fontWeight: 800, borderWidth: 1, borderStyle: 'solid', borderRadius: 7, padding: '2px 9px' },
+  recBox: { border: '1px solid #e3e9f1', borderRadius: 12, marginBottom: 8, overflow: 'hidden' },
+  recHead: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: '#fff', fontSize: 13.5, flexWrap: 'wrap' },
+  recType: { fontSize: 11, fontWeight: 800, color: '#7a5fd0', background: '#f1edfc', borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap' },
+  recBody: { padding: '12px 18px', borderTop: '1px solid #eef2f7', background: '#fbfcfe', fontSize: 13.5, lineHeight: 1.75, color: '#333' },
+};

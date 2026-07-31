@@ -128,6 +128,60 @@ export async function getPlacementOwner(placementId) {
   return rows[0]?.owner_id ?? null;
 }
 
+// ── 수행평가 아카이브 ──────────────────────────────────
+export async function listSuhaeng(ownerId, { q, school, subject } = {}) {
+  const where = ['owner_id = $1'], params = [ownerId];
+  if (q) { params.push(`%${q}%`); where.push(`(title ILIKE $${params.length} OR topic ILIKE $${params.length} OR content ILIKE $${params.length})`); }
+  if (school) { params.push(`%${school}%`); where.push(`school ILIKE $${params.length}`); }
+  if (subject) { params.push(`%${subject}%`); where.push(`subject ILIKE $${params.length}`); }
+  const { rows } = await getPool().query(
+    `SELECT id, title, school, subject, topic, grade, kind, source_name, student_name, created_at,
+            LEFT(content, 200) AS snippet
+     FROM ef_suhaeng WHERE ${where.join(' AND ')} ORDER BY created_at DESC LIMIT 500`, params);
+  return rows;
+}
+
+export async function getSuhaeng(id) {
+  const { rows } = await getPool().query(`SELECT * FROM ef_suhaeng WHERE id = $1`, [id]);
+  return rows[0] || null;
+}
+
+export async function createSuhaeng(ownerId, f = {}) {
+  const { rows } = await getPool().query(
+    `INSERT INTO ef_suhaeng (owner_id, title, school, subject, topic, grade, kind, content, source_name, student_name)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [ownerId, f.title || '제목 없음', f.school || '', f.subject || '', f.topic || '', f.grade || '', f.kind || '',
+     f.content || '', f.sourceName || '', f.studentName || '']);
+  return rows[0];
+}
+
+export async function deleteSuhaeng(id) {
+  await getPool().query(`DELETE FROM ef_suhaeng WHERE id = $1`, [id]);
+}
+
+export async function getSuhaengOwner(id) {
+  const { rows } = await getPool().query(`SELECT owner_id FROM ef_suhaeng WHERE id = $1`, [id]);
+  return rows[0]?.owner_id ?? null;
+}
+
+// ── 학생 셀프 열람 코드 ────────────────────────────────
+export async function setStudentCode(studentId, code) {
+  await getPool().query(`UPDATE ef_students SET student_code = $1, updated_at = now() WHERE id = $2`, [code, studentId]);
+}
+
+export async function getStudentByCode(code) {
+  if (!dbEnabled()) return null;
+  const { rows } = await getPool().query(
+    `SELECT id, name, school, grade, major, target_univ, student_code FROM ef_students WHERE student_code = $1`, [code]);
+  const student = rows[0];
+  if (!student) return null;
+  const [{ rows: records }, { rows: placements }] = await Promise.all([
+    getPool().query(`SELECT id, type, title, content, created_at FROM ef_records WHERE student_id = $1 ORDER BY created_at DESC LIMIT 200`, [student.id]),
+    getPool().query(`SELECT * FROM ef_placements WHERE student_id = $1 ORDER BY created_at DESC LIMIT 100`, [student.id]),
+  ]);
+  return { student, records, placements };
+}
+
 // ── 학생 첨부파일 ──────────────────────────────────────
 export async function addFile(studentId, { name, mime, size, kind, data }) {
   const { rows } = await getPool().query(

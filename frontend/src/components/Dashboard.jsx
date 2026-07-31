@@ -7,6 +7,7 @@ const ACTIONS = [
   { key: 'admissions', icon: '🎓', label: '대학 입결 조회', desc: '정시·수시·논술 입결', color: '#e0993f', bg: 'rgba(224,153,63,0.16)' },
   { key: 'univinfo', icon: '🏫', label: '대학별 입시정보', desc: '전형방법·평가기준·장애인전형', color: '#3f9ee0', bg: 'rgba(63,158,224,0.16)' },
   { key: 'ipgyeol', icon: '📈', label: '입결 콘솔', desc: '공식 입결 다개년 추이·배치 판정', color: '#3f6fe0', bg: 'rgba(63,111,224,0.16)' },
+  { key: 'suharchive', icon: '🗂️', label: '수행평가 아카이브', desc: '자료 분석·분류 보관·재활용 배정', color: '#c46ad6', bg: 'rgba(196,106,214,0.16)' },
   { key: 'list', icon: '👥', label: '학생 목록', desc: '저장된 분석 목록', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];

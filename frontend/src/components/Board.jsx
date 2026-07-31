@@ -338,6 +338,18 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
     } catch (e) { onError(e); }
   };
   const delFile = async (id) => { try { await api(`/api/board/files/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { onError(e); } };
+
+  // 학생 셀프 열람 코드
+  const issueCode = async () => {
+    try { const d = await call(`/api/board/students/${student.id}/code`, { method: 'POST' }); await onChanged(); setMsg(`✓ 열람 코드 발급됨: ${d.code}`); }
+    catch (e) { fail(e); }
+  };
+  const revokeCode = async () => {
+    if (!confirm('열람 코드를 해제할까요? 학생이 더 이상 조회할 수 없게 됩니다.')) return;
+    try { await call(`/api/board/students/${student.id}/code`, { method: 'DELETE' }); await onChanged(); setMsg('✓ 열람 코드 해제됨'); }
+    catch (e) { fail(e); }
+  };
+  const copyCode = async () => { await navigator.clipboard.writeText(student.student_code); setMsg('✓ 코드 복사됨 — 학생에게 전달하세요'); };
   const fmtSize = (b) => b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
 
   return (
@@ -364,6 +376,21 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
 
         <label style={S.label}>보완점 / 메모</label>
         <textarea style={S.textarea} rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="보완할 점, 상담 메모 등" />
+
+        <div style={S.sectionTitle}>학생 열람 코드 — 학생이 코드만으로 본인 기록·배치를 봅니다</div>
+        <div style={S.addRow}>
+          {student.student_code ? (
+            <>
+              <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 800, color: '#34d399', background: 'rgba(52,211,153,0.12)', border: '1px solid rgba(52,211,153,0.4)', borderRadius: 8, padding: '5px 12px', letterSpacing: 1 }}>{student.student_code}</span>
+              <button style={S.viewBtn} onClick={copyCode}>복사</button>
+              <button style={S.viewBtn} onClick={issueCode}>재발급</button>
+              <button style={S.miniDel} onClick={revokeCode}>해제</button>
+            </>
+          ) : (
+            <button style={S.addSmall} onClick={issueCode}>🔑 열람 코드 발급</button>
+          )}
+          <span style={{ color: '#6b7d8a', fontSize: 12 }}>로그인 화면 '학생 코드로 내 기록 보기'에서 입력</span>
+        </div>
 
         <div style={S.sectionTitle}>성적 추이 (내신 등급 — 낮을수록 향상)</div>
         <GradeGraph grades={student.grades || []} />

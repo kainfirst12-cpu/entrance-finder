@@ -143,6 +143,27 @@ export async function initDb() {
       );
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_placements_student ON ef_placements(student_id);`);
+    // 수행평가 아카이브 — 업로드 자료의 AI 정리본을 분야·주제·학교별로 보관
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_suhaeng (
+        id           SERIAL PRIMARY KEY,
+        owner_id     INTEGER REFERENCES app_users(id) ON DELETE CASCADE,
+        title        TEXT NOT NULL,
+        school       TEXT DEFAULT '',
+        subject      TEXT DEFAULT '',
+        topic        TEXT DEFAULT '',
+        grade        TEXT DEFAULT '',
+        kind         TEXT DEFAULT '',
+        content      TEXT DEFAULT '',
+        source_name  TEXT DEFAULT '',
+        student_name TEXT DEFAULT '',
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_suhaeng_owner ON ef_suhaeng(owner_id);`);
+    // 학생 셀프 열람 코드 (코드만으로 본인 배정 내용 조회)
+    await pool.query(`ALTER TABLE ef_students ADD COLUMN IF NOT EXISTS student_code TEXT;`);
+    await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ef_students_code ON ef_students(student_code) WHERE student_code IS NOT NULL;`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_students_owner ON ef_students(owner_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_grades_student ON ef_grades(student_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_records_student ON ef_records(student_id);`);

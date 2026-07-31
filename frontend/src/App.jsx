@@ -11,6 +11,7 @@ import Board from './components/Board';
 import Admissions from './components/Admissions';
 import UnivInfo from './components/UnivInfo';
 import IpgyeolConsole from './components/IpgyeolConsole';
+import SuhaengArchive from './components/SuhaengArchive';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import { API_BASE } from './apiBase';
@@ -398,6 +399,14 @@ export default function App() {
         )}
         {view === 'ipgyeol' && (
           <IpgyeolConsole onAuthError={handleLogout} />
+        )}
+        {view === 'suharchive' && (
+          <SuhaengArchive
+            getActiveKey={getActiveKey}
+            selectedModel={selectedModel}
+            aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+            onAuthError={handleLogout}
+          />
         )}
         {view === 'admin' && role === 'admin' && (
           <AdminDashboard onAuthError={handleLogout} />

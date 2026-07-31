@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { API_BASE } from '../apiBase';
+import StudentSelfView from './StudentSelfView';
 
 export default function Login({ onLogin }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [studentMode, setStudentMode] = useState(false);
+
+  if (studentMode) return <StudentSelfView onBack={() => setStudentMode(false)} />;
 
   const handleSubmit = async () => {
     if (!code) return;
@@ -86,6 +90,17 @@ export default function Login({ onLogin }) {
           }}
         >
           {loading ? '확인 중...' : '입장하기'}
+        </button>
+
+        <button
+          onClick={() => setStudentMode(true)}
+          style={{
+            width: '100%', marginTop: '14px', padding: '10px', borderRadius: '10px',
+            border: '1px solid rgba(255,255,255,0.15)', background: 'transparent',
+            color: 'rgba(255,255,255,0.55)', fontSize: '13px', cursor: 'pointer'
+          }}
+        >
+          🎒 학생 코드로 내 기록 보기
         </button>
       </div>
     </div>
