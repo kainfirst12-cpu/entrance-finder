@@ -1664,6 +1664,37 @@ app.get('/api/univ-info/:unvCd', requireAuth, (req, res) => {
   }
 });
 
+// ── 입결 콘솔 (어디가 공식 입시결과 2021~2026 시계열) ──────────
+let _ipgyeolIndex = null;
+function getIpgyeolIndex() {
+  if (!_ipgyeolIndex) _ipgyeolIndex = JSON.parse(readFileSync(join(ADIGA_DIR, 'ipgyeol-index.json'), 'utf8'));
+  return _ipgyeolIndex;
+}
+// 대학 목록 (검색어 q로 필터)
+app.get('/api/ipgyeol/list', requireAuth, (req, res) => {
+  try {
+    const data = getIpgyeolIndex();
+    const q = (req.query.q || '').trim();
+    let unis = data.universities;
+    if (q) unis = unis.filter(u => u.name.includes(q) || (u.region || '').includes(q));
+    res.json({ success: true, source: data.source, count: unis.length, universities: unis });
+  } catch (err) {
+    console.error('[/api/ipgyeol/list] 오류:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// 대학별 학과×전형×연도 입결 시계열
+app.get('/api/ipgyeol/:unvCd', requireAuth, (req, res) => {
+  const { unvCd } = req.params;
+  if (!/^[0-9]+$/.test(unvCd)) return res.status(400).json({ success: false, error: '잘못된 대학 코드' });
+  try {
+    const data = JSON.parse(readFileSync(join(ADIGA_DIR, 'ipgyeol', `${unvCd}.json`), 'utf8'));
+    res.json({ success: true, ...data });
+  } catch (err) {
+    res.status(404).json({ success: false, error: '해당 대학의 입결 자료가 없습니다.' });
+  }
+});
+
 // ── 로그인 (코드 기반) ────────────────────────────────
 // - 관리자: ADMIN_CODE(환경변수) 또는 기존 APP_PASSWORD
 // - 이용자: 관리자가 발급한 코드 (DB 조회)
