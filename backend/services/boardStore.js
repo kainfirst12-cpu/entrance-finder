@@ -44,6 +44,18 @@ export async function upsertStudentByName(ownerId, f = {}) {
   return student;
 }
 
+// 학생 1명 + 성적/기록 (AI 브리핑용)
+export async function getStudentFull(id) {
+  const pool = getPool();
+  const { rows } = await pool.query(`SELECT * FROM ef_students WHERE id = $1`, [id]);
+  if (!rows[0]) return null;
+  const [{ rows: grades }, { rows: records }] = await Promise.all([
+    pool.query(`SELECT term, gpa, note FROM ef_grades WHERE student_id = $1 ORDER BY term, id`, [id]),
+    pool.query(`SELECT type, title, content, created_at FROM ef_records WHERE student_id = $1 ORDER BY created_at DESC LIMIT 50`, [id]),
+  ]);
+  return { ...rows[0], grades, records };
+}
+
 export async function getStudentOwner(id) {
   if (!dbEnabled()) return null;
   const { rows } = await getPool().query(`SELECT owner_id FROM ef_students WHERE id = $1`, [id]);

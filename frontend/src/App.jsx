@@ -350,7 +350,7 @@ export default function App() {
         {view === 'dashboard' && (
           <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout} />
         )}
-        {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} />}
+        {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} onAuthError={handleLogout} />}
         {view === 'form'      && (
           <StudentForm
             onSubmit={startAnalysis}

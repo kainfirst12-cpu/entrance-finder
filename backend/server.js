@@ -11,7 +11,7 @@ import {
   upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
   listPlacements, addPlacement, deletePlacement, getPlacementOwner,
   listSuhaeng, getSuhaeng, createSuhaeng, deleteSuhaeng, getSuhaengOwner,
-  setStudentCode, getStudentByCode,
+  setStudentCode, getStudentByCode, getStudentFull,
 } from './services/boardStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
@@ -1016,6 +1016,68 @@ app.delete('/api/board/placements/:id', requireAuth, async (req, res) => {
     await deletePlacement(Number(req.params.id));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// AI 컨설턴트 브리핑 — 학생의 기록 전체를 컨설턴트 관점으로 정리해 기록으로 저장
+app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  const sid = Number(req.params.id);
+  if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '권한 없음' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  const s = await getStudentFull(sid);
+  if (!s) return res.status(404).json({ success: false, message: '학생 없음' });
+  const sourceRecords = (s.records || []).filter((r) => r.type !== '컨설턴트 브리핑' && r.content);
+  if (!sourceRecords.length) return res.status(400).json({ success: false, message: '정리할 기록이 없습니다. 생기부 분석·수행평가·상담 기록을 먼저 쌓아주세요.' });
+
+  const systemPrompt = `당신은 학원 원장을 보좌하는 수시 컨설팅 수석 조교입니다.
+한 학생에 대해 쌓인 기록(생기부 분석·수행평가·상담·배치 등)을 전부 읽고,
+컨설턴트가 이 학생을 지도할 때 바로 쓸 수 있는 브리핑을 작성합니다.
+
+[출력 — 마크다운, 이모지 금지, 합니다체]
+## 학생 한눈에
+(내신·계열·희망 전공·현재 단계 3~4줄 요약)
+## 강점
+(기록에서 확인되는 강점 — 근거가 된 기록을 괄호로 표시)
+## 보완점·리스크
+(약점, 빠진 활동, 최저 리스크 등)
+## 추천 전략
+(수시 방향: 유리한 전형 유형, 강화할 활동, 다음 학기 과목/탐구 방향)
+## 다음 액션 체크리스트
+(- [ ] 형태로 5개 내외, 구체적으로)
+[원칙] 기록에 없는 사실은 지어내지 않고, 부족하면 '기록 부족'이라고 명시.`;
+
+  const gradeLine = (s.grades || []).map((g) => `${g.term}: ${g.gpa ?? '-'}`).join(', ');
+  const recordsText = sourceRecords.map((r) =>
+    `[${r.type}] ${r.title} (${String(r.created_at).slice(0, 10)})\n${String(r.content).slice(0, 6000)}`).join('\n\n---\n\n');
+  const userMsg = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
+[내신] ${gradeLine || '미입력'}
+[메모] ${s.notes || '없음'}
+
+[기록 전체 — ${sourceRecords.length}건]
+${recordsText.slice(0, 45000)}`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 8000 });
+    const record = await addRecord(sid, {
+      type: '컨설턴트 브리핑',
+      title: `컨설턴트 브리핑 (${new Date().toLocaleDateString('ko-KR')})`,
+      content: reply,
+    });
+    sendDone({ success: true, reply, record });
+  } catch (err) {
+    console.error('[board/brief] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
 });
 
 // 학생 셀프 열람 코드 발급/해제 — 학생이 코드만으로 본인 배정 내용을 봄
