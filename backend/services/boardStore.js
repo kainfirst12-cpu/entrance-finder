@@ -100,6 +100,34 @@ export async function deleteRecord(id) {
   await getPool().query(`DELETE FROM ef_records WHERE id = $1`, [id]);
 }
 
+// ── 입결 콘솔 배치 기록 ────────────────────────────────
+export async function listPlacements(studentId) {
+  const { rows } = await getPool().query(
+    `SELECT * FROM ef_placements WHERE student_id = $1 ORDER BY created_at DESC`, [studentId]);
+  return rows;
+}
+
+export async function addPlacement(studentId, p = {}) {
+  const { rows } = await getPool().query(
+    `INSERT INTO ef_placements (student_id, unv_cd, univ_name, region, dept, track, type_name, base_year, grade, verdict, snapshot, memo)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12) RETURNING *`,
+    [studentId, p.unvCd || '', p.univName || '', p.region || '', p.dept || '', p.track || '', p.typeName || '',
+     p.baseYear || '', p.grade == null || p.grade === '' ? null : Number(p.grade), p.verdict || '',
+     JSON.stringify(p.snapshot || {}), p.memo || '']
+  );
+  return rows[0];
+}
+
+export async function deletePlacement(id) {
+  await getPool().query(`DELETE FROM ef_placements WHERE id = $1`, [id]);
+}
+
+export async function getPlacementOwner(placementId) {
+  const { rows } = await getPool().query(
+    `SELECT s.owner_id FROM ef_placements p JOIN ef_students s ON s.id = p.student_id WHERE p.id = $1`, [placementId]);
+  return rows[0]?.owner_id ?? null;
+}
+
 // ── 학생 첨부파일 ──────────────────────────────────────
 export async function addFile(studentId, { name, mime, size, kind, data }) {
   const { rows } = await getPool().query(

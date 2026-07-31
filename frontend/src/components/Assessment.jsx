@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import StudentPicker from './StudentPicker';
 
 // SSE(keepalive) 또는 JSON 응답 처리
 async function postForResult(url, opts) {
@@ -74,6 +75,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   const [rubric, setRubric] = useState('');
   const [images, setImages] = useState([]); // {name, mimeType, base64, preview}
   const [studentName, setStudentName] = useState('');
+  const [boardStudent, setBoardStudent] = useState(null); // 보드에서 선택한 학생 (배정 대상)
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState('');
@@ -164,12 +166,20 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
       });
       if (data.success) {
         setResult(data.reply || '');
-        // 학생 이름이 있으면 보드에 자동 기록 (선생님 코드 로그인 시)
-        if (studentName.trim() && (localStorage.getItem('ef_role') || 'user') === 'user' && token()) {
+        const recTitle = `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`;
+        // 보드에서 학생을 선택했으면 그 학생 기록으로 정확히 배정
+        if (boardStudent && token()) {
+          fetch(`${API_BASE}/api/board/students/${boardStudent.id}/records`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+            body: JSON.stringify({ type: '수행평가', title: recTitle, content: data.reply || '' }),
+          }).catch(() => {});
+        } else if (studentName.trim() && (localStorage.getItem('ef_role') || 'user') === 'user' && token()) {
+          // 이름만 입력한 경우: 기존 이름 기반 upsert 유지
           fetch(`${API_BASE}/api/board/upsert`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-            body: JSON.stringify({ name: studentName.trim(), grade, record: { type: '수행평가', title: `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`, content: data.reply || '' } }),
+            body: JSON.stringify({ name: studentName.trim(), grade, record: { type: '수행평가', title: recTitle, content: data.reply || '' } }),
           }).catch(() => {});
         }
       } else setError(data.message || '생성 실패');
@@ -238,16 +248,27 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   };
 
   const assignStudent = async () => {
-    let nm = studentName.trim();
-    if (!nm) { nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:') || '').trim(); if (!nm) return; setStudentName(nm); }
     if (!token()) { alert('로그인이 필요합니다.'); return; }
+    const recTitle = `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`;
     try {
-      const r = await fetch(`${API_BASE}/api/board/upsert`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-        body: JSON.stringify({ name: nm, grade, record: { type: '수행평가', title: `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`, content: result } }),
-      });
-      const d = await r.json();
-      if (d.success) alert(`'${nm}' 학생 보드에 배정되었습니다.\n학생 카드 → '내용 보기'에서 확인할 수 있어요.`);
+      let d, label;
+      if (boardStudent) {
+        // 보드에서 선택한 학생에게 정확히 배정
+        const r = await fetch(`${API_BASE}/api/board/students/${boardStudent.id}/records`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+          body: JSON.stringify({ type: '수행평가', title: recTitle, content: result }),
+        });
+        d = await r.json(); label = boardStudent.name;
+      } else {
+        let nm = studentName.trim();
+        if (!nm) { nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:') || '').trim(); if (!nm) return; setStudentName(nm); }
+        const r = await fetch(`${API_BASE}/api/board/upsert`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+          body: JSON.stringify({ name: nm, grade, record: { type: '수행평가', title: recTitle, content: result } }),
+        });
+        d = await r.json(); label = nm;
+      }
+      if (d.success) alert(`'${label}' 학생 보드에 배정되었습니다.\n학생 카드 → '내용 보기'에서 확인할 수 있어요.`);
       else alert('배정 실패: ' + (d.message || '다시 로그인해 주세요'));
     } catch (e) { alert('배정 오류: ' + e.message); }
   };
@@ -286,8 +307,14 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           </div>
         </div>
 
-        <label style={S.label}>학생 이름 <span style={S.opt}>선택 — 입력하면 학생 보드에 자동 기록</span></label>
-        <input style={S.input} value={studentName} onChange={e => setStudentName(e.target.value)} placeholder="예: 유석형" />
+        <label style={S.label}>학생 배정 <span style={S.opt}>보드의 학생을 선택하면 결과가 그 학생 기록으로 자동 저장됩니다</span></label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <StudentPicker value={boardStudent} style={{ ...S.input, width: 'auto', minWidth: 200, flex: '0 0 auto' }}
+            onChange={(s) => { setBoardStudent(s); if (s) setStudentName(s.name); }} />
+          <input style={{ ...S.input, flex: 1, minWidth: 140 }} value={studentName}
+            onChange={e => { setStudentName(e.target.value); setBoardStudent(null); }}
+            placeholder="또는 이름 직접 입력 (예: 유석형)" />
+        </div>
 
         <label style={S.label}>주제 / 과제 설명</label>
         <textarea style={S.textarea} rows={3} value={topic} onChange={e => setTopic(e.target.value)}

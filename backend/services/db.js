@@ -123,6 +123,26 @@ export async function initDb() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    // 입결 콘솔 배치 기록 — 학생 × (대학·학과·전형) 판정 스냅샷
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_placements (
+        id         SERIAL PRIMARY KEY,
+        student_id INTEGER REFERENCES ef_students(id) ON DELETE CASCADE,
+        unv_cd     TEXT NOT NULL,
+        univ_name  TEXT NOT NULL,
+        region     TEXT DEFAULT '',
+        dept       TEXT NOT NULL,
+        track      TEXT NOT NULL,
+        type_name  TEXT DEFAULT '',
+        base_year  TEXT DEFAULT '',
+        grade      NUMERIC,
+        verdict    TEXT DEFAULT '',
+        snapshot   JSONB DEFAULT '{}'::jsonb,
+        memo       TEXT DEFAULT '',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_placements_student ON ef_placements(student_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_students_owner ON ef_students(owner_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_grades_student ON ef_grades(student_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_records_student ON ef_records(student_id);`);

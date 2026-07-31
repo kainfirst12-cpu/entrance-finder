@@ -2,8 +2,12 @@ import { useState, useEffect, useMemo } from 'react';
 import { API_BASE } from '../apiBase';
 
 const token = () => localStorage.getItem('ef_token');
-async function api(path) {
-  const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token()}` } });
+async function api(path, opts = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: opts.method || 'GET',
+    headers: { Authorization: `Bearer ${token()}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
   if (res.status === 401 || res.status === 403) { const e = new Error('권한/인증'); e.auth = true; throw e; }
   return res.json();
 }
@@ -76,7 +80,23 @@ function Sparkline({ series }) {
   );
 }
 
-function Card({ card, grade, baseYear, onPin, pinned }) {
+// 저장용 스냅샷: 카드 핵심 수치를 기록 시점 그대로 보존
+function buildSnapshot(entry, baseYear) {
+  const cut = latestWithDelta(entry, 'grade70', baseYear);
+  const rate = latestWithDelta(entry, 'rate', baseYear);
+  const fill = latestWithDelta(entry, 'fill', baseYear);
+  const recruit = latestWithDelta(entry, 'recruit', baseYear);
+  const score = latestWithDelta(entry, 'score70', baseYear);
+  const pct = latestWithDelta(entry, 'pct70', baseYear);
+  const series = {};
+  for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) {
+    const v = entry.years[String(y)]?.grade70;
+    if (v != null) series[y] = v;
+  }
+  return { cut70: cut.v, cutYear: cut.y, rate: rate.v, fill: fill.v, recruit: recruit.v, score70: score.v, pct70: pct.v, series };
+}
+
+function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, saved }) {
   const { univ, entry, sunung, jonghapSiblings } = card;
   const yearsWindow = [];
   for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWindow.push(String(y));
@@ -148,6 +168,12 @@ function Card({ card, grade, baseYear, onPin, pinned }) {
         </span>
         <a href={ADIGA_URL} target="_blank" rel="noreferrer" style={S.srcLink}>어디가 원문 ↗</a>
       </div>
+      {student && (
+        <button style={{ ...S.saveBtn, ...(saved ? S.saveBtnDone : {}) }} disabled={saving || saved}
+          onClick={() => onSave(card)}>
+          {saving ? '저장 중…' : saved ? `✓ ${student.name} 배치 저장됨` : `💾 ${student.name} 학생에 배치 저장 (${v ? v.label : '—'})`}
+        </button>
+      )}
     </div>
   );
 }
@@ -168,11 +194,62 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [limit, setLimit] = useState(18);
   const [pins, setPins] = useState(() => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } });
 
+  // 학생 연동
+  const [students, setStudents] = useState([]);
+  const [studentsMsg, setStudentsMsg] = useState('');
+  const [student, setStudent] = useState(null);
+  const [placements, setPlacements] = useState([]);
+  const [savingKey, setSavingKey] = useState('');
+
   useEffect(() => {
     api('/api/ipgyeol/list')
       .then((j) => { if (!j.success) throw new Error(j.error || '목록 로드 실패'); setUnivs(j.universities || []); })
       .catch((e) => { if (e.auth) onAuthError?.(); else setError(e.message); });
+    api('/api/board/students')
+      .then((j) => { if (j.success) setStudents(j.students || []); else setStudentsMsg(j.message || '학생 보드를 불러올 수 없습니다'); })
+      .catch((e) => { if (e.auth) onAuthError?.(); else setStudentsMsg(e.message); });
   }, []);
+
+  function selectStudent(id) {
+    const s = students.find((x) => String(x.id) === String(id)) || null;
+    setStudent(s); setPlacements([]);
+    if (!s) return;
+    // 최근 학기 내신이 등록돼 있으면 슬라이더에 자동 반영
+    const gpas = (s.grades || []).filter((g) => g.gpa != null);
+    if (gpas.length) setGrade(Math.min(6, Math.max(1, Number(gpas[gpas.length - 1].gpa))));
+    api(`/api/board/students/${s.id}/placements`)
+      .then((j) => { if (j.success) setPlacements(j.placements || []); })
+      .catch((e) => { if (e.auth) onAuthError?.(); });
+  }
+
+  async function savePlacement(card) {
+    if (!student) return;
+    setSavingKey(card.key);
+    try {
+      const snap = buildSnapshot(card.entry, baseYear);
+      const v = verdict(snap.cut70, grade);
+      // 같은 (대학·학과·전형) 기존 기록은 덮어쓰기
+      const dup = placements.find((p) => p.unv_cd === card.univ.unvCd && p.dept === card.entry.dept
+        && p.track === card.entry.track && p.type_name === card.entry.typeName);
+      if (dup) await api(`/api/board/placements/${dup.id}`, { method: 'DELETE' });
+      const j = await api(`/api/board/students/${student.id}/placements`, { method: 'POST', body: {
+        unvCd: card.univ.unvCd, univName: card.univ.name, region: card.univ.region,
+        dept: card.entry.dept, track: card.entry.track, typeName: card.entry.typeName,
+        baseYear, grade, verdict: v ? v.label : '', snapshot: snap,
+      } });
+      if (!j.success) throw new Error(j.message || '저장 실패');
+      setPlacements((prev) => [j.placement, ...prev.filter((p) => p.id !== dup?.id)]);
+    } catch (e) {
+      if (e.auth) onAuthError?.(); else setError(`배치 저장 실패: ${e.message}`);
+    } finally { setSavingKey(''); }
+  }
+
+  async function removePlacement(p) {
+    try {
+      const j = await api(`/api/board/placements/${p.id}`, { method: 'DELETE' });
+      if (j.success) setPlacements((prev) => prev.filter((x) => x.id !== p.id));
+    } catch (e) { if (e.auth) onAuthError?.(); }
+  }
 
   function openUniv(u) {
     setSelected(u); setDetail(null); setLoading(true); setError(''); setQ(u.name); setShowSug(false); setLimit(18);
@@ -231,6 +308,11 @@ export default function IpgyeolConsole({ onAuthError }) {
   const pinnedKeys = new Set(pins.map((p) => p.key));
   const unpinnedCards = cards.filter((c) => !pinnedKeys.has(c.key));
 
+  // 현재 내신·기준연도로 이미 저장된 카드인지 (변경 시 다시 저장 가능)
+  const isSaved = (c) => placements.some((p) => p.unv_cd === c.univ.unvCd && p.dept === c.entry.dept
+    && p.track === c.entry.track && p.type_name === c.entry.typeName
+    && Number(p.grade) === grade && p.base_year === baseYear);
+
   return (
     <div style={S.page}>
       <div style={S.shell}>
@@ -248,6 +330,18 @@ export default function IpgyeolConsole({ onAuthError }) {
 
         {/* 컨트롤 바 */}
         <div style={S.controls}>
+          <div style={S.ctrlGroup}>
+            <span style={S.ctrlLabel}>학생 배정 <span style={S.ctrlHint}>(보드의 학생과 연결)</span></span>
+            <select style={S.select} value={student?.id || ''} onChange={(e) => selectStudent(e.target.value)}
+              disabled={!students.length} title={studentsMsg}>
+              <option value="">{students.length ? '학생 선택 안 함' : (studentsMsg || '학생 없음')}</option>
+              {students.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}{s.school ? ` · ${s.school}` : ''}{s.grades?.length ? ` · 내신 ${s.grades[s.grades.length - 1].gpa ?? '—'}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div style={S.ctrlGroup}>
             <span style={S.ctrlLabel}>학생 내신 등급 <span style={S.ctrlHint}>(최종등급 70%컷 대비)</span></span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -297,12 +391,58 @@ export default function IpgyeolConsole({ onAuthError }) {
 
         {error && <div style={S.error}>⚠ {error}</div>}
 
+        {/* 학생 배치 기록 */}
+        {student && (
+          <div style={S.plBox}>
+            <div style={S.plHead}>
+              🎯 {student.name} 학생의 배치 기록 <span style={S.plCount}>({placements.length}건)</span>
+              <span style={S.plHint}>카드의 💾 버튼으로 추가 · 내신 슬라이더를 움직이면 현재 기준 재평가가 표시됩니다</span>
+            </div>
+            {!placements.length && <div style={S.plEmpty}>아직 저장된 배치가 없습니다. 아래 카드에서 💾 버튼으로 저장하세요.</div>}
+            {['안정', '적정', '소신', '위험', ''].map((vl) => {
+              const group = placements.filter((p) => (vl === '' ? !['안정', '적정', '소신', '위험'].includes(p.verdict) : p.verdict === vl));
+              if (!group.length) return null;
+              return (
+                <div key={vl} style={{ marginBottom: 6 }}>
+                  {group.map((p) => {
+                    const snap = p.snapshot || {};
+                    const savedV = verdict(snap.cut70, Number(p.grade));
+                    const nowV = verdict(snap.cut70, grade);
+                    const changed = nowV && savedV && nowV.label !== savedV.label;
+                    return (
+                      <div key={p.id} style={S.plRow}>
+                        {savedV && <span style={{ ...S.plChip, color: savedV.color, background: savedV.bg, borderColor: savedV.border }}>{savedV.label}</span>}
+                        <span style={S.plName}>
+                          <b>{p.univ_name.replace(/\[.*\]$/, '')}</b> {p.dept} <span style={S.plType}>{p.track}({(p.type_name || '').replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '')})</span>
+                        </span>
+                        <span style={S.plMeta}>
+                          70%컷 {snap.cut70 != null ? Number(snap.cut70).toFixed(2) : '—'}({snap.cutYear || p.base_year}) ·
+                          저장 내신 {p.grade != null ? Number(p.grade).toFixed(2) : '—'} · {String(p.created_at).slice(0, 10)}
+                        </span>
+                        {changed && (
+                          <span style={{ ...S.plChip, color: nowV.color, background: nowV.bg, borderColor: nowV.border }}>
+                            현재 {grade.toFixed(2)} 기준 → {nowV.label}
+                          </span>
+                        )}
+                        <button style={S.plDel} title="배치 기록 삭제" onClick={() => removePlacement(p)}>✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* 고정 카드 */}
         {pins.length > 0 && (
           <>
             <div style={S.pinHead}>📌 고정 카드 (대학 간 비교)</div>
             <div style={S.grid}>
-              {pins.map((c) => <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned />)}
+              {pins.map((c) => (
+                <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned
+                  student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} />
+              ))}
             </div>
           </>
         )}
@@ -316,7 +456,8 @@ export default function IpgyeolConsole({ onAuthError }) {
         {detail && (
           <div style={S.grid}>
             {unpinnedCards.slice(0, limit).map((c) => (
-              <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned={false} />
+              <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned={false}
+                student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} />
             ))}
           </div>
         )}
@@ -354,8 +495,22 @@ const S = {
   ctrlHint: { fontWeight: 500, color: '#98a4b3', fontSize: 11 },
   gradeNum: { fontSize: 20, fontWeight: 800, color: '#1d4fa8', minWidth: 74 },
   segRow: { display: 'flex', gap: 6 },
+  select: { border: '1px solid #d7dfea', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: '#fff', color: '#26313e', minWidth: 190, maxWidth: 260 },
+  saveBtn: { marginTop: 8, border: '1px solid #c3dcf7', background: '#e8f1fc', color: '#1d4fa8', borderRadius: 9, padding: '7px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  saveBtnDone: { background: '#e6f6ee', border: '1px solid #bfe8d2', color: '#1a7f4e', cursor: 'default' },
+  plBox: { background: '#fff', border: '1px solid #e3e9f1', borderRadius: 12, padding: '12px 14px', marginBottom: 14 },
+  plHead: { fontSize: 13.5, fontWeight: 800, color: '#1c2733', marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
+  plCount: { fontSize: 12, color: '#8492a5', fontWeight: 600 },
+  plHint: { fontSize: 11, color: '#98a4b3', fontWeight: 500 },
+  plEmpty: { fontSize: 12.5, color: '#8492a5', padding: '6px 2px' },
+  plRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '5px 4px', borderBottom: '1px solid #f2f5f9', fontSize: 12.5, flexWrap: 'wrap' },
+  plChip: { fontSize: 11, fontWeight: 800, borderWidth: 1, borderStyle: 'solid', borderRadius: 7, padding: '2px 8px', whiteSpace: 'nowrap' },
+  plName: { color: '#26313e' },
+  plType: { color: '#8492a5', fontSize: 11.5 },
+  plMeta: { color: '#98a4b3', fontSize: 11.5 },
+  plDel: { marginLeft: 'auto', border: 'none', background: 'transparent', color: '#c2cbd8', cursor: 'pointer', fontSize: 13, padding: '0 4px' },
   segBtn: { border: '1px solid #d7dfea', background: '#fff', color: '#3d4a5c', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
-  segOn: { background: '#2b6fe3', borderColor: '#2b6fe3', color: '#fff' },
+  segOn: { background: '#2b6fe3', border: '1px solid #2b6fe3', color: '#fff' },
   searchRow: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 },
   input: { width: '100%', boxSizing: 'border-box', border: '1px solid #d7dfea', borderRadius: 9, padding: '9px 12px', fontSize: 13.5, background: '#fff', color: '#26313e', outline: 'none' },
   sugBox: { position: 'absolute', top: '110%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #d7dfea', borderRadius: 10, boxShadow: '0 8px 22px rgba(20,40,80,0.13)', maxHeight: 290, overflowY: 'auto' },
@@ -369,7 +524,7 @@ const S = {
   cardRegion: { fontWeight: 500, color: '#98a4b3' },
   cardDept: { fontSize: 16.5, fontWeight: 800, color: '#1c2733', margin: '2px 0 1px', lineHeight: 1.25 },
   cardType: { fontSize: 11.5, color: '#8492a5' },
-  badge: { textAlign: 'center', fontSize: 10, fontWeight: 700, lineHeight: 1.25, border: '1px solid', borderRadius: 8, padding: '3px 8px' },
+  badge: { textAlign: 'center', fontSize: 10, fontWeight: 700, lineHeight: 1.25, borderWidth: 1, borderStyle: 'solid', borderRadius: 8, padding: '3px 8px' },
   pinBtn: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, padding: 0 },
   cutRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
   cutLabel: { fontSize: 11, color: '#8492a5', fontWeight: 600 },

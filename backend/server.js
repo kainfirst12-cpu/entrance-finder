@@ -9,6 +9,7 @@ import {
   BOARD_COLUMNS, listStudents, getStudentOwner, createStudent, updateStudent, deleteStudent,
   addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
   upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
+  listPlacements, addPlacement, deletePlacement, getPlacementOwner,
 } from './services/boardStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
@@ -881,6 +882,30 @@ app.delete('/api/board/records/:id', requireAuth, async (req, res) => {
     const owner = await getRecordOwner(Number(req.params.id));
     if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
     await deleteRecord(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 입결 콘솔 배치 기록 조회 / 추가 / 삭제
+app.get('/api/board/students/:id/placements', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, placements: await listPlacements(Number(req.params.id)) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/board/students/:id/placements', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, placement: await addPlacement(Number(req.params.id), req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/board/placements/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getPlacementOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deletePlacement(Number(req.params.id));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });

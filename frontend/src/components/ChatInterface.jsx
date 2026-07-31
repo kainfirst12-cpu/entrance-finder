@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { API_BASE } from '../apiBase';
+import StudentPicker from './StudentPicker';
 
 const SECTION_MAP = [
   { key: 'caseMatching',   num: '0', title: '합격자 사례 매칭 분석' },
@@ -84,6 +85,10 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   const fileInputRef = useRef(null);
   const jsonInputRef = useRef(null);
   const chatImportRef = useRef(null);
+
+  // 상담을 배정할 보드 학생
+  const [boardStudent, setBoardStudent] = useState(null);
+  const [savingChat, setSavingChat] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -315,19 +320,50 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
 
   // ── 학생 보드에 배정 ──────────────────────────────
   const assignChatMessage = async (idx) => {
-    const nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:') || '').trim();
-    if (!nm) return;
     const tok = localStorage.getItem('ef_token');
     if (!tok) { alert('로그인이 필요합니다.'); return; }
     try {
-      const r = await fetch(`${API_BASE}/api/board/upsert`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
-        body: JSON.stringify({ name: nm, record: { type: '입시상담', title: '입시 상담', content: messages[idx]?.content || '' } }),
-      });
-      const d = await r.json();
-      if (d.success) alert(`'${nm}' 학생 보드에 배정되었습니다.\n학생 카드 → '내용 보기'에서 확인할 수 있어요.`);
+      let d, label;
+      if (boardStudent) {
+        // 헤더에서 선택한 학생에게 정확히 배정
+        const r = await fetch(`${API_BASE}/api/board/students/${boardStudent.id}/records`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+          body: JSON.stringify({ type: '입시상담', title: '입시 상담', content: messages[idx]?.content || '' }),
+        });
+        d = await r.json(); label = boardStudent.name;
+      } else {
+        const nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:\n(상단에서 학생을 선택해두면 바로 배정됩니다)') || '').trim();
+        if (!nm) return;
+        const r = await fetch(`${API_BASE}/api/board/upsert`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+          body: JSON.stringify({ name: nm, record: { type: '입시상담', title: '입시 상담', content: messages[idx]?.content || '' } }),
+        });
+        d = await r.json(); label = nm;
+      }
+      if (d.success) alert(`'${label}' 학생 보드에 배정되었습니다.\n학생 카드 → '내용 보기'에서 확인할 수 있어요.`);
       else alert('배정 실패: ' + (d.message || '다시 로그인해 주세요'));
     } catch (e) { alert('배정 오류: ' + e.message); }
+  };
+
+  // 전체 상담 내용을 선택한 학생 기록으로 저장
+  const saveChatToStudent = async () => {
+    if (!boardStudent) { alert('먼저 상단에서 학생을 선택해 주세요.'); return; }
+    const tok = localStorage.getItem('ef_token');
+    if (!tok) { alert('로그인이 필요합니다.'); return; }
+    const body = messages.filter(m => !m.isSystem)
+      .map(m => `[${m.role === 'user' ? '질문' : m.isVerify ? '교차 검증' : '컨설턴트'}]\n${m.content}`).join('\n\n---\n\n');
+    if (!body.trim()) { alert('저장할 대화가 없습니다.'); return; }
+    setSavingChat(true);
+    try {
+      const r = await fetch(`${API_BASE}/api/board/students/${boardStudent.id}/records`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ type: '입시상담', title: `입시 상담 전체 대화 (${new Date().toLocaleDateString('ko-KR')})`, content: body }),
+      });
+      const d = await r.json();
+      if (d.success) alert(`'${boardStudent.name}' 학생 보드에 상담 전체가 저장되었습니다.`);
+      else alert('저장 실패: ' + (d.message || '다시 로그인해 주세요'));
+    } catch (e) { alert('저장 오류: ' + e.message); }
+    finally { setSavingChat(false); }
   };
 
   // ── 교차 검증 ──────────────────────────────────
@@ -635,6 +671,16 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
           <h2>입시 상담 채팅</h2>
           <div className="chat-header-right">
             <span className="chat-model-badge">{modelLabels[selectedModel] || 'Claude'}</span>
+
+            {/* 학생 배정 대상 선택 */}
+            <StudentPicker value={boardStudent} onChange={setBoardStudent} placeholder="학생 배정 안 함"
+              style={{ padding: '5px 8px', fontSize: 12, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#1e293b', maxWidth: 180 }} />
+            {boardStudent && (
+              <button className="btn-ghost chat-clear-btn" onClick={saveChatToStudent} disabled={savingChat}
+                style={{ color: '#2dd4bf' }}>
+                {savingChat ? '저장 중…' : `💾 ${boardStudent.name}에 대화 저장`}
+              </button>
+            )}
 
             {/* 분석 JSON 불러오기 */}
             <button className="btn-ghost chat-clear-btn" onClick={() => jsonInputRef.current?.click()}>
