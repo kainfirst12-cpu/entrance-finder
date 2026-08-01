@@ -112,24 +112,25 @@ export default function SuhaengArchive({ getActiveKey, selectedModel, aiGroup, o
   const onFiles = async (fileList) => {
     const files = Array.from(fileList || []);
     if (!files.length) return;
-    const hwp = files.filter((f) => /\.hwpx?$/i.test(f.name));
-    if (hwp.length) {
-      setNotice(`한글 파일(${hwp.map(f => f.name).join(', ')})은 텍스트 추출이 지원되지 않습니다. 한글에서 "PDF로 저장" 후 올려주세요.`);
-    }
-    const ok = files.filter((f) => !/\.hwpx?$/i.test(f.name));
-    if (!ok.length) return;
-    setExtracting(true); setError('');
+    setExtracting(true); setError(''); setNotice('');
     try {
       const fd = new FormData();
-      ok.forEach((f) => fd.append('files', f));
-      const res = await fetch(`${API_BASE}/api/assessment/extract`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+      files.forEach((f) => fd.append('files', f));
+      // AI 키가 있으면 스캔 PDF도 서버가 비전 OCR로 읽어온다.
+      const apiKey = getActiveKey?.();
+      const d = await postForResult(`${API_BASE}/api/assessment/extract`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token()}`,
+          ...(apiKey ? { 'x-api-key': apiKey, 'x-ai-model': aiGroup || 'claude', 'x-ai-submodel': selectedModel || 'claude' } : {}),
+        },
+        body: fd,
       });
-      const d = await res.json();
+      if (d.notices?.length) setNotice(d.notices.join('\n'));
       if (!d.success) throw new Error(d.message || '추출 실패');
-      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 PDF 원본을 확인해주세요)');
+      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 설정에 AI 키를 등록해 주세요)');
       setExtractedText((prev) => (prev ? prev + '\n\n' : '') + d.text);
-      setFileName(ok.map((f) => f.name).join(', '));
+      setFileName(files.map((f) => f.name).join(', '));
     } catch (e) { setError('추출 오류: ' + e.message); }
     finally { setExtracting(false); if (fileRef.current) fileRef.current.value = ''; }
   };
@@ -214,7 +215,7 @@ export default function SuhaengArchive({ getActiveKey, selectedModel, aiGroup, o
       <h2 style={S.h2}>🗂️ 수행평가 아카이브</h2>
       <p style={S.lead}>
         기존에 만들어둔 수행평가 자료(PDF·워드·텍스트)를 올리면 AI가 상세 정리하고, 학교·분야·주제별로 보관합니다.
-        보관된 자료는 언제든 다시 열어 다른 학생에게 <b>[미리 준비]</b>로 배정할 수 있습니다. 한글(.hwp)은 PDF로 저장 후 올려주세요.
+        보관된 자료는 언제든 다시 열어 다른 학생에게 <b>[미리 준비]</b>로 배정할 수 있습니다. PDF·워드(docx)·한글(hwp/hwpx)·텍스트를 올릴 수 있고, 스캔 PDF는 AI가 자동 판독(OCR)합니다.
       </p>
 
       {error && <div style={S.error}>⚠ {error}</div>}
@@ -225,7 +226,7 @@ export default function SuhaengArchive({ getActiveKey, selectedModel, aiGroup, o
         <div style={S.secTitle}>① 자료 올리고 분석하기</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
           <button style={S.btn} onClick={() => fileRef.current?.click()} disabled={extracting}>
-            {extracting ? '추출 중…' : '📎 파일 올리기 (PDF·docx·txt)'}
+            {extracting ? '추출 중… (스캔본은 1~2분)' : '📎 파일 올리기 (PDF·docx·hwp·txt)'}
           </button>
           <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.hwp,.hwpx" multiple style={{ display: 'none' }}
             onChange={(e) => onFiles(e.target.files)} />

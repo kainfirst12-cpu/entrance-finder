@@ -96,7 +96,7 @@ function GradeGraph({ grades }) {
   );
 }
 
-export default function Board({ onAuthError }) {
+export default function Board({ onAuthError, onAnalyzeFile }) {
   const role = localStorage.getItem('ef_role') || 'user';
   const isAdmin = role === 'admin';
   const [columns, setColumns] = useState(['신규', '생기부 분석', '보완 중', '수행평가', '완료']);
@@ -225,6 +225,8 @@ export default function Board({ onAuthError }) {
                         <div style={S.cardMeta}>
                           {last && <span style={S.gradeChip}>내신 {Number(last.gpa)} {trend && <b style={{ color: trend === '↑' ? '#34d399' : '#f87171' }}>{trend}</b>}</span>}
                           {s.records?.length > 0 && <span style={S.recChip}>기록 {s.records.length}</span>}
+                          {(s.files || []).some(f => String(f.kind || '').startsWith('학생업로드')) &&
+                            <span style={{ ...S.recChip, background: '#fef3c7', color: '#92400e' }}>📤 학생자료</span>}
                         </div>
                       </div>
                     );
@@ -258,13 +260,14 @@ export default function Board({ onAuthError }) {
           onClose={() => setDetail(null)}
           onChanged={refreshDetail}
           onError={handleErr}
+          onAnalyzeFile={onAnalyzeFile}
         />
       )}
     </div>
   );
 }
 
-function StudentDetail({ student, columns, onClose, onChanged, onError }) {
+function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyzeFile }) {
   const [form, setForm] = useState({
     name: student.name || '', school: student.school || '', grade: student.grade || '',
     major: student.major || '', targetUniv: student.target_univ || '', status: student.status, notes: student.notes || '',
@@ -443,14 +446,25 @@ function StudentDetail({ student, columns, onClose, onChanged, onError }) {
         <div style={S.sectionTitle}>첨부 파일 (생기부 PDF, 수행평가 결과물 등)</div>
         <div style={S.gradeList}>
           {(student.files || []).length === 0 && <div style={{ color: '#6b7d8a', fontSize: 13 }}>업로드된 파일이 없습니다.</div>}
-          {(student.files || []).map(f => (
+          {(student.files || []).map(f => {
+            const isStudentUpload = String(f.kind || '').startsWith('학생업로드');
+            const analyzable = /\.pdf$/i.test(f.name || '') || f.mime === 'application/pdf';
+            return (
             <div key={f.id} style={S.gradeRow}>
-              <span style={{ flex: 1 }}>📎 {f.name}</span>
+              {isStudentUpload &&
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: '#92400e', background: '#fef3c7', borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+                  📤 {String(f.kind).replace('학생업로드-', '')}
+                </span>}
+              <span style={{ flex: 1, wordBreak: 'break-all' }}>📎 {f.name}</span>
               <span style={{ color: '#6b7d8a', fontSize: 12 }}>{fmtSize(f.size || 0)}</span>
+              {analyzable && onAnalyzeFile &&
+                <button style={{ ...S.viewBtn, background: '#4f7cff', color: '#fff', borderColor: '#4f7cff' }}
+                  onClick={() => onAnalyzeFile(student, f)} title="이 파일을 생기부로 넣고 AI 분석 시작">🔬 분석</button>}
               <button style={S.viewBtn} onClick={() => downloadFile(f)}>다운로드</button>
               <button style={S.miniDel} onClick={() => delFile(f.id)}>삭제</button>
             </div>
-          ))}
+            );
+          })}
         </div>
         <div style={S.addRow}>
           <button style={S.addSmall} onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? '업로드 중...' : '📎 파일 첨부'}</button>

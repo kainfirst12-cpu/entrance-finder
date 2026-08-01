@@ -389,7 +389,27 @@ export default function App() {
           <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />
         )}
         {view === 'board' && (
-          <Board onAuthError={handleLogout} />
+          <Board
+            onAuthError={handleLogout}
+            onAnalyzeFile={async (student, file) => {
+              // 보드에 저장된 파일(학생 셀프 업로드 포함)을 내려받아 생기부 PDF로 넣고 분석 폼 오픈
+              try {
+                const token = localStorage.getItem('ef_token');
+                const res = await fetch(`${API_BASE}/api/board/files/${file.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+                if (!res.ok) throw new Error(`파일을 불러오지 못했습니다 (HTTP ${res.status})`);
+                const blob = await res.blob();
+                const f = new File([blob], file.name || 'record.pdf', { type: file.mime || 'application/pdf' });
+                setFormPrefill({
+                  recordFile: f,
+                  studentData: {
+                    name: student.name || '', school: student.school || '', grade: student.grade || '',
+                    major: student.major || '', targetUniv: student.target_univ || '',
+                  },
+                });
+                setView('form');
+              } catch (e) { alert(e.message); }
+            }}
+          />
         )}
         {view === 'admissions' && (
           <Admissions onAuthError={handleLogout} />

@@ -187,11 +187,34 @@ export async function getStudentByCode(code) {
     `SELECT id, name, school, grade, major, target_univ, student_code FROM ef_students WHERE student_code = $1`, [code]);
   const student = rows[0];
   if (!student) return null;
-  const [{ rows: records }, { rows: placements }] = await Promise.all([
+  const [{ rows: records }, { rows: placements }, { rows: uploads }] = await Promise.all([
     getPool().query(`SELECT id, type, title, content, created_at FROM ef_records WHERE student_id = $1 ORDER BY created_at DESC LIMIT 200`, [student.id]),
     getPool().query(`SELECT * FROM ef_placements WHERE student_id = $1 ORDER BY created_at DESC LIMIT 100`, [student.id]),
+    // 학생 본인이 올린 파일만 (선생님 첨부는 비공개)
+    getPool().query(`SELECT id, name, size, kind, created_at FROM ef_files WHERE student_id = $1 AND kind LIKE '학생업로드%' ORDER BY created_at DESC LIMIT 50`, [student.id]),
   ]);
-  return { student, records, placements };
+  return { student, records, placements, uploads };
+}
+
+// 코드 → 학생 id만 (학생 셀프 업로드용 가벼운 조회)
+export async function getStudentIdByCode(code) {
+  if (!dbEnabled()) return null;
+  const { rows } = await getPool().query(`SELECT id FROM ef_students WHERE student_code = $1`, [code]);
+  return rows[0]?.id ?? null;
+}
+
+// 학생 셀프 업로드 개수 (남용 방지 상한 체크용)
+export async function countStudentUploads(studentId) {
+  const { rows } = await getPool().query(
+    `SELECT COUNT(*)::int AS n FROM ef_files WHERE student_id = $1 AND kind LIKE '학생업로드%'`, [studentId]);
+  return rows[0]?.n ?? 0;
+}
+
+// 학생 본인 업로드 파일의 소유 확인 후 삭제 (잘못 올린 파일 정리용)
+export async function deleteStudentUpload(studentId, fileId) {
+  const { rowCount } = await getPool().query(
+    `DELETE FROM ef_files WHERE id = $1 AND student_id = $2 AND kind LIKE '학생업로드%'`, [fileId, studentId]);
+  return rowCount > 0;
 }
 
 // ── 학생 첨부파일 ──────────────────────────────────────

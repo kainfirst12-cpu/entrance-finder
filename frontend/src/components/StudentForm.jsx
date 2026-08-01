@@ -206,10 +206,25 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
 
   // 부모(App)로부터 prefill prop이 들어오면 자동 적용
   useEffect(() => {
-    if (prefill) {
-      const ok = applyPrefillData(prefill, 'prefill');
-      if (ok) onClearPrefill?.();
+    if (!prefill) return;
+    // 보드 파일에서 넘어온 새 분석 — 학생 기본정보 + 생기부 파일만 채운다 (기존 결과 재사용 아님)
+    if (prefill.recordFile) {
+      const sd = prefill.studentData || {};
+      setForm(prev => ({
+        ...prev,
+        name: sd.name || prev.name,
+        grade: sd.grade || prev.grade,
+        school: sd.school || prev.school,
+        targetUniv: sd.targetUniv || prev.targetUniv,
+      }));
+      if (sd.major) setSelectedMajors(String(sd.major).split(/[,\s]+/).map(m => m.trim()).filter(Boolean).slice(0, MAX_MAJORS));
+      setFiles(prev => ({ ...prev, recordPdf: prefill.recordFile }));
+      setTab(0);
+      onClearPrefill?.();
+      return;
     }
+    const ok = applyPrefillData(prefill, 'prefill');
+    if (ok) onClearPrefill?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill]);
 

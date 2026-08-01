@@ -10,6 +10,7 @@
     "@anthropic-ai/sdk": "^0.79.0",
     "@google/generative-ai": "^0.24.1",
     "@notionhq/client": "^2.2.14",
+    "adm-zip": "^0.5.18",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "docx": "^9.0.2",

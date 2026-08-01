@@ -12,6 +12,7 @@ import {
   listPlacements, addPlacement, deletePlacement, getPlacementOwner,
   listSuhaeng, getSuhaeng, createSuhaeng, deleteSuhaeng, getSuhaengOwner,
   setStudentCode, getStudentByCode, getStudentFull,
+  getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
@@ -119,6 +120,123 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16, password = '') {
     } catch {}
   }
 }
+// ── 범용 파일 텍스트 추출 (아카이브·수행평가 공용) ──────────
+// poppler pdftotext — pdf-parse가 못 읽는 PDF(폰트 매핑 깨짐 등)의 2차 시도.
+function popplerPdfText(pdfBuffer, password = '') {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const tmpPdf = join(tmpdir(), `xt-${stamp}.pdf`);
+  const tmpTxt = join(tmpdir(), `xt-${stamp}.txt`);
+  try {
+    writeFileSync(tmpPdf, pdfBuffer);
+    execFileSync('pdftotext', ['-enc', 'UTF-8', ...upwArgs(password), tmpPdf, tmpTxt], { timeout: 30000 });
+    return readFileSync(tmpTxt, 'utf-8');
+  } catch {
+    return '';
+  } finally {
+    try { unlinkSync(tmpPdf); } catch {}
+    try { unlinkSync(tmpTxt); } catch {}
+  }
+}
+
+// 추출 텍스트가 '내용이 있는' 수준인지 — 스캔 PDF는 공백·페이지번호만 나온다.
+function hasRealText(text) {
+  return ((text || '').match(/[가-힣A-Za-z0-9]/g) || []).length >= 80;
+}
+
+// .hwpx (한글 2014+ 개방형식) = zip 안의 XML. Contents/section*.xml에서 <hp:t> 텍스트만 모은다.
+async function extractHwpxText(buffer) {
+  const AdmZip = (await import('adm-zip')).default;
+  const zip = new AdmZip(buffer);
+  const sections = zip.getEntries()
+    .filter(e => /^Contents\/section\d+\.xml$/i.test(e.entryName))
+    .sort((a, b) => a.entryName.localeCompare(b.entryName, undefined, { numeric: true }));
+  if (!sections.length) throw new Error('hwpx 본문(section XML)을 찾지 못했습니다');
+  const decodeEntities = (s) => s
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d))).replace(/&amp;/g, '&');
+  const out = [];
+  for (const s of sections) {
+    const xml = s.getData().toString('utf-8');
+    // 문단(<hp:p>) 단위로 줄을 나누고, 각 문단 안의 <hp:t> 런을 이어 붙인다.
+    for (const para of xml.split(/<hp:p[ >]/).slice(1)) {
+      const runs = [...para.matchAll(/<hp:t[^>]*>([\s\S]*?)<\/hp:t>/g)].map(m => decodeEntities(m[1].replace(/<[^>]+>/g, '')));
+      const line = runs.join('').trim();
+      if (line) out.push(line);
+    }
+  }
+  return out.join('\n');
+}
+
+// .hwp (한글 v5 바이너리) = CFB(복합문서) 안 BodyText/Section* 스트림의 zlib 압축 레코드.
+// HWPTAG_PARA_TEXT(67) 레코드에서 UTF-16LE 본문만 걷어낸다 (표·그림 등 컨트롤은 건너뜀).
+async function extractHwpText(buffer) {
+  const XLSX = (await import('xlsx')).default;
+  const zlib = await import('zlib');
+  const cfb = XLSX.CFB.read(buffer, { type: 'buffer' });
+  const header = XLSX.CFB.find(cfb, 'FileHeader');
+  if (!header) throw new Error('한글(HWP) 파일 헤더가 없습니다');
+  const flags = Buffer.from(header.content).readUInt32LE(36);
+  if (flags & 0x2) throw new Error('암호가 걸린 한글 문서입니다 — 암호를 해제하고 다시 올려주세요');
+  if (flags & 0x4) throw new Error('배포용(편집제한) 한글 문서는 텍스트 추출이 불가합니다 — PDF로 저장해 올려주세요');
+  const compressed = !!(flags & 0x1);
+  const sections = cfb.FullPaths
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => /BodyText\/Section\d+$/.test(p))
+    .sort((a, b) => a.p.localeCompare(b.p, undefined, { numeric: true }));
+  if (!sections.length) throw new Error('한글 문서 본문(BodyText)을 찾지 못했습니다');
+  let out = '';
+  for (const { i } of sections) {
+    let data = Buffer.from(cfb.FileIndex[i].content);
+    if (compressed) data = zlib.inflateRawSync(data);
+    let off = 0;
+    while (off + 4 <= data.length) {
+      const hdr = data.readUInt32LE(off); off += 4;
+      const tag = hdr & 0x3FF;
+      let size = (hdr >>> 20) & 0xFFF;
+      if (size === 0xFFF) { size = data.readUInt32LE(off); off += 4; }
+      if (tag === 67) { // HWPTAG_PARA_TEXT
+        const end = Math.min(off + size, data.length);
+        let i2 = off;
+        while (i2 + 1 < end) {
+          const c = data.readUInt16LE(i2);
+          if (c >= 32) { out += String.fromCharCode(c); i2 += 2; }
+          else if (c === 10 || c === 13) { out += '\n'; i2 += 2; }
+          // 확장·인라인 컨트롤(그림·표·필드 등)은 자기 포함 8 WCHAR(16바이트)를 차지한다.
+          else if ((c >= 1 && c <= 9) || c === 11 || c === 12 || (c >= 14 && c <= 23)) { i2 += 16; }
+          else { i2 += 2; } // 0, 24~31 = 예약 문자
+        }
+        out += '\n';
+      }
+      off += size;
+    }
+  }
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// 스캔 PDF → 이미지 → AI 비전으로 본문 전사(OCR). 페이지를 나눠 여러 번 호출한다.
+async function ocrPdfWithVision(pdfBuffer, { aiModel, submodel, apiKey, maxPages = 20 }) {
+  const info = inspectPdf(pdfBuffer);
+  const pages = Math.min(info.pages || maxPages, maxPages);
+  const images = await convertPdfToImages(pdfBuffer, pages);
+  if (!images.length) throw new Error('PDF를 이미지로 변환하지 못했습니다');
+  const mimeOf = (b64) => b64.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+  const BATCH = 6;
+  const parts = [];
+  for (let i = 0; i < images.length; i += BATCH) {
+    const batch = images.slice(i, i + BATCH).map(b64 => ({ mimeType: mimeOf(b64), base64: b64 }));
+    const text = await callAIModel({
+      aiModel, submodel, apiKey,
+      systemPrompt: '당신은 문서 전사(OCR) 도우미입니다. 이미지 속 문서의 텍스트를 요약·해석 없이 그대로 옮겨 적습니다. 표는 마크다운 표로 옮깁니다. 읽을 수 없는 부분만 [판독불가]로 표시합니다.',
+      userMsg: `문서 ${i + 1}~${i + batch.length}페이지입니다. 텍스트를 순서대로 그대로 옮겨 적어주세요.`,
+      maxTokens: 12000,
+      images: batch,
+    });
+    parts.push(text.trim());
+  }
+  const truncated = (info.pages || 0) > maxPages;
+  return { text: parts.join('\n\n'), pages: images.length, totalPages: info.pages || images.length, truncated };
+}
+
 const app = express();
 app.set('trust proxy', true); // Railway 프록시 뒤에서 실제 클라이언트 IP 파악
 app.use(cors());
@@ -740,26 +858,69 @@ ${grade || ''} 학생 수준에 맞춰 완성도 높은 수행평가 결과물�
   }
 });
 
-// ── 수행평가: 업로드 파일에서 텍스트 추출 (pdf/docx/txt) ──
+// ── 수행평가·아카이브: 업로드 파일에서 텍스트 추출 (pdf/docx/hwp/hwpx/txt) ──
+// 스캔 PDF는 AI 키가 헤더로 오면 비전 OCR까지 폴백. OCR이 오래 걸려 SSE+keepalive로 응답
+// (프론트 postForResult가 JSON/SSE 둘 다 처리하므로 구버전과도 호환).
 app.post('/api/assessment/extract', upload.array('files', 10), async (req, res) => {
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'] || '';
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+
   try {
     const files = req.files || [];
     const parts = [];
+    const notices = [];
     for (const f of files) {
+      const name = fixFilename(f.originalname);
       let text = '';
-      if (f.mimetype === 'application/pdf') {
-        try { text = (await pdfParse(f.buffer)).text || ''; } catch { text = ''; }
-      } else if (f.mimetype.includes('wordprocessingml') || /\.docx$/i.test(f.originalname)) {
-        const mammoth = await import('mammoth');
-        text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
-      } else {
-        text = f.buffer.toString('utf-8');
+      try {
+        if (f.mimetype === 'application/pdf' || /\.pdf$/i.test(name)) {
+          // 1차 pdf-parse → 2차 poppler → 3차 비전 OCR(키 필요)
+          try { text = (await pdfParse(f.buffer)).text || ''; } catch { text = ''; }
+          if (!hasRealText(text)) {
+            const t2 = popplerPdfText(f.buffer);
+            if (hasRealText(t2)) text = t2;
+          }
+          if (!hasRealText(text)) {
+            const info = inspectPdf(f.buffer);
+            if (info.needsPassword) throw new Error('비밀번호가 걸린 PDF입니다 — 암호를 해제한 사본으로 올려주세요');
+            if (!apiKey) throw new Error('스캔(이미지) PDF입니다 — 설정에서 AI 키를 등록하면 자동 OCR로 읽어옵니다');
+            console.log(`[extract] 스캔 PDF 비전 OCR 시작: ${name} (${info.pages}p)`);
+            const ocr = await ocrPdfWithVision(f.buffer, { aiModel, submodel, apiKey });
+            text = ocr.text;
+            notices.push(`${name}: 스캔 PDF라 AI 판독(OCR)으로 읽었습니다 (${ocr.pages}/${ocr.totalPages}페이지${ocr.truncated ? ' — 뒷부분 생략됨' : ''}). 숫자·표는 원본과 대조해 주세요.`);
+          }
+        } else if (f.mimetype.includes('wordprocessingml') || /\.docx$/i.test(name)) {
+          const mammoth = await import('mammoth');
+          text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
+        } else if (/\.doc$/i.test(name)) {
+          throw new Error('옛 워드(.doc) 형식은 지원되지 않습니다 — 워드에서 .docx 또는 PDF로 저장해 올려주세요');
+        } else if (/\.hwpx$/i.test(name)) {
+          text = await extractHwpxText(f.buffer);
+        } else if (/\.hwp$/i.test(name)) {
+          text = await extractHwpText(f.buffer);
+          if (!hasRealText(text)) throw new Error('한글(.hwp) 본문을 읽지 못했습니다 — 한글에서 "PDF로 저장" 후 올려주세요');
+        } else {
+          text = f.buffer.toString('utf-8');
+        }
+      } catch (fileErr) {
+        notices.push(`${name}: ${fileErr.message}`);
+        continue;
       }
-      if (text.trim()) parts.push(`[${fixFilename(f.originalname)}]\n${text.trim()}`);
+      if (text.trim()) parts.push(`[${name}]\n${text.trim()}`);
+      else notices.push(`${name}: 텍스트를 추출하지 못했습니다`);
     }
-    res.json({ success: true, text: parts.join('\n\n') });
+    sendDone({ success: parts.length > 0 || files.length === 0, text: parts.join('\n\n'), notices, message: parts.length ? undefined : (notices.join(' / ') || '텍스트를 추출하지 못했습니다') });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error('[extract] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
   }
 });
 
@@ -1107,6 +1268,44 @@ app.get('/api/student-view/:code', async (req, res) => {
     const data = await getStudentByCode(code);
     if (!data) return res.status(404).json({ success: false, message: '해당 코드의 학생을 찾을 수 없습니다' });
     res.json({ success: true, ...data });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 셀프 업로드 — 코드 자체가 인증. 생기부·성적표 등을 올리면 선생님 보드에 나타나고,
+// 선생님이 확인 후 그 파일로 분석을 돌린다. (분석 권한은 선생님에게만 있음)
+const STUDENT_UPLOAD_KINDS = new Set(['생기부', '성적표', '기타']);
+app.post('/api/student-view/:code/upload', upload.array('files', 5), async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    if (!/^S[0-9A-F]{8}$/.test(code)) return res.status(400).json({ success: false, message: '유효하지 않은 코드 형식입니다' });
+    const studentId = await getStudentIdByCode(code);
+    if (!studentId) return res.status(404).json({ success: false, message: '해당 코드의 학생을 찾을 수 없습니다' });
+    const existing = await countStudentUploads(studentId);
+    if (existing >= 15) return res.status(400).json({ success: false, message: '업로드 한도(15개)에 도달했습니다 — 선생님께 정리를 요청해 주세요' });
+    const kindLabel = STUDENT_UPLOAD_KINDS.has(req.body.kind) ? req.body.kind : '기타';
+    const out = [];
+    for (const f of (req.files || []).slice(0, 15 - existing)) {
+      const fname = fixFilename(f.originalname);
+      if (f.size > 30 * 1024 * 1024) { out.push({ name: fname, error: '30MB 초과' }); continue; }
+      const saved = await addFile(studentId, {
+        name: fname, mime: f.mimetype, size: f.size,
+        kind: `학생업로드-${kindLabel}`, data: f.buffer,
+      });
+      out.push({ id: saved.id, name: saved.name, size: saved.size, kind: saved.kind, created_at: saved.created_at });
+    }
+    res.json({ success: true, files: out });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 학생이 잘못 올린 본인 파일 삭제 (본인 업로드만 지울 수 있다)
+app.delete('/api/student-view/:code/files/:fileId', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    if (!/^S[0-9A-F]{8}$/.test(code)) return res.status(400).json({ success: false, message: '유효하지 않은 코드 형식입니다' });
+    const studentId = await getStudentIdByCode(code);
+    if (!studentId) return res.status(404).json({ success: false, message: '해당 코드의 학생을 찾을 수 없습니다' });
+    const ok = await deleteStudentUpload(studentId, Number(req.params.fileId));
+    if (!ok) return res.status(404).json({ success: false, message: '본인이 올린 파일만 삭제할 수 있습니다' });
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

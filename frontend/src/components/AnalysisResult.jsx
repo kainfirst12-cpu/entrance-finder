@@ -159,6 +159,168 @@ function mdToHtml(raw) {
     .trim();
 }
 
+// ══════════ 📊 한눈에 보기 — 리포트 텍스트에서 역량 점수·강점·보완점을 파싱해 도표로 ══════════
+// 파싱 규칙은 PDF 리포트(backend pdfService._extractScores)와 동일 — 리포트 표의
+// "| 학업역량 | 7.8 / 10 |" 류를 찾는다. 3개 미만이면 지표 패널 자체를 숨긴다(가짜 점수 금지).
+function extractScoresFromResults(results) {
+  try {
+    const text = Object.values(results || {}).filter(v => typeof v === 'string').join('\n');
+    const clean = text.replace(/\*\*/g, '');
+    const WANT = [
+      { key: '학업', label: '학업역량' },
+      { key: '비교과', label: '비교과' },
+      { key: '진로', label: '진로역량' },
+      { key: '세특', label: '세특 질' },
+      { key: '전공', label: '전공적합성' },
+    ];
+    const found = [];
+    for (const w of WANT) {
+      const re = new RegExp(`^[^\\n]*${w.key}[^\\n]*?([0-9]+(?:\\.[0-9]+)?)\\s*(?:/\\s*([0-9]+(?:\\.[0-9]+)?))?\\s*(?:점|/\\s*10)?[^\\n]*$`, 'm');
+      const m = re.exec(clean);
+      if (!m) continue;
+      const score = parseFloat(m[1]);
+      const max = m[2] ? parseFloat(m[2]) : 10;
+      if (!isNaN(score) && max > 0 && score <= max) found.push({ label: w.label, score, max });
+    }
+    return found.length >= 3 ? found : null;
+  } catch { return null; }
+}
+
+function extractListFromResults(results, keywords, cap = 4) {
+  try {
+    const text = Object.values(results || {}).filter(v => typeof v === 'string').join('\n');
+    const out = [];
+    let capture = false;
+    for (const raw of text.split('\n')) {
+      const line = raw.replace(/[*_#"\\]/g, '').trim();
+      if (!line) continue;
+      if (keywords.some(k => line.includes(k))) capture = true;
+      if (capture && /^[-•]/.test(line)) {
+        const item = line.replace(/^[-•]\s*/, '').trim();
+        if (item.length > 3 && item.length < 60 && !out.includes(item)) out.push(item);
+      }
+      if (out.length >= cap) break;
+    }
+    return out;
+  } catch { return []; }
+}
+
+const scoreTone = (pct) => pct >= 80 ? '#16a34a' : pct >= 60 ? '#4f7cff' : pct >= 40 ? '#d97706' : '#dc2626';
+
+function ScoreRadar({ scores }) {
+  const N = scores.length;
+  const CX = 110, CY = 104, R = 74;
+  const angle = (i) => (-90 + (360 / N) * i) * Math.PI / 180;
+  const pt = (i, r) => [CX + r * Math.cos(angle(i)), CY + r * Math.sin(angle(i))];
+  const ring = (frac) => scores.map((_, i) => pt(i, R * frac).map(v => v.toFixed(1)).join(',')).join(' ');
+  const dataPoly = scores.map((s, i) => pt(i, R * (s.score / s.max)).map(v => v.toFixed(1)).join(',')).join(' ');
+  return (
+    <svg width="220" height="208" viewBox="0 0 220 208" role="img" aria-label="역량 레이더 차트">
+      {[0.25, 0.5, 0.75, 1].map(f => (
+        <polygon key={f} points={ring(f)} fill="none" stroke="#e2e8f0" strokeWidth="1" />
+      ))}
+      {scores.map((_, i) => {
+        const [x, y] = pt(i, R);
+        return <line key={i} x1={CX} y1={CY} x2={x} y2={y} stroke="#e2e8f0" strokeWidth="1" />;
+      })}
+      <polygon points={dataPoly} fill="rgba(79,124,255,0.22)" stroke="#4f7cff" strokeWidth="2" strokeLinejoin="round" />
+      {scores.map((s, i) => {
+        const [x, y] = pt(i, R * (s.score / s.max));
+        return <circle key={i} cx={x} cy={y} r="3.5" fill="#4f7cff" />;
+      })}
+      {scores.map((s, i) => {
+        const [x, y] = pt(i, R + 17);
+        return (
+          <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="700" fill="#475569">
+            {s.label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+function SummaryDashboard({ results, studentData }) {
+  const scores = extractScoresFromResults(results);
+  const strengths = extractListFromResults(results, ['강점', '강한 부분', '우수한 점']);
+  const weaknesses = extractListFromResults(results, ['보완', '약점', '개선']);
+  if (!scores && !strengths.length && !weaknesses.length) return null;
+  const avg = scores ? scores.reduce((s, x) => s + (x.score / x.max) * 10, 0) / scores.length : null;
+  const gpa = studentData?.gpa && !isNaN(parseFloat(studentData.gpa)) ? parseFloat(studentData.gpa) : null;
+  const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '16px 18px' };
+  const statNum = { fontSize: 26, fontWeight: 800, lineHeight: 1.1 };
+  return (
+    <div style={{ ...card, marginBottom: 18, padding: '18px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 17 }}>📊</span>
+        <span style={{ fontSize: 15.5, fontWeight: 800, color: '#1e293b' }}>한눈에 보기</span>
+        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>아래 리포트 본문에서 자동 추출한 지표입니다</span>
+      </div>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'stretch' }}>
+        {scores && (
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+            <ScoreRadar scores={scores} />
+            <div style={{ minWidth: 230, flex: 1 }}>
+              {scores.map((s) => {
+                const pct = Math.round((s.score / s.max) * 100);
+                return (
+                  <div key={s.label} style={{ marginBottom: 9 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
+                      <span style={{ fontWeight: 700, color: '#334155' }}>{s.label}</span>
+                      <span style={{ fontWeight: 800, color: scoreTone(pct) }}>{s.score} <span style={{ color: '#94a3b8', fontWeight: 500 }}>/ {s.max}</span></span>
+                    </div>
+                    <div style={{ height: 8, background: '#f1f5f9', borderRadius: 6, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: scoreTone(pct), borderRadius: 6, transition: 'width .5s' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 150 }}>
+          {avg != null && (
+            <div style={{ background: '#eef4ff', border: '1px solid #dbe7ff', borderRadius: 12, padding: '12px 16px' }}>
+              <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700 }}>종합 역량</div>
+              <div style={{ ...statNum, color: scoreTone(avg * 10) }}>{avg.toFixed(1)}<span style={{ fontSize: 14, color: '#94a3b8' }}> / 10</span></div>
+            </div>
+          )}
+          {gpa != null && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #dcfce7', borderRadius: 12, padding: '12px 16px' }}>
+              <div style={{ fontSize: 11.5, color: '#64748b', fontWeight: 700 }}>내신 (입력값)</div>
+              <div style={{ ...statNum, color: '#16a34a' }}>{gpa.toFixed(2)}<span style={{ fontSize: 14, color: '#94a3b8' }}> 등급</span></div>
+            </div>
+          )}
+        </div>
+        {(strengths.length > 0 || weaknesses.length > 0) && (
+          <div style={{ flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {strengths.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', marginBottom: 6 }}>💪 강점</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {strengths.map((t) => (
+                    <span key={t} style={{ fontSize: 12, background: '#f0fdf4', border: '1px solid #dcfce7', color: '#166534', borderRadius: 8, padding: '4px 10px' }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {weaknesses.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#d97706', marginBottom: 6 }}>🧩 보완점</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {weaknesses.map((t) => (
+                    <span key={t} style={{ fontSize: 12, background: '#fffbeb', border: '1px solid #fef3c7', color: '#92400e', borderRadius: 8, padding: '4px 10px' }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyze, selectedModel, apiKey, geminiKey, gptKey }) {
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1484,6 +1646,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           </div>
         </div>
       )}
+
+      {/* 📊 지표 대시보드 — 리포트에서 추출한 역량 점수·강점·보완점 시각화 */}
+      <SummaryDashboard results={results} studentData={studentData} />
 
       <div className="result-sections">
         {SECTION_MAP.map(({ key, num, title }) => renderSection(key, num, title, results?.[key]))}

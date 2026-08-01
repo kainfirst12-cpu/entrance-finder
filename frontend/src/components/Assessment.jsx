@@ -125,12 +125,17 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
     try {
       const fd = new FormData();
       files.forEach(f => fd.append('files', f));
-      const res = await fetch(`${API_BASE}/api/assessment/extract`, {
+      // AI 키가 있으면 스캔 PDF도 서버가 비전 OCR로 읽어온다 (SSE keepalive 응답).
+      const apiKey = getActiveKey?.();
+      const data = await postForResult(`${API_BASE}/api/assessment/extract`, {
         method: 'POST',
-        headers: { ...(token() ? { Authorization: `Bearer ${token()}` } : {}) },
+        headers: {
+          ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
+          ...(apiKey ? { 'x-api-key': apiKey, 'x-ai-model': aiGroup || 'claude', 'x-ai-submodel': selectedModel || 'claude' } : {}),
+        },
         body: fd,
       });
-      const data = await res.json();
+      if (data.notices?.length) setError(data.notices.join(' / '));
       if (data.success && data.text) {
         if (target === 'ref') setReferenceText(prev => (prev ? prev + '\n\n' : '') + data.text);
         else setSubmissionText(prev => (prev ? prev + '\n\n' : '') + data.text);
@@ -330,9 +335,9 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
             <textarea style={S.textarea} rows={3} value={referenceText} onChange={e => setReferenceText(e.target.value)} placeholder="참고할 내용을 붙여넣거나 아래에서 파일을 올리세요." />
             <div style={S.fileRow}>
               <button style={S.fileBtn} onClick={() => refFileRef.current?.click()} disabled={uploading === 'ref'}>
-                {uploading === 'ref' ? '추출 중...' : '📎 참고 파일 첨부 (pdf·docx·txt)'}
+                {uploading === 'ref' ? '추출 중...' : '📎 참고 파일 첨부 (pdf·docx·hwp·txt)'}
               </button>
-              <input ref={refFileRef} type="file" multiple accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
+              <input ref={refFileRef} type="file" multiple accept=".pdf,.docx,.txt,.md,.hwp,.hwpx" style={{ display: 'none' }}
                 onChange={e => { extractFiles(e.target.files, 'ref'); e.target.value = ''; }} />
             </div>
           </>
@@ -342,9 +347,9 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
             <textarea style={S.textarea} rows={6} value={submissionText} onChange={e => setSubmissionText(e.target.value)} placeholder="학생이 제출한 글을 붙여넣으세요." />
             <div style={S.fileRow}>
               <button style={S.fileBtn} onClick={() => subFileRef.current?.click()} disabled={uploading === 'sub'}>
-                {uploading === 'sub' ? '추출 중...' : '📎 제출물 파일 첨부 (pdf·docx·txt)'}
+                {uploading === 'sub' ? '추출 중...' : '📎 제출물 파일 첨부 (pdf·docx·hwp·txt)'}
               </button>
-              <input ref={subFileRef} type="file" multiple accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
+              <input ref={subFileRef} type="file" multiple accept=".pdf,.docx,.txt,.md,.hwp,.hwpx" style={{ display: 'none' }}
                 onChange={e => { extractFiles(e.target.files, 'sub'); e.target.value = ''; }} />
             </div>
             <label style={S.label}>평가 기준 / 루브릭 <span style={S.opt}>선택</span></label>

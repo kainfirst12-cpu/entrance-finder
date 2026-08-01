@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 
 // 학생 셀프 열람 — 선생님이 발급한 열람 코드만으로 본인 배정 내용을 봄 (읽기 전용)
@@ -48,6 +48,11 @@ export default function StudentSelfView({ onBack }) {
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
   const [openRec, setOpenRec] = useState(null);
+  // 내 자료 올리기 (생기부 등) — 코드가 곧 인증
+  const [upKind, setUpKind] = useState('생기부');
+  const [uploading, setUploading] = useState(false);
+  const [upMsg, setUpMsg] = useState('');
+  const upRef = useRef(null);
 
   const lookup = async () => {
     const c = code.trim().toUpperCase();
@@ -83,7 +88,39 @@ export default function StudentSelfView({ onBack }) {
     );
   }
 
-  const { student, records, placements } = data;
+  const codeNow = () => (data?.student?.student_code || code).trim().toUpperCase();
+
+  const uploadFiles = async (fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setUploading(true); setUpMsg('');
+    try {
+      const fd = new FormData();
+      files.forEach((f) => fd.append('files', f));
+      fd.append('kind', upKind);
+      const res = await fetch(`${API_BASE}/api/student-view/${encodeURIComponent(codeNow())}/upload`, { method: 'POST', body: fd });
+      const j = await res.json();
+      if (!j.success) throw new Error(j.message || '업로드 실패');
+      const failed = (j.files || []).filter((f) => f.error);
+      setUpMsg(failed.length ? `일부 실패: ${failed.map(f => `${f.name}(${f.error})`).join(', ')}` : '✓ 업로드 완료 — 선생님이 확인 후 분석해 드려요');
+      await lookup(); // 목록 갱신
+    } catch (e) { setUpMsg('업로드 오류: ' + e.message); }
+    finally { setUploading(false); if (upRef.current) upRef.current.value = ''; }
+  };
+
+  const deleteUpload = async (fileId) => {
+    if (!window.confirm('이 파일을 삭제할까요?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/student-view/${encodeURIComponent(codeNow())}/files/${fileId}`, { method: 'DELETE' });
+      const j = await res.json();
+      if (!j.success) throw new Error(j.message || '삭제 실패');
+      await lookup();
+    } catch (e) { setUpMsg('삭제 오류: ' + e.message); }
+  };
+
+  const fmtSize = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+
+  const { student, records, placements, uploads = [] } = data;
   return (
     <div style={S.viewPage}>
       <div style={S.viewShell}>
@@ -119,6 +156,44 @@ export default function StudentSelfView({ onBack }) {
             </div>
           </>
         )}
+
+        <div style={S.secTitle}>📤 내 자료 올리기 (생기부 · 성적표)</div>
+        <div style={{ background: '#f7f9fc', border: '1px solid #e3e9f1', borderRadius: 12, padding: '14px 16px' }}>
+          <p style={{ fontSize: 13, color: '#5c6b7c', margin: '0 0 10px' }}>
+            생활기록부(PDF 권장)나 성적표를 올리면 <b>선생님이 확인 후 분석</b>해 드려요. 분석 결과는 이 페이지의 기록으로 배정됩니다.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <select value={upKind} onChange={(e) => setUpKind(e.target.value)}
+              style={{ padding: '8px 10px', borderRadius: 9, border: '1px solid #d7dfea', background: '#fff', fontSize: 13, color: '#26313e' }}>
+              <option value="생기부">생기부</option>
+              <option value="성적표">성적표</option>
+              <option value="기타">기타 자료</option>
+            </select>
+            <button onClick={() => upRef.current?.click()} disabled={uploading}
+              style={{ ...S.goBtn, width: 'auto', marginTop: 0, padding: '9px 18px', fontSize: 13.5 }}>
+              {uploading ? '올리는 중…' : '📎 파일 선택해서 올리기'}
+            </button>
+            <input ref={upRef} type="file" multiple accept=".pdf,.docx,.hwp,.hwpx,.txt,image/*" style={{ display: 'none' }}
+              onChange={(e) => uploadFiles(e.target.files)} />
+            <span style={{ fontSize: 11.5, color: '#98a4b3' }}>파일당 30MB · PDF/워드/한글/사진</span>
+          </div>
+          {upMsg && <p style={{ fontSize: 12.5, margin: '8px 0 0', color: upMsg.startsWith('✓') ? '#1a7f4e' : '#d64545' }}>{upMsg}</p>}
+          {uploads.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {uploads.map((f) => (
+                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: '#fff', border: '1px solid #e3e9f1', borderRadius: 8, padding: '6px 10px' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: '#1d6fd6', background: '#e8f1fc', borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap' }}>
+                    {String(f.kind || '').replace('학생업로드-', '') || '자료'}
+                  </span>
+                  <span style={{ flex: 1, fontWeight: 600, wordBreak: 'break-all' }}>{f.name}</span>
+                  <span style={{ color: '#8492a5', whiteSpace: 'nowrap' }}>{fmtSize(f.size)} · {String(f.created_at).slice(0, 10)}</span>
+                  <button onClick={() => deleteUpload(f.id)}
+                    style={{ border: 'none', background: 'transparent', color: '#d64545', cursor: 'pointer', fontSize: 12 }}>삭제</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={S.secTitle}>📚 나에게 배정된 기록 ({records.length}건)</div>
         {!records.length && <div style={{ color: '#8492a5', fontSize: 13.5, padding: '8px 2px' }}>아직 배정된 기록이 없습니다.</div>}
