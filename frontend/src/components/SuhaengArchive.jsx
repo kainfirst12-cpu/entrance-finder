@@ -226,7 +226,7 @@ export default function SuhaengArchive({ getActiveKey, selectedModel, aiGroup, o
         <div style={S.secTitle}>① 자료 올리고 분석하기</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
           <button style={S.btn} onClick={() => fileRef.current?.click()} disabled={extracting}>
-            {extracting ? '추출 중… (스캔본은 1~2분)' : '📎 파일 올리기 (PDF·docx·hwp·txt)'}
+            {extracting ? '추출 중… (스캔본은 분량에 따라 몇 분)' : '📎 파일 올리기 (PDF·docx·hwp·txt)'}
           </button>
           <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.hwp,.hwpx" multiple style={{ display: 'none' }}
             onChange={(e) => onFiles(e.target.files)} />

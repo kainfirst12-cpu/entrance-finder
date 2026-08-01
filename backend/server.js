@@ -214,7 +214,9 @@ async function extractHwpText(buffer) {
 }
 
 // 스캔 PDF → 이미지 → AI 비전으로 본문 전사(OCR). 페이지를 나눠 여러 번 호출한다.
-async function ocrPdfWithVision(pdfBuffer, { aiModel, submodel, apiKey, maxPages = 20 }) {
+// 상한은 생기부 이미지 파이프라인과 동일한 40 — 23페이지 생기부가 12페이지 상한에 잘려
+// 사고 났던 전례(2026-07-28)가 있어, 스캔 자료도 같은 기준으로 전체를 덮는다.
+async function ocrPdfWithVision(pdfBuffer, { aiModel, submodel, apiKey, maxPages = PDF_IMAGE_PAGE_CAP }) {
   const info = inspectPdf(pdfBuffer);
   const pages = Math.min(info.pages || maxPages, maxPages);
   const images = await convertPdfToImages(pdfBuffer, pages);
