@@ -14,6 +14,12 @@ import {
   setStudentCode, getStudentByCode, getStudentFull,
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
+import {
+  listRoadmaps, createRoadmap, updateRoadmap, deleteRoadmap,
+  addItem as addRoadmapItem, updateItem as updateRoadmapItem, deleteItem as deleteRoadmapItem,
+  getRoadmapOwner, getItemOwner as getRoadmapItemOwner,
+  getRoadmapStudentId, getItemStudentId as getRoadmapItemStudentId,
+} from './services/roadmapStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
@@ -1308,6 +1314,271 @@ app.delete('/api/student-view/:code/files/:fileId', async (req, res) => {
     const ok = await deleteStudentUpload(studentId, Number(req.params.fileId));
     if (!ok) return res.status(404).json({ success: false, message: '본인이 올린 파일만 삭제할 수 있습니다' });
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════
+// 생기부 로드맵 — 컨설팅 로드맵 문서를 학생이 체크할 실행 항목으로 변환
+// ══════════════════════════════════════════════════════
+
+// 원자료(수행평가·탐구보고서 전수) → 로드맵 보고서 본문 작성
+const ROADMAP_WRITE_SYSTEM = `당신은 패스파인더 입시팀의 생기부 로드맵 작성자입니다.
+학생 한 명의 산출물(수행평가·탐구보고서·자기평가서 등)을 전수로 읽고,
+다음 학기 각 과목에서 무엇을 어떻게 이어갈지를 설계한 로드맵 보고서를 씁니다.
+
+핵심은 주제 추천이 아닙니다. 학생이 이미 남긴 것을 회수해 한 층 올리는 것입니다.
+새 주제를 던지면 학생부가 활동 목록이 되고, 회수하면 한 사람의 사고 궤적이 됩니다.
+
+[작성 원칙]
+1. 새 주제를 만들지 않는다 — 학생이 스스로 예고한 것("다음에는 ~해 보고 싶다"), 스스로 밝힌 한계("~까지는 못 했다"), 이미 낸 산출물 안에서만 고른다. 자료에서 이 예고·한계 문장을 반드시 찾아 원문 그대로 인용한다.
+2. 과목마다 학생이 직접 만든 숫자(측정·집계·계산·검증)를 하나 이상 남기도록 설계한다. 문헌 조사로 끝나는 주제는 승격시킨다.
+3. 강점은 근거와 함께 구체적으로 쓴다 — "탐구력이 우수함"이 아니라 "자료가 자기 주장을 지지하지 않을 때 결론을 낮춘 기록이 두 번 있다".
+4. 빈틈은 인격이 아니라 구조의 문제로 쓴다 — "노력이 부족하다"가 아니라 "예고 3건, 이행 0건이다". 모든 빈틈에는 그것을 메우는 다음 학기 주제를 대응시킨다.
+5. 억지 융합을 넣지 않는다. 상대 과목이 자료 조달·번역만 맡으면 융합이 아니다. 예체능처럼 협동·성실 축을 담당할 과목은 의도적으로 비우고, 비운 이유를 쓴다.
+6. 우선순위를 매긴다. 전 과목에 심화탐구를 넣으면 전부 얕아진다 — 한 학기 3~4개가 한계다.
+7. 자료에 없는 사실을 지어내지 않는다. 확인이 필요한 것은 'Ⅶ. 남은 작업'에 올린다.
+
+[출력 — 마크다운. 이모지 금지. 표는 마크다운 표(| |)]
+## 이 로드맵의 한 줄 요지
+(학생의 현 상태와 다음 학기 과제를 3~6문장으로. 구체적 수치·인용 포함)
+
+## Ⅰ. 활동 정리
+(표: 과목 | 확보 산출물 | 핵심 내용 | 본인 주도 여부 — 전 과목. 이어서 주요 산출물 2~4건을 소제목으로 상세 정리)
+
+## Ⅱ. 진단 — 강점과 빈틈
+(강점 ①②③…, 빈틈 ①②③… 각각 근거 인용과 함께. 빈틈은 처방의 시급성 순)
+
+## Ⅲ. 연결 지도
+(표: 과목 | 이번 학기에 남긴 것 | 미해결로 남은 것 | 다음 학기에 되어야 할 것 — 전 과목)
+
+## Ⅳ. 다음 학기 과목별 설계
+(과목마다 소제목 + 우선순위. 각 과목 안에 Ⓐ 직전 학기 연계 / Ⓑ 교과 융합 / Ⓒ 진로 연계)
+
+## Ⅴ. 융합 축
+(여러 과목을 관통하는 축 1~3개. 각 축마다 단계 | 담당 과목 | 맡는 일)
+
+## Ⅵ. 실행 타임라인
+(표: 시기(월별) | 할 일 — 구체적 행동 단위로)
+
+## Ⅶ. 남은 작업
+(표: 항목 | 비고 — 확보하지 못한 자료, 사실 확인이 필요한 곳, 정정할 오류)
+
+## 우선순위
+(표: 순위 | 과목 | 사유)`;
+
+app.post('/api/roadmap/generate', requireAuth, async (req, res) => {
+  const { text, filename, profile } = req.body || {};
+  if (!text?.trim()) return res.status(400).json({ success: false, message: '분석할 자료가 없습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  const p = profile || {};
+  const userMsg = `[학생] ${[p.name, p.school, p.grade].filter(Boolean).join(' · ') || '미입력'}
+[희망 진로/전공] ${p.major || '미입력'}${p.targetUniv ? `\n[목표 대학] ${p.targetUniv}` : ''}
+[이번 학기 수강 과목] ${p.currentSubjects || '자료에서 파악할 것'}
+[다음 학기 수강 과목] ${p.nextSubjects || '자료에서 파악하거나, 파악되지 않으면 일반적인 후속 과목으로 설계하고 그 사실을 남은 작업에 적을 것'}
+${p.memo ? `[선생님 메모]\n${p.memo}\n` : ''}
+[학생 산출물 전문 — 수행평가·탐구보고서·자기평가서 등]
+${String(text).slice(0, 120000)}
+
+위 자료를 전수로 읽고 생기부 로드맵 보고서를 작성해 주세요.`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+  try {
+    // 1단계 — 로드맵 본문 작성
+    const body = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: ROADMAP_WRITE_SYSTEM, userMsg, maxTokens: 16000 });
+    if (!body?.trim()) throw new Error('로드맵 본문을 생성하지 못했습니다');
+    send({ stage: 'items', message: '로드맵을 작성했습니다. 체크 항목으로 정리하는 중…' });
+    // 2단계 — 본문을 체크 항목으로 분해
+    const parsed = await aiRoadmapItems({ aiModel, submodel, apiKey }, body,
+      `${p.name || ''} 생기부 로드맵`.trim());
+    sendDone({
+      success: true,
+      roadmap: {
+        title: parsed.title || `${[p.school, p.grade, p.name].filter(Boolean).join(' ')} 생기부 로드맵`.trim(),
+        student: p.name || parsed.student || '',
+        summary: parsed.summary || '',
+        body,
+        items: parsed.items,
+        sourceName: filename || '',
+      },
+    });
+  } catch (err) {
+    console.error('[roadmap/generate] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// 로드맵 문서(추출 텍스트) → AI가 체크 가능한 실행 항목으로 분해
+app.post('/api/roadmap/analyze', requireAuth, async (req, res) => {
+  const { text, filename } = req.body || {};
+  if (!text?.trim()) return res.status(400).json({ success: false, message: '분석할 텍스트가 없습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const parsed = await aiRoadmapItems({ aiModel, submodel, apiKey }, text, filename);
+    sendDone({
+      success: true,
+      roadmap: {
+        title: parsed.title || filename || '생기부 로드맵',
+        student: parsed.student || '',
+        summary: parsed.summary || '',
+        body: String(text).slice(0, 100000),
+        items: parsed.items,
+        sourceName: filename || '',
+      },
+    });
+  } catch (err) {
+    console.error('[roadmap/analyze] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// 로드맵 텍스트 → 체크 항목 JSON (analyze·generate 공용)
+async function aiRoadmapItems({ aiModel, submodel, apiKey }, text, filename) {
+  const systemPrompt = `당신은 입시 컨설턴트가 작성한 "생기부 로드맵" 문서를,
+학생이 스스로 체크하며 실행할 수 있는 할 일 목록으로 바꾸는 전문 조교입니다.
+
+[출력 — 반드시 JSON 객체 하나만. 코드펜스·설명·이모지 금지]
+{
+  "title": "로드맵 제목 (예: 살레시오고 1학년 안세혁 생기부 로드맵)",
+  "student": "학생 이름 (문서에서 확인되면, 없으면 빈 문자열)",
+  "summary": "이 로드맵의 핵심 요지 3~5문장 — 학생이 무엇을 왜 해야 하는지",
+  "items": [
+    {
+      "section": "과목별 설계 | 타임라인 | 남은 작업",
+      "subject": "과목명 (과목별 설계일 때. 예: 통합과학2). 해당 없으면 빈 문자열",
+      "period": "시기 (타임라인일 때. 예: 8월, 9월). 해당 없으면 빈 문자열",
+      "priority": "1순위 | 2순위 | 3순위 (문서에 우선순위가 있으면). 없으면 빈 문자열",
+      "title": "학생이 할 일 한 줄 — 무엇을 하는지 동사로 끝나게, 40자 이내",
+      "detail": "어떻게 하는지 구체적 설명 2~4문장. 문서에 있는 자료명·사이트·수치·조건을 그대로 살릴 것"
+    }
+  ]
+}
+
+[원칙]
+- 항목은 반드시 "했다 / 안 했다"로 체크 가능한 단위로 쪼갠다. 진단·평가·칭찬 같은 서술은 항목으로 만들지 말고 summary에만 반영한다.
+- 문서의 과목별 설계(각 과목의 직전 학기 연계·교과 융합·진로 연계 주제), 월별 실행 타임라인, 남은 작업 표를 빠짐없이 옮긴다.
+- 같은 일이 여러 장에 반복되면 하나로 합치되, 과목별 설계와 타임라인처럼 관점이 다르면 각각 남긴다.
+- 문서에 없는 내용을 지어내지 않는다. 자료 출처·사이트명(GBIF, 기상자료개방포털 등)은 원문 그대로 쓴다.
+- 항목 수는 문서 분량에 맞춰 20~60개.`;
+  const userMsg = `[파일명] ${filename || '로드맵 문서'}\n\n[로드맵 전문]\n${String(text).slice(0, 60000)}`;
+
+  const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 16000 });
+  const m = String(reply).match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('AI 응답에서 로드맵 JSON을 찾지 못했습니다');
+  const parsed = JSON.parse(m[0]);
+  const items = (Array.isArray(parsed.items) ? parsed.items : []).filter(it => it && String(it.title || '').trim());
+  if (!items.length) throw new Error('실행 항목을 추출하지 못했습니다 (문서 내용을 확인해 주세요)');
+  return { title: parsed.title || '', student: parsed.student || '', summary: parsed.summary || '', items };
+}
+
+// 선생님: 학생 로드맵 조회 / 저장 / 삭제
+app.get('/api/board/students/:id/roadmaps', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, roadmaps: await listRoadmaps(Number(req.params.id)) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/board/students/:id/roadmaps', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, roadmap: await createRoadmap(Number(req.params.id), req.body || {}) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/roadmap/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getRoadmapOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await updateRoadmap(Number(req.params.id), req.body || {});
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/roadmap/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getRoadmapOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteRoadmap(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 선생님: 항목 추가 / 수정(체크 포함) / 삭제
+app.post('/api/roadmap/:id/items', requireAuth, async (req, res) => {
+  try {
+    const owner = await getRoadmapOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, item: await addRoadmapItem(Number(req.params.id), req.body || {}) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/roadmap/items/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getRoadmapItemOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, item: await updateRoadmapItem(Number(req.params.id), req.body || {}) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/roadmap/items/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getRoadmapItemOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteRoadmapItem(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 셀프: 열람 코드로 본인 로드맵 항목 체크·수정·삭제·추가 (코드 자체가 인증)
+const STUDENT_CODE_RE = /^S[0-9A-F]{8}$/;
+async function studentIdFromCode(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!STUDENT_CODE_RE.test(c)) return null;
+  return await getStudentIdByCode(c);
+}
+app.patch('/api/student-view/:code/roadmap-items/:itemId', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const itemId = Number(req.params.itemId);
+    if (await getRoadmapItemStudentId(itemId) !== sid) return res.status(403).json({ success: false, message: '본인 항목이 아닙니다' });
+    const { done, note, title, detail, subject, period, priority, section } = req.body || {};
+    res.json({ success: true, item: await updateRoadmapItem(itemId, { done, note, title, detail, subject, period, priority, section }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/student-view/:code/roadmap-items/:itemId', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const itemId = Number(req.params.itemId);
+    if (await getRoadmapItemStudentId(itemId) !== sid) return res.status(403).json({ success: false, message: '본인 항목이 아닙니다' });
+    await deleteRoadmapItem(itemId);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/student-view/:code/roadmaps/:rid/items', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const rid = Number(req.params.rid);
+    if (await getRoadmapStudentId(rid) !== sid) return res.status(403).json({ success: false, message: '본인 로드맵이 아닙니다' });
+    res.json({ success: true, item: await addRoadmapItem(rid, req.body || {}) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

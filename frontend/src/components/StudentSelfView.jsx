@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import RoadmapView from './RoadmapView';
 
-// 학생 셀프 열람 — 선생님이 발급한 열람 코드만으로 본인 배정 내용을 봄 (읽기 전용)
+// 학생 셀프 페이지 — 선생님이 발급한 열람 코드만으로 본인 내용을 본다.
+// 기록·배치는 읽기 전용이고, 로드맵 체크·수정과 내 자료 올리기는 학생이 직접 한다.
 // 로그인 화면에서 진입. 토큰/계정 불필요 (코드 자체가 인증).
 
 function mdPreview(md) {
@@ -12,6 +14,7 @@ function mdPreview(md) {
   while (i < lines.length) {
     const t = lines[i].trim();
     if (!t) { i++; continue; }
+    if (/^[-=*]{3,}$/.test(t)) { html += '<hr style="border:none;border-top:1px solid #e3e9f1;margin:12px 0"/>'; i++; continue; }
     if (t.startsWith('|')) {
       const block = [];
       while (i < lines.length && lines[i].trim().startsWith('|')) { block.push(lines[i]); i++; }
@@ -44,6 +47,7 @@ const VERDICT_COLOR = {
 
 export default function StudentSelfView({ onBack }) {
   const [code, setCode] = useState('');
+  const [activeCode, setActiveCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
@@ -53,19 +57,44 @@ export default function StudentSelfView({ onBack }) {
   const [uploading, setUploading] = useState(false);
   const [upMsg, setUpMsg] = useState('');
   const upRef = useRef(null);
+  const [rmMsg, setRmMsg] = useState('');
+
+  const fetchData = async (c) => {
+    const res = await fetch(`${API_BASE}/api/student-view/${encodeURIComponent(c)}`);
+    const j = await res.json();
+    if (!j.success) throw new Error(j.message || '조회 실패');
+    return j;
+  };
 
   const lookup = async () => {
     const c = code.trim().toUpperCase();
     if (!c) return;
     setLoading(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/student-view/${encodeURIComponent(c)}`);
-      const j = await res.json();
-      if (!j.success) throw new Error(j.message || '조회 실패');
-      setData(j);
+      setData(await fetchData(c));
+      setActiveCode(c);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   };
+
+  // 로드맵 — 학생이 직접 체크·수정·삭제·추가 (코드가 곧 인증)
+  const reload = async () => { try { setData(await fetchData(activeCode)); } catch (e) { setRmMsg('⚠ ' + e.message); } };
+  const rmCall = async (path, opts = {}) => {
+    setRmMsg('');
+    const res = await fetch(`${API_BASE}/api/student-view/${encodeURIComponent(activeCode)}${path}`, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const j = await res.json().catch(() => ({ success: false, message: '서버 응답 오류' }));
+    if (!j.success) { setRmMsg('⚠ ' + (j.message || '처리 실패')); return false; }
+    await reload();
+    return true;
+  };
+  const rmToggle = (item) => rmCall(`/roadmap-items/${item.id}`, { method: 'PATCH', body: { done: !item.done } });
+  const rmSaveItem = (item, form) => rmCall(`/roadmap-items/${item.id}`, { method: 'PATCH', body: form });
+  const rmDeleteItem = (item) => rmCall(`/roadmap-items/${item.id}`, { method: 'DELETE' });
+  const rmAddItem = (rm, f) => rmCall(`/roadmaps/${rm.id}/items`, { method: 'POST', body: f });
 
   if (!data) {
     return (
@@ -120,7 +149,9 @@ export default function StudentSelfView({ onBack }) {
 
   const fmtSize = (n) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
-  const { student, records, placements, uploads = [] } = data;
+  const { student, records, placements, uploads = [], roadmaps = [] } = data;
+  const allItems = roadmaps.flatMap(r => r.items || []);
+  const doneCount = allItems.filter(i => i.done).length;
   return (
     <div style={S.viewPage}>
       <div style={S.viewShell}>
@@ -131,8 +162,28 @@ export default function StudentSelfView({ onBack }) {
               {[student.school, student.grade, student.major && `희망 ${student.major}`, student.target_univ && `목표 ${student.target_univ}`].filter(Boolean).join(' · ')}
             </p>
           </div>
-          <button onClick={() => { setData(null); setCode(''); }} style={S.outBtn}>나가기</button>
+          <button onClick={() => { setData(null); setCode(''); setActiveCode(''); }} style={S.outBtn}>나가기</button>
         </div>
+
+        {roadmaps.length > 0 && (
+          <>
+            <div style={S.secTitle}>
+              🗺 생기부 로드맵 — 하나씩 해내고 체크하세요
+              <span style={{ float: 'right', fontSize: 12.5, fontWeight: 700, color: doneCount === allItems.length ? '#1a7f4e' : '#1d6fd6' }}>
+                전체 {doneCount}/{allItems.length} 달성
+              </span>
+            </div>
+            {rmMsg && <div style={{ color: '#d64545', fontSize: 12.5, margin: '0 0 8px' }}>{rmMsg}</div>}
+            <RoadmapView
+              roadmaps={roadmaps}
+              renderMd={mdPreview}
+              onToggle={rmToggle}
+              onSaveItem={rmSaveItem}
+              onDeleteItem={rmDeleteItem}
+              onAddItem={rmAddItem}
+            />
+          </>
+        )}
 
         {placements.length > 0 && (
           <>
@@ -212,7 +263,7 @@ export default function StudentSelfView({ onBack }) {
         ))}
 
         <p style={{ fontSize: 11.5, color: '#98a4b3', marginTop: 18 }}>
-          이 페이지는 읽기 전용입니다. 내용에 대한 질문은 선생님께 문의하세요. — 패스파인더 에듀
+          로드맵 체크·수정과 내 자료 올리기는 직접 할 수 있고, 선생님이 남긴 기록과 배치 현황은 읽기 전용입니다. 내용에 대한 질문은 선생님께 문의하세요. — 패스파인더 에듀
         </p>
       </div>
     </div>

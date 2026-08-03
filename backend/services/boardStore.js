@@ -1,5 +1,6 @@
 // services/boardStore.js — 학생 관리 칸반 보드 데이터
 import { getPool, dbEnabled } from './db.js';
+import { listRoadmaps } from './roadmapStore.js';
 
 export const BOARD_COLUMNS = ['신규', '생기부 분석', '보완 중', '수행평가', '완료'];
 
@@ -187,16 +188,17 @@ export async function getStudentByCode(code) {
     `SELECT id, name, school, grade, major, target_univ, student_code FROM ef_students WHERE student_code = $1`, [code]);
   const student = rows[0];
   if (!student) return null;
-  const [{ rows: records }, { rows: placements }, { rows: uploads }] = await Promise.all([
+  const [{ rows: records }, { rows: placements }, { rows: uploads }, roadmaps] = await Promise.all([
     getPool().query(`SELECT id, type, title, content, created_at FROM ef_records WHERE student_id = $1 ORDER BY created_at DESC LIMIT 200`, [student.id]),
     getPool().query(`SELECT * FROM ef_placements WHERE student_id = $1 ORDER BY created_at DESC LIMIT 100`, [student.id]),
     // 학생 본인이 올린 파일만 (선생님 첨부는 비공개)
     getPool().query(`SELECT id, name, size, kind, created_at FROM ef_files WHERE student_id = $1 AND kind LIKE '학생업로드%' ORDER BY created_at DESC LIMIT 50`, [student.id]),
+    listRoadmaps(student.id),
   ]);
-  return { student, records, placements, uploads };
+  return { student, records, placements, uploads, roadmaps };
 }
 
-// 코드 → 학생 id만 (학생 셀프 업로드용 가벼운 조회)
+// 코드 → 학생 id만 (학생 셀프 업로드·로드맵 수정 권한 확인용 가벼운 조회)
 export async function getStudentIdByCode(code) {
   if (!dbEnabled()) return null;
   const { rows } = await getPool().query(`SELECT id FROM ef_students WHERE student_code = $1`, [code]);

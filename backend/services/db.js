@@ -161,6 +161,40 @@ export async function initDb() {
       );
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_suhaeng_owner ON ef_suhaeng(owner_id);`);
+    // 생기부 로드맵 — 컨설팅 로드맵 문서를 학생이 체크할 실행 항목으로 보관
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_roadmaps (
+        id          SERIAL PRIMARY KEY,
+        student_id  INTEGER REFERENCES ef_students(id) ON DELETE CASCADE,
+        title       TEXT NOT NULL,
+        summary     TEXT DEFAULT '',
+        body        TEXT DEFAULT '',
+        source_name TEXT DEFAULT '',
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`ALTER TABLE ef_roadmaps ADD COLUMN IF NOT EXISTS body TEXT DEFAULT '';`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_roadmap_items (
+        id         SERIAL PRIMARY KEY,
+        roadmap_id INTEGER REFERENCES ef_roadmaps(id) ON DELETE CASCADE,
+        section    TEXT DEFAULT '기타',
+        subject    TEXT DEFAULT '',
+        period     TEXT DEFAULT '',
+        priority   TEXT DEFAULT '',
+        title      TEXT NOT NULL,
+        detail     TEXT DEFAULT '',
+        note       TEXT DEFAULT '',
+        done       BOOLEAN NOT NULL DEFAULT false,
+        done_at    TIMESTAMPTZ,
+        position   INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_roadmaps_student ON ef_roadmaps(student_id);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_roadmap_items_map ON ef_roadmap_items(roadmap_id);`);
+
     // 학생 셀프 열람 코드 (코드만으로 본인 배정 내용 조회)
     await pool.query(`ALTER TABLE ef_students ADD COLUMN IF NOT EXISTS student_code TEXT;`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ef_students_code ON ef_students(student_code) WHERE student_code IS NOT NULL;`);

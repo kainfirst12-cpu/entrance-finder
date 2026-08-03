@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import RoadmapView from './RoadmapView';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -10,6 +11,36 @@ async function api(path, opts = {}) {
   });
   if (res.status === 401) { const e = new Error('세션 만료 — 다시 로그인하세요'); e.auth = true; throw e; }
   return res.json(); // 403 등은 {success:false,message} 그대로 반환 (모달에서 표시)
+}
+
+// 오래 걸리는 AI 호출은 SSE(keepalive)로 온다 — success 가 있는 이벤트가 결과, 나머지는 진행 알림
+async function postForResult(url, opts, onStage) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('text/event-stream')) {
+    try { return await res.json(); }
+    catch { return { success: false, message: `서버 응답 오류 (HTTP ${res.status}) — 서버 업데이트 적용 중일 수 있습니다. 잠시 후 다시 시도해주세요.` }; }
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', result = null;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const obj = JSON.parse(line.slice(6));
+          if (obj.success !== undefined) result = obj;
+          else if (obj.message) onStage?.(obj.message);
+        } catch {}
+      }
+    }
+  }
+  return result || { success: false, message: '서버 응답이 비었습니다 (연결 끊김)' };
 }
 
 // 파스텔 칸반 테마 (배경 / 강조색 / 카드 상단 띠)
@@ -443,6 +474,8 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
         </div>
         <textarea style={{ ...S.textarea, marginTop: 6 }} rows={2} value={rContent} onChange={e => setRContent(e.target.value)} placeholder="기록 내용/메모를 붙여넣어 보관 (선택)" />
 
+        <RoadmapSection student={student} onError={onError} />
+
         <div style={S.sectionTitle}>첨부 파일 (생기부 PDF, 수행평가 결과물 등)</div>
         <div style={S.gradeList}>
           {(student.files || []).length === 0 && <div style={{ color: '#6b7d8a', fontSize: 13 }}>업로드된 파일이 없습니다.</div>}
@@ -507,6 +540,199 @@ function Field({ label, v, on }) {
       <label style={STYLES.label}>{label}</label>
       <input style={STYLES.input} value={v} onChange={e => on(e.target.value)} />
     </div>
+  );
+}
+
+// ── 생기부 로드맵 ──────────────────────────────────────
+// ① 수행평가·탐구보고서 원자료를 통째로 넣으면 AI가 로드맵 보고서를 쓰고
+// ② 그것을 학생이 체크할 실행 항목으로 쪼개 저장한다. 이미 만든 로드맵 문서를 올려 항목만 뽑을 수도 있다.
+function RoadmapSection({ student, onError }) {
+  const S = STYLES;
+  const [roadmaps, setRoadmaps] = useState([]);
+  const [mode, setMode] = useState('generate'); // generate | analyze
+  const [text, setText] = useState('');
+  const [files, setFiles] = useState([]);
+  const [nextSubjects, setNextSubjects] = useState('');
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState('');
+  const [draft, setDraft] = useState(null);
+  const [viewBody, setViewBody] = useState(null);
+  const rmFileRef = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      const d = await api(`/api/board/students/${student.id}/roadmaps`);
+      if (d.success) setRoadmaps(d.roadmaps || []);
+      else setMsg('⚠ ' + (d.message || '로드맵 조회 실패'));
+    } catch (e) { if (e.auth) onError?.(e); }
+  }, [student.id]);
+  useEffect(() => { load(); }, [load]);
+
+  const call = async (path, opts) => {
+    const d = await api(path, opts);
+    if (d && d.success === false) throw new Error(d.message || '처리 실패');
+    return d;
+  };
+  const act = async (fn) => { try { await fn(); await load(); setMsg(''); } catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); } };
+
+  // 파일 → 텍스트 추출
+  const onFiles = async (fileList) => {
+    const list = Array.from(fileList || []);
+    if (!list.length) return;
+    const hwp = list.filter(f => /\.hwpx?$/i.test(f.name));
+    const ok = list.filter(f => !/\.hwpx?$/i.test(f.name));
+    if (hwp.length) setMsg(`⚠ 한글 파일(${hwp.map(f => f.name).join(', ')})은 읽지 못합니다. 한글에서 "PDF로 저장" 후 올려주세요.`);
+    if (!ok.length) return;
+    setBusy('extract');
+    try {
+      const fd = new FormData();
+      ok.forEach(f => fd.append('files', f));
+      const res = await fetch(`${API_BASE}/api/assessment/extract`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || '추출 실패');
+      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔 이미지 PDF일 수 있습니다)');
+      setText(prev => (prev ? prev + '\n\n' : '') + d.text);
+      setFiles(prev => [...prev, ...ok.map(f => f.name)]);
+      if (!hwp.length) setMsg('');
+    } catch (e) { setMsg('⚠ 추출 오류: ' + e.message); }
+    finally { setBusy(''); if (rmFileRef.current) rmFileRef.current.value = ''; }
+  };
+
+  // AI 실행 (생성 또는 항목화)
+  const run = async () => {
+    if (!text.trim()) { setMsg('⚠ 먼저 자료 파일을 올리거나 내용을 붙여넣어 주세요.'); return; }
+    const apiKeys = { claude: localStorage.getItem('ef_apikey'), gemini: localStorage.getItem('ef_geminikey'), gpt: localStorage.getItem('ef_gptkey') };
+    const model = localStorage.getItem('ef_model') || 'claude';
+    const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model.startsWith('o') ? 'gpt' : 'claude';
+    const apiKey = apiKeys[group];
+    if (!apiKey) { setMsg('⚠ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
+
+    setBusy(mode); setMsg(mode === 'generate' ? '자료를 읽고 로드맵을 작성하는 중… (자료가 많으면 5분 넘게 걸립니다. 창을 닫지 마세요)' : '로드맵을 항목으로 정리하는 중…');
+    try {
+      const body = mode === 'generate'
+        ? { text, filename: files.join(', '), profile: {
+            name: student.name, school: student.school, grade: student.grade,
+            major: student.major, targetUniv: student.target_univ,
+            nextSubjects, memo: student.notes } }
+        : { text, filename: files.join(', ') || `${student.name} 생기부 로드맵` };
+      const d = await postForResult(`${API_BASE}/api/roadmap/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model, Authorization: `Bearer ${token()}` },
+        body: JSON.stringify(body),
+      }, (stage) => setMsg(stage));
+      if (!d.success) throw new Error(d.message || '처리 실패');
+      setDraft(d.roadmap);
+      setMsg(`✓ 실행 항목 ${d.roadmap.items.length}개를 뽑았습니다. 확인 후 저장하세요.`);
+    } catch (e) { setMsg('⚠ ' + e.message); }
+    finally { setBusy(''); }
+  };
+
+  const saveDraft = () => act(async () => {
+    await call(`/api/board/students/${student.id}/roadmaps`, { method: 'POST', body: JSON.stringify(draft) });
+    setDraft(null); setText(''); setFiles([]); setNextSubjects('');
+    setMsg('✓ 저장되었습니다. 학생이 열람 코드로 들어오면 바로 체크할 수 있습니다.');
+  });
+
+  return (
+    <>
+      <div style={S.sectionTitle}>🗺 생기부 로드맵 — 학생이 직접 체크하는 실행 목록</div>
+      {msg && <div style={{ fontSize: 12.5, margin: '0 0 9px', color: msg.startsWith('✓') ? '#34d399' : '#fbbf24' }}>{msg}</div>}
+
+      <div style={{ border: '1px dashed #2a3a48', borderRadius: 12, padding: 12, marginBottom: 12, background: 'rgba(255,255,255,0.02)' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          {[['generate', '🤖 자료로 로드맵 만들기'], ['analyze', '📄 완성된 로드맵 올리기']].map(([k, label]) => (
+            <button key={k} onClick={() => setMode(k)}
+              style={{ ...S.viewBtn, ...(mode === k ? { color: '#2dd4bf', borderColor: 'rgba(45,212,191,0.5)', background: 'rgba(45,212,191,0.12)' } : {}) }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ color: '#6b7d8a', fontSize: 12, marginBottom: 9, lineHeight: 1.6 }}>
+          {mode === 'generate'
+            ? '이 학생의 수행평가·탐구보고서·자기평가서를 전부 올리면, AI가 활동 정리 → 진단 → 다음 학기 과목별 설계 → 타임라인까지 로드맵을 쓰고 체크 항목으로 쪼갭니다.'
+            : '이미 만들어 둔 로드맵 문서(PDF·DOCX)를 올리면 내용은 그대로 두고 실행 항목만 뽑아 체크리스트로 만듭니다.'}
+        </div>
+
+        <div style={S.addRow}>
+          <button style={S.addSmall} onClick={() => rmFileRef.current?.click()} disabled={!!busy}>
+            {busy === 'extract' ? '읽는 중…' : '📎 자료 파일 올리기 (여러 개 가능)'}
+          </button>
+          <input ref={rmFileRef} type="file" multiple style={{ display: 'none' }} accept=".pdf,.docx,.txt,.md" onChange={e => onFiles(e.target.files)} />
+          {files.length > 0 && <span style={{ color: '#9db0bd', fontSize: 12 }}>{files.length}개 · {text.length.toLocaleString()}자</span>}
+          {text && <button style={S.miniDel} onClick={() => { setText(''); setFiles([]); }}>비우기</button>}
+        </div>
+        {files.length > 0 && <div style={{ color: '#6b7d8a', fontSize: 11.5, margin: '5px 0 0' }}>{files.join(' · ')}</div>}
+
+        <textarea style={{ ...S.textarea, marginTop: 8 }} rows={3} value={text} onChange={e => setText(e.target.value)}
+          placeholder={mode === 'generate' ? '자료 내용을 직접 붙여넣어도 됩니다 (여러 과목 산출물을 이어 붙여도 좋습니다)' : '로드맵 문서 내용을 붙여넣어도 됩니다'} />
+
+        {mode === 'generate' && (
+          <input style={{ ...S.input, marginTop: 8 }} value={nextSubjects} onChange={e => setNextSubjects(e.target.value)}
+            placeholder="다음 학기 수강 과목 (선택 — 예: 공통국어2 · 공통수학2 · 통합과학2 · 과학탐구실험2)" />
+        )}
+
+        <div style={{ ...S.addRow, marginTop: 9 }}>
+          <button style={{ ...S.addSmall, opacity: busy ? 0.6 : 1 }} onClick={run} disabled={!!busy}>
+            {busy === 'generate' ? '🤖 로드맵 작성 중…' : busy === 'analyze' ? '정리 중…' : mode === 'generate' ? '🤖 로드맵 만들기' : '항목 뽑기'}
+          </button>
+        </div>
+      </div>
+
+      {draft && (
+        <div style={{ border: '1px solid rgba(45,212,191,0.4)', borderRadius: 12, padding: 13, marginBottom: 12, background: 'rgba(45,212,191,0.06)' }}>
+          <label style={S.label}>로드맵 제목</label>
+          <input style={S.input} value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} />
+          {draft.summary && (
+            <div style={{ marginTop: 9, fontSize: 12.5, color: '#cdd9e2', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{draft.summary}</div>
+          )}
+          <div style={{ marginTop: 9, fontSize: 12.5, color: '#9db0bd' }}>
+            실행 항목 {draft.items.length}개 ·{' '}
+            {[...new Set(draft.items.map(i => i.section))].join(' / ')}
+            {draft.body ? <button style={{ ...S.viewBtn, marginLeft: 8 }} onClick={() => setViewBody({ title: draft.title, body: draft.body })}>🔍 로드맵 전문 보기</button> : null}
+          </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8, paddingRight: 4 }}>
+            {draft.items.map((it, i) => (
+              <div key={i} style={{ fontSize: 12.5, color: '#cdd9e2', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ color: '#2dd4bf', fontSize: 11, marginRight: 6 }}>{[it.section, it.subject || it.period].filter(Boolean).join(' · ')}</span>
+                {it.title}
+              </div>
+            ))}
+          </div>
+          <div style={{ ...S.addRow, marginTop: 10 }}>
+            <button style={S.addSmall} onClick={saveDraft}>저장</button>
+            <button style={S.miniDel} onClick={() => setDraft(null)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {roadmaps.length === 0 && !draft && (
+        <div style={{ color: '#6b7d8a', fontSize: 13, marginBottom: 10 }}>아직 로드맵이 없습니다.</div>
+      )}
+      <RoadmapView
+        roadmaps={roadmaps} dark renderMd={mdToHtml}
+        onViewBody={(rm) => setViewBody({ title: rm.title, body: rm.body })}
+        onToggle={(item) => act(() => call(`/api/roadmap/items/${item.id}`, { method: 'PATCH', body: JSON.stringify({ done: !item.done }) }))}
+        onSaveItem={(item, form) => act(() => call(`/api/roadmap/items/${item.id}`, { method: 'PATCH', body: JSON.stringify(form) }))}
+        onDeleteItem={(item) => act(() => call(`/api/roadmap/items/${item.id}`, { method: 'DELETE' }))}
+        onAddItem={(rm, f) => act(() => call(`/api/roadmap/${rm.id}/items`, { method: 'POST', body: JSON.stringify(f) }))}
+        onDeleteRoadmap={(rm) => act(() => call(`/api/roadmap/${rm.id}`, { method: 'DELETE' }))}
+      />
+
+      {viewBody && (
+        <div style={STYLES.viewerOverlay} onClick={() => setViewBody(null)}>
+          <div style={STYLES.viewerBox} onClick={e => e.stopPropagation()}>
+            <div style={STYLES.viewerHead}>
+              <b style={{ color: '#e8eef3', fontSize: 15 }}>🗺 {viewBody.title}</b>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button style={STYLES.viewBtn} onClick={() => navigator.clipboard.writeText(viewBody.body)}>복사</button>
+                <button style={STYLES.viewBtn} onClick={() => setViewBody(null)}>닫기 ✕</button>
+              </div>
+            </div>
+            <div style={STYLES.viewerBody} dangerouslySetInnerHTML={{ __html: mdToHtml(viewBody.body) }} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
