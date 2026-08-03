@@ -575,27 +575,36 @@ function RoadmapSection({ student, onError }) {
   };
   const act = async (fn) => { try { await fn(); await load(); setMsg(''); } catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); } };
 
-  // 파일 → 텍스트 추출
+  // 설정에 저장된 AI 키 (스캔 PDF OCR·로드맵 생성에 쓰인다)
+  const aiCreds = () => {
+    const model = localStorage.getItem('ef_model') || 'claude';
+    const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model.startsWith('o') ? 'gpt' : 'claude';
+    const apiKey = { claude: 'ef_apikey', gemini: 'ef_geminikey', gpt: 'ef_gptkey' }[group];
+    return { model, group, apiKey: localStorage.getItem(apiKey) };
+  };
+
+  // 파일 → 텍스트 추출 (SSE — 스캔 PDF는 서버가 AI로 OCR하므로 오래 걸릴 수 있다)
   const onFiles = async (fileList) => {
     const list = Array.from(fileList || []);
     if (!list.length) return;
-    const hwp = list.filter(f => /\.hwpx?$/i.test(f.name));
-    const ok = list.filter(f => !/\.hwpx?$/i.test(f.name));
-    if (hwp.length) setMsg(`⚠ 한글 파일(${hwp.map(f => f.name).join(', ')})은 읽지 못합니다. 한글에서 "PDF로 저장" 후 올려주세요.`);
-    if (!ok.length) return;
-    setBusy('extract');
+    setBusy('extract'); setMsg('파일에서 글자를 읽는 중… (스캔본이면 AI 판독이라 몇 분 걸립니다)');
     try {
       const fd = new FormData();
-      ok.forEach(f => fd.append('files', f));
-      const res = await fetch(`${API_BASE}/api/assessment/extract`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+      list.forEach(f => fd.append('files', f));
+      const { model, group, apiKey } = aiCreds();
+      const d = await postForResult(`${API_BASE}/api/assessment/extract`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token()}`,
+          ...(apiKey ? { 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model } : {}),
+        },
+        body: fd,
       });
-      const d = await res.json();
       if (!d.success) throw new Error(d.message || '추출 실패');
-      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔 이미지 PDF일 수 있습니다)');
+      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 설정에 AI 키를 등록해 주세요)');
       setText(prev => (prev ? prev + '\n\n' : '') + d.text);
-      setFiles(prev => [...prev, ...ok.map(f => f.name)]);
-      if (!hwp.length) setMsg('');
+      setFiles(prev => [...prev, ...list.map(f => f.name)]);
+      setMsg(d.notices?.length ? '⚠ ' + d.notices.join(' / ') : '');
     } catch (e) { setMsg('⚠ 추출 오류: ' + e.message); }
     finally { setBusy(''); if (rmFileRef.current) rmFileRef.current.value = ''; }
   };
@@ -603,10 +612,7 @@ function RoadmapSection({ student, onError }) {
   // AI 실행 (생성 또는 항목화)
   const run = async () => {
     if (!text.trim()) { setMsg('⚠ 먼저 자료 파일을 올리거나 내용을 붙여넣어 주세요.'); return; }
-    const apiKeys = { claude: localStorage.getItem('ef_apikey'), gemini: localStorage.getItem('ef_geminikey'), gpt: localStorage.getItem('ef_gptkey') };
-    const model = localStorage.getItem('ef_model') || 'claude';
-    const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model.startsWith('o') ? 'gpt' : 'claude';
-    const apiKey = apiKeys[group];
+    const { model, group, apiKey } = aiCreds();
     if (!apiKey) { setMsg('⚠ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
 
     setBusy(mode); setMsg(mode === 'generate' ? '자료를 읽고 로드맵을 작성하는 중… (자료가 많으면 5분 넘게 걸립니다. 창을 닫지 마세요)' : '로드맵을 항목으로 정리하는 중…');
@@ -644,20 +650,20 @@ function RoadmapSection({ student, onError }) {
         <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
           {[['generate', '🤖 자료로 로드맵 만들기'], ['analyze', '📄 완성된 로드맵 올리기']].map(([k, label]) => (
             <button key={k} onClick={() => setMode(k)}
-              style={{ ...S.viewBtn, ...(mode === k ? { color: '#2dd4bf', borderColor: 'rgba(45,212,191,0.5)', background: 'rgba(45,212,191,0.12)' } : {}) }}>{label}</button>
+              style={{ ...S.viewBtn, ...(mode === k ? { color: '#2dd4bf', border: '1px solid rgba(45,212,191,0.75)', background: 'rgba(45,212,191,0.16)' } : { color: '#9db0bd', border: '1px solid #2a3a48', background: 'transparent' }) }}>{label}</button>
           ))}
         </div>
         <div style={{ color: '#6b7d8a', fontSize: 12, marginBottom: 9, lineHeight: 1.6 }}>
           {mode === 'generate'
             ? '이 학생의 수행평가·탐구보고서·자기평가서를 전부 올리면, AI가 활동 정리 → 진단 → 다음 학기 과목별 설계 → 타임라인까지 로드맵을 쓰고 체크 항목으로 쪼갭니다.'
-            : '이미 만들어 둔 로드맵 문서(PDF·DOCX)를 올리면 내용은 그대로 두고 실행 항목만 뽑아 체크리스트로 만듭니다.'}
+            : '이미 만들어 둔 로드맵 문서(PDF·DOCX·한글)를 올리면 내용은 그대로 두고 실행 항목만 뽑아 체크리스트로 만듭니다.'}
         </div>
 
         <div style={S.addRow}>
           <button style={S.addSmall} onClick={() => rmFileRef.current?.click()} disabled={!!busy}>
             {busy === 'extract' ? '읽는 중…' : '📎 자료 파일 올리기 (여러 개 가능)'}
           </button>
-          <input ref={rmFileRef} type="file" multiple style={{ display: 'none' }} accept=".pdf,.docx,.txt,.md" onChange={e => onFiles(e.target.files)} />
+          <input ref={rmFileRef} type="file" multiple style={{ display: 'none' }} accept=".pdf,.docx,.hwp,.hwpx,.txt,.md" onChange={e => onFiles(e.target.files)} />
           {files.length > 0 && <span style={{ color: '#9db0bd', fontSize: 12 }}>{files.length}개 · {text.length.toLocaleString()}자</span>}
           {text && <button style={S.miniDel} onClick={() => { setText(''); setFiles([]); }}>비우기</button>}
         </div>
