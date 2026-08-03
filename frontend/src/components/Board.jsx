@@ -573,7 +573,12 @@ function RoadmapSection({ student, onError }) {
     if (d && d.success === false) throw new Error(d.message || '처리 실패');
     return d;
   };
-  const act = async (fn) => { try { await fn(); await load(); setMsg(''); } catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); } };
+  // 목록을 다시 읽는다. 성공 문구는 남기고 이전 오류 문구만 지운다
+  // (여기서 무조건 지우면 저장 성공 안내가 사라져 저장이 안 된 줄 알고 또 누르게 된다)
+  const act = async (fn) => {
+    try { await fn(); await load(); setMsg(m => (m.startsWith('⚠') ? '' : m)); }
+    catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); }
+  };
 
   // 설정에 저장된 AI 키 (스캔 PDF OCR·로드맵 생성에 쓰인다)
   const aiCreds = () => {
@@ -635,11 +640,19 @@ function RoadmapSection({ student, onError }) {
     finally { setBusy(''); }
   };
 
-  const saveDraft = () => act(async () => {
-    await call(`/api/board/students/${student.id}/roadmaps`, { method: 'POST', body: JSON.stringify(draft) });
-    setDraft(null); setText(''); setFiles([]); setNextSubjects('');
-    setMsg('✓ 저장되었습니다. 학생이 열람 코드로 들어오면 바로 체크할 수 있습니다.');
-  });
+  const saveDraft = async () => {
+    if (busy === 'save') return; // 두 번 눌러 같은 로드맵이 두 개 생기는 것을 막는다
+    const dup = roadmaps.find(r => r.title.trim() === (draft.title || '').trim());
+    if (dup && !confirm(`같은 제목의 로드맵이 이미 있습니다 (항목 ${(dup.items || []).length}개).\n따로 하나 더 만들까요?\n\n[취소]를 누르면 저장하지 않습니다.`)) return;
+    setBusy('save');
+    try {
+      await act(async () => {
+        await call(`/api/board/students/${student.id}/roadmaps`, { method: 'POST', body: JSON.stringify(draft) });
+        setDraft(null); setText(''); setFiles([]); setNextSubjects('');
+        setMsg('✓ 저장되었습니다. 학생이 열람 코드로 들어오면 바로 체크할 수 있습니다.');
+      });
+    } finally { setBusy(''); }
+  };
 
   return (
     <>
@@ -705,8 +718,10 @@ function RoadmapSection({ student, onError }) {
             ))}
           </div>
           <div style={{ ...S.addRow, marginTop: 10 }}>
-            <button style={S.addSmall} onClick={saveDraft}>저장</button>
-            <button style={S.miniDel} onClick={() => setDraft(null)}>취소</button>
+            <button style={{ ...S.addSmall, opacity: busy === 'save' ? 0.6 : 1 }} onClick={saveDraft} disabled={busy === 'save'}>
+              {busy === 'save' ? '저장 중…' : '저장'}
+            </button>
+            <button style={S.miniDel} onClick={() => setDraft(null)} disabled={busy === 'save'}>취소</button>
           </div>
         </div>
       )}
