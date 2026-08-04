@@ -138,6 +138,47 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   const [panelTab, setPanelTab] = useState('student'); // 'student' | 'analysis'
   const [openRecId, setOpenRecId] = useState(null);
 
+  // 불러온 기록을 상담 중에 바로 고치기 — 생기부 분석·상담 내용을 화면 옮기지 않고 수정
+  const [editRecId, setEditRecId] = useState(null);
+  const [editRec, setEditRec] = useState({ title: '', content: '' });
+  const [savingRec, setSavingRec] = useState(false);
+
+  const startRecEdit = (r) => {
+    setEditRecId(r.id);
+    setEditRec({ title: r.title || '', content: r.content || '' });
+    setOpenRecId(r.id);
+  };
+  const cancelRecEdit = () => { setEditRecId(null); setEditRec({ title: '', content: '' }); };
+
+  const saveRecEdit = async () => {
+    if (!editRec.content.trim()) { alert('내용이 비어 있습니다.'); return; }
+    setSavingRec(true);
+    try {
+      const tok = localStorage.getItem('ef_token');
+      const r = await fetch(`${API_BASE}/api/board/records/${editRecId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ title: editRec.title, content: editRec.content }),
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || '저장 실패');
+      // 서버가 돌려준 값으로 갈아끼운다 — 화면과 DB가 어긋나면 이후 상담이 옛 내용을 근거로 삼는다
+      setDossier((prev) => prev && {
+        ...prev,
+        records: prev.records.map((x) => (x.id === d.record.id ? { ...x, ...d.record } : x)),
+      });
+      cancelRecEdit();
+    } catch (e) {
+      alert('기록 저장 실패: ' + e.message);
+    } finally { setSavingRec(false); }
+  };
+
+  // AI 답변을 기존 기록에 반영 — "이렇게 고쳐줘" 하고 받은 결과를 그대로 덮어쓴다
+  const applyMessageToRecord = (content) => {
+    if (editRecId == null) return;
+    setEditRec((p) => ({ ...p, content }));
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -879,10 +920,37 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                             setInput(`[${r.type || '기록'}] "${r.title}" 내용을 근거로 이 학생에 대해 설명해 주세요. 보완할 점이 있으면 함께 알려주세요.`);
                             inputRef.current?.focus();
                           }}>질문</button>
+                          <button style={CS.miniBtn} onClick={() => (editRecId === r.id ? cancelRecEdit() : startRecEdit(r))}>
+                            {editRecId === r.id ? '수정 취소' : '수정'}
+                          </button>
+                          <button style={CS.miniBtn} onClick={() => {
+                            setInput(`아래 [${r.type || '기록'}] "${r.title}" 내용을 다듬어 주세요. 사실은 바꾸지 말고 표현과 구성만 정리해 전체 본문을 그대로 다시 출력해 주세요.\n\n---\n${r.content}`);
+                            startRecEdit(r);
+                            inputRef.current?.focus();
+                          }}>AI로 수정</button>
                         </>
                       )}
                     </div>
-                    {openRecId === r.id && <div style={CS.recBody}>{r.content}</div>}
+
+                    {editRecId === r.id ? (
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <input value={editRec.title} onChange={(e) => setEditRec((p) => ({ ...p, title: e.target.value }))}
+                          placeholder="제목" style={{ ...CS.recBody, fontWeight: 700, padding: '6px 8px' }} />
+                        <textarea value={editRec.content} onChange={(e) => setEditRec((p) => ({ ...p, content: e.target.value }))}
+                          rows={14} style={{ ...CS.recBody, width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', lineHeight: 1.6, resize: 'vertical' }} />
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button style={{ ...CS.miniBtn, fontWeight: 700 }} disabled={savingRec} onClick={saveRecEdit}>
+                            {savingRec ? '저장 중…' : '저장'}
+                          </button>
+                          <button style={CS.miniBtn} disabled={savingRec} onClick={cancelRecEdit}>취소</button>
+                          <span style={{ fontSize: 10.5, color: '#94a3b8' }}>
+                            AI 답변의 [기록에 반영] 버튼을 누르면 이 칸에 들어옵니다
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      openRecId === r.id && <div style={CS.recBody}>{r.content}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1041,6 +1109,12 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                   <button className="chat-copy-btn" onClick={() => deleteMessage(i)} style={{ color: '#ef4444' }}>삭제</button>
                   {msg.role === 'assistant' && !msg.isSystem && (
                     <button className="chat-copy-btn" onClick={() => assignChatMessage(i)} style={{ color: '#2dd4bf' }}>📋 학생 배정</button>
+                  )}
+                  {/* 수정 중인 기록이 있을 때만 — 새 기록을 만드는 '학생 배정'과 달리 기존 기록을 덮어쓴다 */}
+                  {msg.role === 'assistant' && !msg.isSystem && editRecId != null && (
+                    <button className="chat-copy-btn" style={{ color: '#a78bfa' }}
+                      title="이 답변을 왼쪽에서 수정 중인 기록 본문에 넣습니다. 저장을 눌러야 반영됩니다."
+                      onClick={() => applyMessageToRecord(msg.content)}>기록에 반영</button>
                   )}
 
                   {msg.role === 'assistant' && !msg.isVerify && !msg.isSystem && (

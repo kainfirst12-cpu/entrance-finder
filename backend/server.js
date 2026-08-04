@@ -7,7 +7,7 @@ import { loadKnowledgeBaseRAG, ragAvailable } from './services/ragService.js';
 import { refreshKbCount, countByType, clearKnowledge, ingestDocuments } from './services/vectorStore.js';
 import {
   BOARD_COLUMNS, listStudents, getStudentOwner, createStudent, updateStudent, deleteStudent,
-  addGrade, deleteGrade, addRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
+  addGrade, deleteGrade, addRecord, updateRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
   upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
   listPlacements, addPlacement, deletePlacement, getPlacementOwner,
   listSuhaeng, getSuhaeng, createSuhaeng, deleteSuhaeng, getSuhaengOwner,
@@ -1248,6 +1248,22 @@ app.post('/api/board/students/:id/records', requireAuth, async (req, res) => {
   try {
     if (!(await canEditStudent(req, Number(req.params.id)))) return res.status(403).json({ success: false, message: '권한 없음' });
     res.json({ success: true, record: await addRecord(Number(req.params.id), req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 기록 수정 — 상담 화면에서 생기부 분석·상담 내용을 바로 고쳐 저장한다
+app.put('/api/board/records/:id', requireAuth, async (req, res) => {
+  try {
+    const rid = Number(req.params.id);
+    const owner = await getRecordOwner(rid);
+    if (owner == null) return res.status(404).json({ success: false, message: '기록 없음' });
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    const { type, title, content } = req.body || {};
+    if (content != null && !String(content).trim()) {
+      return res.status(400).json({ success: false, message: '내용이 비어 있습니다. 지우려면 삭제를 쓰세요.' });
+    }
+    const record = await updateRecord(rid, { type, title, content });
+    if (!record) return res.status(404).json({ success: false, message: '기록 없음' });
+    res.json({ success: true, record });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.delete('/api/board/records/:id', requireAuth, async (req, res) => {

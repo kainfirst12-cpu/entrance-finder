@@ -133,6 +133,22 @@ export async function addRecord(studentId, { type, title, detail, content }) {
   return rows[0];
 }
 
+// 저장된 기록 수정 — 상담 중에 생기부 분석·상담 내용을 바로 고쳐 쓰기 위한 것.
+// 넘어온 항목만 바꾼다(COALESCE). 빈 문자열은 "지움"이므로 null 과 구분한다.
+export async function updateRecord(id, { type, title, detail, content } = {}) {
+  const { rows } = await getPool().query(
+    `UPDATE ef_records
+        SET type    = COALESCE($2, type),
+            title   = COALESCE($3, title),
+            detail  = COALESCE($4, detail),
+            content = COALESCE($5, content)
+      WHERE id = $1
+      RETURNING *`,
+    [id, type ?? null, title ?? null, detail ?? null, content ?? null]
+  );
+  return rows[0] || null;
+}
+
 export async function deleteRecord(id) {
   await getPool().query(`DELETE FROM ef_records WHERE id = $1`, [id]);
 }
