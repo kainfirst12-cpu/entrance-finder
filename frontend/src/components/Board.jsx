@@ -43,6 +43,35 @@ async function postForResult(url, opts, onStage) {
   return result || { success: false, message: '서버 응답이 비었습니다 (연결 끊김)' };
 }
 
+// 설정에 저장된 AI 키 (스캔 PDF OCR·로드맵 생성 등에 쓰인다)
+const aiCreds = () => {
+  const model = localStorage.getItem('ef_model') || 'claude';
+  const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model.startsWith('o') ? 'gpt' : 'claude';
+  const keyName = { claude: 'ef_apikey', gemini: 'ef_geminikey', gpt: 'ef_gptkey' }[group];
+  return { model, group, apiKey: localStorage.getItem(keyName) };
+};
+
+// 이 앱의 분석 결과 JSON(내보내기 파일) → 기록 본문 텍스트
+const ANALYSIS_SECTIONS = [
+  ['caseMatching', '0단계 · 합격자 사례 매칭 분석'],
+  ['academic', '1단계 · 학업역량 종합 분석'],
+  ['activity', '2단계 · 비교과 활동 평가'],
+  ['career', '3단계 · 진로 역량 및 전공 적합성'],
+  ['strategy', '4단계 · 수시 지원 전략'],
+  ['roadmap', '5단계 · 핵심 리스크 및 대응 방안'],
+  ['recordFeedback', '6단계 · 실행 계획'],
+  ['dashboard', '7단계 · 종합 평가 및 권고사항'],
+];
+function analysisJsonToText(data) {
+  const results = data?.results || {};
+  const known = ANALYSIS_SECTIONS.filter(([k]) => results[k]).map(([k, label]) => `## ${label}\n${results[k]}`);
+  // 스키마가 다른 파일(다른 도구에서 만든 것)도 버리지 않고 키 이름 그대로 담는다
+  const extra = Object.entries(results)
+    .filter(([k, v]) => v && !ANALYSIS_SECTIONS.some(([kk]) => kk === k))
+    .map(([k, v]) => `## ${k}\n${typeof v === 'string' ? v : JSON.stringify(v, null, 1)}`);
+  return [...known, ...extra].join('\n\n');
+}
+
 // 파스텔 칸반 테마 (배경 / 강조색 / 카드 상단 띠)
 const COL_THEME = {
   '신규':       { bg: 'rgba(255,255,255,0.05)', accent: '#8a857c', bar: '#d8d3ca' },
@@ -311,6 +340,11 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState('');
   const fileRef = useRef(null);
+  // 외부에서 만든 분석 자료 가져오기 (문서/PDF/한글/JSON)
+  const [impBusy, setImpBusy] = useState('');
+  const [impMsg, setImpMsg] = useState('');
+  const recFileRef = useRef(null);
+  const recJsonRef = useRef(null);
   const S = STYLES;
 
   // 응답 success까지 검사 (실패 시 throw)
@@ -341,10 +375,64 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
   const addRecord = async () => {
     if (!rTitle.trim() && !rContent.trim()) { setMsg('제목 또는 내용을 입력하세요'); return; }
     setMsg('');
-    try { await call(`/api/board/students/${student.id}/records`, { method: 'POST', body: JSON.stringify({ type: rType, title: rTitle || rType, content: rContent }) }); setRTitle(''); setRContent(''); await onChanged(); }
+    const had = rContent.trim().length;
+    try {
+      await call(`/api/board/students/${student.id}/records`, { method: 'POST', body: JSON.stringify({ type: rType, title: rTitle || rType, content: rContent }) });
+      setRTitle(''); setRContent(''); setImpMsg('');
+      await onChanged();
+      setMsg(had
+        ? `✓ 기록 저장됨 (${had.toLocaleString()}자) — 입시상담·컨설턴트 브리핑·입결 AI 판정에서 이 학생의 근거로 쓰입니다`
+        : '✓ 기록 저장됨');
+    }
     catch (e) { fail(e); }
   };
   const delRecord = async (id) => { try { await call(`/api/board/records/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { fail(e); } };
+
+  // ── 다른 곳에서 만든 분석 자료 가져오기 ──────────────────
+  // 파일(PDF·워드·한글·txt)에서 글자를 뽑아 기록 본문에 채운다. 스캔본은 서버가 AI로 판독한다.
+  const importRecordFiles = async (fileList) => {
+    const list = Array.from(fileList || []);
+    if (!list.length) return;
+    setImpBusy('file'); setImpMsg('파일에서 글자를 읽는 중… (스캔본이면 AI 판독이라 몇 분 걸립니다)');
+    try {
+      const fd = new FormData();
+      list.forEach((f) => fd.append('files', f));
+      const { model, group, apiKey } = aiCreds();
+      const d = await postForResult(`${API_BASE}/api/assessment/extract`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token()}`,
+          ...(apiKey ? { 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model } : {}),
+        },
+        body: fd,
+      }, (stage) => setImpMsg(stage));
+      if (!d.success) throw new Error(d.message || '추출 실패');
+      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 설정에 AI 키를 등록해 주세요)');
+      setRContent((prev) => (prev ? prev + '\n\n' : '') + d.text);
+      if (!rTitle.trim()) setRTitle(list[0].name.replace(/\.[^.]+$/, ''));
+      setImpMsg(d.notices?.length ? '⚠ ' + d.notices.join(' / ') : `✓ ${list.length}개 파일에서 ${d.text.length.toLocaleString()}자를 가져왔습니다. 아래 [+ 기록]으로 저장하세요.`);
+    } catch (e) { setImpMsg('⚠ ' + e.message); }
+    finally { setImpBusy(''); if (recFileRef.current) recFileRef.current.value = ''; }
+  };
+
+  // 이 앱에서 내보낸 분석 JSON(또는 유사 구조)을 단계별 본문으로 펼쳐 담는다
+  const importRecordJson = async (fileList) => {
+    const f = Array.from(fileList || [])[0];
+    if (!f) return;
+    setImpBusy('json'); setImpMsg('');
+    try {
+      const data = JSON.parse(await f.text());
+      const text = analysisJsonToText(data);
+      if (!text.trim()) throw new Error('분석 내용을 찾지 못했습니다 (results 항목이 있는 분석 JSON이어야 합니다)');
+      setRContent((prev) => (prev ? prev + '\n\n' : '') + text);
+      if (!rTitle.trim()) {
+        const who = data?.studentData?.name ? `${data.studentData.name} ` : '';
+        setRTitle(`${who}생기부 분석${data?.analyzedModel ? ` (${data.analyzedModel})` : ''}`);
+      }
+      setImpMsg(`✓ ${text.length.toLocaleString()}자를 가져왔습니다. 아래 [+ 기록]으로 저장하세요.`);
+    } catch (e) { setImpMsg('⚠ ' + (e.message || 'JSON을 읽지 못했습니다')); }
+    finally { setImpBusy(''); if (recJsonRef.current) recJsonRef.current.value = ''; }
+  };
 
   const uploadFiles = async (fileList) => {
     const files = Array.from(fileList || []);
@@ -472,7 +560,34 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
           <input style={{ ...S.input, flex: 1 }} value={rTitle} onChange={e => setRTitle(e.target.value)} placeholder="제목 (예: 1차 분석 요약)" />
           <button style={S.addSmall} onClick={addRecord}>+ 기록</button>
         </div>
-        <textarea style={{ ...S.textarea, marginTop: 6 }} rows={2} value={rContent} onChange={e => setRContent(e.target.value)} placeholder="기록 내용/메모를 붙여넣어 보관 (선택)" />
+
+        {/* 다른 곳에서 만든 분석을 그대로 이 학생 기록으로 — 저장하면 상담·브리핑·입결 판정의 근거가 된다 */}
+        <div style={S.importBox}>
+          <div style={S.importHead}>📥 다른 곳에서 한 분석 가져오기</div>
+          <div style={S.importDesc}>
+            타 기관 컨설팅 리포트, 다른 AI로 돌린 분석, 직접 쓴 진단서를 파일째 넣으면 글자만 뽑아 본문에 채웁니다.
+            저장된 기록은 <b style={{ color: '#2dd4bf' }}>입시상담 · 컨설턴트 브리핑 · 입결 콘솔 AI 판정</b>에서 이 학생의 근거로 그대로 쓰입니다.
+          </div>
+          <div style={S.addRow}>
+            <button style={S.addSmall} onClick={() => recFileRef.current?.click()} disabled={!!impBusy}>
+              {impBusy === 'file' ? '읽는 중…' : '📎 문서에서 불러오기 (PDF·워드·한글)'}
+            </button>
+            <input ref={recFileRef} type="file" multiple style={{ display: 'none' }}
+              accept=".pdf,.docx,.hwp,.hwpx,.txt,.md" onChange={e => importRecordFiles(e.target.files)} />
+            <button style={S.viewBtn} onClick={() => recJsonRef.current?.click()} disabled={!!impBusy}>
+              {impBusy === 'json' ? '읽는 중…' : '🗂 분석 JSON 불러오기'}
+            </button>
+            <input ref={recJsonRef} type="file" style={{ display: 'none' }} accept=".json" onChange={e => importRecordJson(e.target.files)} />
+            {rContent && <span style={{ color: '#9db0bd', fontSize: 12 }}>본문 {rContent.length.toLocaleString()}자</span>}
+            {rContent && <button style={S.miniDel} onClick={() => { setRContent(''); setImpMsg(''); }}>비우기</button>}
+          </div>
+          {impMsg && (
+            <div style={{ fontSize: 12.5, marginTop: 7, color: impMsg.startsWith('✓') ? '#34d399' : '#fbbf24', lineHeight: 1.6 }}>{impMsg}</div>
+          )}
+        </div>
+
+        <textarea style={{ ...S.textarea, marginTop: 6 }} rows={rContent ? 6 : 2} value={rContent} onChange={e => setRContent(e.target.value)}
+          placeholder="기록 내용/메모를 직접 붙여넣어도 됩니다 (선택)" />
 
         <RoadmapSection student={student} onError={onError} />
 
@@ -578,14 +693,6 @@ function RoadmapSection({ student, onError }) {
   const act = async (fn) => {
     try { await fn(); await load(); setMsg(m => (m.startsWith('⚠') ? '' : m)); }
     catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); }
-  };
-
-  // 설정에 저장된 AI 키 (스캔 PDF OCR·로드맵 생성에 쓰인다)
-  const aiCreds = () => {
-    const model = localStorage.getItem('ef_model') || 'claude';
-    const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model.startsWith('o') ? 'gpt' : 'claude';
-    const apiKey = { claude: 'ef_apikey', gemini: 'ef_geminikey', gpt: 'ef_gptkey' }[group];
-    return { model, group, apiKey: localStorage.getItem(apiKey) };
   };
 
   // 파일 → 텍스트 추출 (SSE — 스캔 PDF는 서버가 AI로 OCR하므로 오래 걸릴 수 있다)
@@ -804,7 +911,10 @@ const STYLES = {
   miniDel: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer' },
   viewBtn: { background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#2dd4bf', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
   recContent: { background: '#0e1620', border: '1px solid #2a3a48', borderRadius: 8, padding: '12px 16px', margin: '4px 0 8px', fontSize: 13, lineHeight: 1.65, color: '#cdd9e2', maxHeight: 420, overflowY: 'auto' },
-  addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' },
+  addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' },
+  importBox: { border: '1px dashed #2a3a48', borderRadius: 10, padding: '10px 12px', marginTop: 8, background: 'rgba(255,255,255,0.02)' },
+  importHead: { fontSize: 13, fontWeight: 700, color: '#cdd9e2' },
+  importDesc: { fontSize: 12, color: '#6b7d8a', lineHeight: 1.65, margin: '4px 0 2px' },
   addSmall: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap' },
   modalFooter: { display: 'flex', justifyContent: 'space-between', marginTop: 22 },
   delBtn: { background: 'rgba(248,113,113,0.14)', color: '#f87171', border: '1px solid #fca5a5', borderRadius: 9, padding: '10px 16px', cursor: 'pointer', fontSize: 13.5 },
