@@ -22,6 +22,13 @@ const MODEL_CFG = {
   'gpt-mini':   { icon: '●', label: 'GPT-5.4 Mini',      color: '#ea580c', group: 'gpt' },
 };
 
+// 에이전트가 부른 도구 이름을 사람 말로
+const TOOL_LABEL = {
+  search_ipgyeol: '입결 조회',
+  search_knowledge: '지식베이스',
+  save_placement: '배치 저장',
+};
+
 function chatMdToHtml(raw) {
   if (!raw) return '';
   let text = raw.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{200D}\u{20E3}\u{FE0F}]/gu, '');
@@ -337,6 +344,34 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     });
   };
 
+  // ── 에이전트 모드 ────────────────────────────────
+  // 일반 상담은 프론트가 골라 넘긴 컨텍스트만 본다. 에이전트 모드는 서버가 입결 7만 건과
+  // 지식베이스를 직접 조회하므로, 컨설턴트가 조건을 미리 다 적지 않아도 된다.
+  const [agentMode, setAgentMode] = useState(false);
+
+  // 에이전트 라우트는 keepalive SSE로 응답한다(도구 호출이 길어 프록시 타임아웃을 피하기 위함)
+  const readSSE = async (res) => {
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('text/event-stream')) {
+      try { return await res.json(); }
+      catch { return { success: false, message: `서버 응답 오류 (HTTP ${res.status})` }; }
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', result = null;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('data: ')) { try { result = JSON.parse(line.slice(6)); } catch {} }
+      }
+    }
+    return result || { success: false, message: '서버 응답이 비었습니다' };
+  };
+
   // ── 메시지 전송 ──────────────────────────────────
   const sendMessage = async (override) => {
     const text = String(typeof override === 'string' ? override : input).trim();
@@ -372,6 +407,35 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
         message: text || '첨부된 파일을 분석해 주세요.',
         history: history.map(h => ({ role: h.role, content: h.content })),
       };
+
+      // 에이전트 모드 — 서버가 학생 자료를 직접 읽고 입결·지식베이스를 도구로 조회한다
+      if (agentMode) {
+        const res = await fetch(`${API_BASE}/api/chat/agent`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'x-ai-model': MODEL_CFG[selectedModel]?.group || selectedModel,
+            'x-ai-submodel': selectedModel,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            studentId: boardStudent?.id || undefined,
+            message: text || '첨부된 파일을 분석해 주세요.',
+            history: history.map(h => ({ role: h.role, content: h.content })),
+            baseYear: '2026',
+          }),
+        });
+        const d = await readSSE(res);
+        if (d.success) {
+          setMessages(prev => [...prev, { role: 'assistant', content: d.reply, toolLog: d.toolLog || [] }]);
+          // 에이전트가 배치를 저장했으면 학생 자료를 다시 읽어 화면과 어긋나지 않게 한다
+          if (d.savedPlacements?.length && boardStudent) loadStudentDossier(boardStudent);
+        } else {
+          setMessages(prev => [...prev, { role: 'assistant', content: `오류: ${d.message}` }]);
+        }
+        return;
+      }
 
       const studentCtx = buildStudentContext();
       if (studentCtx) body.studentContext = studentCtx;
@@ -957,6 +1021,19 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                 </div>
               )}
 
+              {/* 에이전트가 실제로 무엇을 조회했는지 — 근거를 못 보면 답을 검증할 수 없다 */}
+              {msg.toolLog?.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 7, borderTop: '1px dashed #d7dfea', display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#8492a5' }}>조회 {msg.toolLog.length}회</span>
+                  {msg.toolLog.map((t, k) => (
+                    <span key={k} title={JSON.stringify(t.args, null, 1)}
+                      style={{ fontSize: 10.5, fontWeight: 600, color: '#1d4fa8', background: '#e8f1fc', border: '1px solid #c3dcf7', borderRadius: 6, padding: '2px 7px' }}>
+                      {TOOL_LABEL[t.name] || t.name} · {t.summary}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {editingIdx !== i && (
                 <div className="chat-bubble-actions">
                   <button className="chat-copy-btn" onClick={() => copyMessage(msg.content, i)}>{copiedIdx === i ? '복사됨!' : '복사'}</button>
@@ -1025,6 +1102,20 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
             ))}
           </div>
         )}
+
+        {/* 에이전트 모드 토글 — 켜면 서버가 입결·지식베이스를 직접 조회한다 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px 0', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+            title="켜면 AI가 전국 입결 7만 건과 지식베이스를 스스로 찾아본 뒤 답합니다. 조건을 미리 다 적지 않아도 됩니다.">
+            <input type="checkbox" checked={agentMode} onChange={e => setAgentMode(e.target.checked)} />
+            자료 조회 모드
+          </label>
+          <span style={{ fontSize: 11.5, color: '#8492a5' }}>
+            {agentMode
+              ? `입결·지식베이스를 직접 조회합니다${boardStudent ? ` · ${boardStudent.name} 학생 자료 전체 사용` : ' · 학생을 고르면 그 학생 자료까지 함께 봅니다'} · GPT 모델 필요`
+              : '끄면 왼쪽 패널에서 고른 기록만 보고 답합니다'}
+          </span>
+        </div>
 
         {/* 입력 영역 */}
         <div className="chat-input-area">

@@ -15,6 +15,7 @@ import {
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
 import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
+import { CONSULT_TOOLS, runConsultTool } from './services/consultAgent.js';
 import {
   listRoadmaps, createRoadmap, updateRoadmap, deleteRoadmap,
   addItem as addRoadmapItem, updateItem as updateRoadmapItem, deleteItem as deleteRoadmapItem,
@@ -2807,6 +2808,154 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[ipgyeol/ai-search] 오류:', err.message);
     sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
+  }
+});
+
+// ── 상담 에이전트 — 학생 자료를 알고, 입결·지식베이스를 스스로 조회하는 다중 턴 상담 ──
+//
+// 기존 /api/chat 과 나눈 이유: 이 라우트는 서버가 직접 학생 DB를 읽고 쓰므로 인증이 필수다.
+// (/api/chat 은 인증 없이 프론트가 넘겨준 컨텍스트만 본다.)
+app.post('/api/chat/agent', requireAuth, async (req, res) => {
+  const { studentId, message, history = [], baseYear = '2026' } = req.body || {};
+  if (!String(message || '').trim()) return res.status(400).json({ success: false, message: '메시지가 비었습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  // 도구 호출은 제공사마다 규격이 달라 우선 GPT 계열만 지원한다.
+  // 지원하지 않는 모델을 조용히 다른 모델로 바꾸면 사용자가 무엇으로 답을 받았는지 알 수 없게 된다.
+  if (aiModel !== 'gpt') {
+    return res.status(400).json({ success: false, message: '상담 에이전트는 현재 GPT 계열에서만 동작합니다. 설정에서 GPT 모델을 선택해 주세요.' });
+  }
+  const modelId = getModelId('gpt', submodel);
+  if (/-pro$/.test(modelId)) {
+    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. GPT-5.5 등 pro가 아닌 모델을 선택해 주세요.` });
+  }
+
+  // 학생 컨텍스트 — 유한한 자료라 프롬프트에 직접 넣는다(입결과 달리).
+  let studentSection = '(학생이 선택되지 않았습니다. 일반 상담으로 답하고, 학생별 자료가 필요하면 선택을 요청하십시오.)';
+  let sid = null, defaultGrade = null;
+  if (studentId) {
+    sid = Number(studentId);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '권한 없음' });
+    const d = await getStudentDossier(sid);
+    if (!d) return res.status(404).json({ success: false, message: '학생 없음' });
+    const s = d.student;
+    defaultGrade = s.gpa != null ? Number(s.gpa) : null;
+    const grades = (d.grades || []).map((g) => `${g.term}:${g.gpa ?? '-'}`).join(', ') || '미입력';
+    const recs = (d.records || []).filter((r) => r.content)
+      .map((r) => `[${r.type}] ${r.title} (${String(r.created_at).slice(0, 10)})\n${String(r.content).slice(0, 5000)}`)
+      .join('\n\n---\n\n').slice(0, 32000);
+    const pls = (d.placements || []).map((p) => {
+      const sn = p.snapshot || {};
+      return `- ${String(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'}) · 판정 ${p.verdict || '-'}`
+        + ` · 70%컷 ${sn.cut70 ?? '-'}${sn.cutYear ? `(${sn.cutYear})` : ''} · 저장당시 내신 ${p.grade ?? '-'}`;
+    }).join('\n') || '(저장된 배치 없음)';
+    const rms = (d.roadmaps || []).map((m) => {
+      const items = m.items || [];
+      const pending = items.filter((i) => !i.done).map((i) => i.title).slice(0, 15).join(' / ');
+      return `- ${m.title} — ${items.filter((i) => i.done).length}/${items.length} 완료${pending ? ` · 남은 것: ${pending}` : ''}`;
+    }).join('\n') || '(로드맵 없음)';
+    studentSection = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
+[대표 내신] ${s.gpa != null ? `${s.gpa}등급` : '미입력'}   [학기별] ${grades}
+[메모] ${s.notes || '없음'}
+
+[저장된 입결 배치]
+${pls}
+
+[로드맵]
+${rms}
+
+[기록 — 생기부 분석·수행평가·상담]
+${recs || '(기록 없음)'}`;
+  }
+
+  const systemPrompt = `당신은 학원 원장을 보좌하는 수시 컨설팅 수석 조교입니다.
+아래 학생 자료를 이미 읽은 상태로 대화합니다. 필요한 자료는 도구로 직접 조회하십시오.
+
+[도구 사용 규칙 — 반드시 지킬 것]
+- 입결 숫자(70%컷·경쟁률·충원·모집)는 반드시 search_ipgyeol 결과만 인용하십시오. 기억이나 추정으로 숫자를 쓰지 마십시오.
+- 전형방법·반영교과·수능최저 기준처럼 입결 숫자로 알 수 없는 것은 search_knowledge 로 확인하십시오.
+- 한 번의 검색으로 부족하면 조건을 바꿔 여러 번 부르십시오. 특히 0건이 나오면 조건을 하나씩 빼고 다시 부르십시오.
+- save_placement 는 사용자가 저장을 요청했거나 명확히 동의했을 때만 부르십시오. 추천 단계에서 미리 저장하지 마십시오.
+- 도구로도 확인되지 않으면 "자료에 없습니다"라고 말하십시오. 지어내지 마십시오.
+
+[알아둘 한계]
+- 입결 자료는 2021~2026 대학어디가 공식 발표분입니다. 올해 신설된 전형은 입결이 존재하지 않습니다.
+  신설 전형을 물으면 입결로는 답할 수 없다고 밝히고, 전형방법 쪽으로 돌려 답하십시오.
+- 배치 판정(안정·적정·소신·위험)은 70%컷과 내신 차이만 본 참고값입니다. 반영교과·최저·모집인원 변화는 별도입니다.
+
+[답변 형식]
+- 마크다운, 이모지 금지, 합니다체.
+- 숫자를 인용할 때는 어느 연도 자료인지 함께 밝히십시오.
+- 길게 늘어놓지 말고 컨설턴트가 바로 쓸 수 있게 정리하십시오.
+
+=== 학생 자료 ===
+${studentSection}
+=== 학생 자료 끝 ===`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+
+  const toolLog = [];     // 화면에 "무엇을 조회했는지" 보여주기 위한 기록
+  const savedPlacements = [];
+  try {
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey });
+    const msgs = [
+      { role: 'system', content: systemPrompt },
+      ...history.slice(-10).filter((h) => h && h.role && h.content)
+        .map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 6000) })),
+      { role: 'user', content: String(message).slice(0, 8000) },
+    ];
+
+    let reply = '';
+    const MAX_TURNS = 8;   // 도구 호출이 끝없이 이어지는 것을 막는 상한
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const r = await openai.chat.completions.create({
+        model: modelId,
+        messages: msgs,
+        tools: CONSULT_TOOLS,
+        max_completion_tokens: 8000,
+      });
+      const m = r.choices[0].message;
+      msgs.push(m);
+      if (!m.tool_calls?.length) { reply = m.content || ''; break; }
+
+      for (const tc of m.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+        let out;
+        try {
+          out = await runConsultTool(tc.function.name, args, {
+            studentId: sid, baseYear, defaultGrade,
+            onSaved: (p) => savedPlacements.push(p),
+          });
+        } catch (e) {
+          out = { 오류: e.message };
+        }
+        toolLog.push({
+          name: tc.function.name,
+          args,
+          summary: out?.전체매칭 != null ? `${out.전체매칭}건 매칭 · ${out.반환}건 확인`
+            : out?.자료 ? `자료 ${out.자료.length}건`
+            : out?.저장됨 ? `저장 — ${out.내용}`
+            : out?.오류 || '완료',
+        });
+        msgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out).slice(0, 60000) });
+      }
+      if (turn === MAX_TURNS - 1) reply = m.content || '자료 조회가 상한에 도달했습니다. 질문을 좁혀 다시 물어봐 주세요.';
+    }
+
+    sendDone({ success: true, reply, toolLog, savedPlacements });
+  } catch (err) {
+    console.error('[chat/agent] 오류:', err.message);
+    sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel), toolLog });
   }
 });
 
