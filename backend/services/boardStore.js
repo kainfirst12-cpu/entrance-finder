@@ -57,6 +57,23 @@ export async function getStudentFull(id) {
   return { ...rows[0], grades, records };
 }
 
+// 학생 1명의 자료 전체 (상담·입결 콘솔에서 "이 학생 자료 불러오기"용)
+// getStudentFull 과 달리 기록 id·배치·로드맵까지 포함해, 화면에서 항목을 골라 AI에 넣을 수 있게 한다.
+export async function getStudentDossier(id) {
+  const pool = getPool();
+  const { rows } = await pool.query(`SELECT * FROM ef_students WHERE id = $1`, [id]);
+  if (!rows[0]) return null;
+  const [{ rows: grades }, { rows: records }, { rows: placements }, { rows: files }, roadmaps] = await Promise.all([
+    pool.query(`SELECT id, term, gpa, note FROM ef_grades WHERE student_id = $1 ORDER BY term, id`, [id]),
+    pool.query(`SELECT id, type, title, detail, content, created_at FROM ef_records WHERE student_id = $1 ORDER BY created_at DESC LIMIT 100`, [id]),
+    pool.query(`SELECT * FROM ef_placements WHERE student_id = $1 ORDER BY created_at DESC LIMIT 100`, [id]),
+    pool.query(`SELECT id, name, mime, size, kind, created_at FROM ef_files WHERE student_id = $1 ORDER BY created_at DESC LIMIT 50`, [id]),
+    listRoadmaps(id),
+  ]);
+  const { student_code, ...student } = rows[0];
+  return { student: { ...student, hasCode: !!student_code }, grades, records, placements, files, roadmaps };
+}
+
 export async function getStudentOwner(id) {
   if (!dbEnabled()) return null;
   const { rows } = await getPool().query(`SELECT owner_id FROM ef_students WHERE id = $1`, [id]);

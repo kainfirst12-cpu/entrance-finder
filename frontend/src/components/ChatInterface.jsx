@@ -59,6 +59,37 @@ function chatMdToHtml(raw) {
   return out.join('\n');
 }
 
+// 컨텍스트 패널·빠른 질문용 스타일 (App.css의 chat-context-panel 안에서 쓰임)
+const CS = {
+  tabRow: { display: 'flex', gap: 6, margin: '8px 0 10px' },
+  tab: { flex: 1, border: '1px solid #cbd5e1', background: '#fff', color: '#475569', borderRadius: 8, padding: '5px 8px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  tabOn: { background: '#2563eb', borderColor: '#2563eb', color: '#fff' },
+  wrap: { display: 'flex', flexDirection: 'column', minHeight: 0 },
+  sName: { fontSize: 15, fontWeight: 800, color: '#0f172a' },
+  sMeta: { fontSize: 12, color: '#64748b', lineHeight: 1.6, marginTop: 2 },
+  gradeLine: { fontSize: 11.5, color: '#2563eb', fontWeight: 700, marginTop: 4 },
+  secTitle: { fontSize: 11.5, fontWeight: 800, color: '#334155', margin: '12px 0 6px', display: 'flex', alignItems: 'center', gap: 6 },
+  chk: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', padding: '3px 0', cursor: 'pointer' },
+  miniBtn: { border: '1px solid #cbd5e1', background: '#fff', color: '#475569', borderRadius: 6, padding: '1px 7px', fontSize: 10.5, fontWeight: 700, cursor: 'pointer' },
+  recList: { display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 300, overflowY: 'auto', paddingRight: 2 },
+  recItem: { border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 8px', background: '#fff' },
+  recTop: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' },
+  recType: { fontSize: 10, fontWeight: 800, color: '#2563eb', background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 5, padding: '1px 5px', whiteSpace: 'nowrap' },
+  recTitle: { fontSize: 12, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  recFoot: { display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 },
+  recDate: { fontSize: 10.5, color: '#94a3b8', marginRight: 'auto' },
+  recBody: { fontSize: 11.5, lineHeight: 1.7, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '7px 9px', marginTop: 5, maxHeight: 220, overflowY: 'auto', whiteSpace: 'pre-wrap' },
+  plList: { display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 150, overflowY: 'auto' },
+  plRow: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 },
+  plV: { fontWeight: 800, color: '#2563eb', minWidth: 28 },
+  plName: { color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 },
+  plCut: { color: '#94a3b8' },
+  empty: { fontSize: 12, color: '#94a3b8', padding: '6px 0' },
+  quickRow: { display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', padding: '8px 14px 0' },
+  quickLabel: { fontSize: 11.5, fontWeight: 700, color: '#64748b' },
+  quickChip: { border: '1px solid #99f6e4', background: '#f0fdfa', color: '#0f766e', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+};
+
 export default function ChatInterface({ getActiveKey, selectedModel, analysisData }) {
   // 기존 상태
   const [messages, setMessages] = useState([
@@ -90,6 +121,16 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   const [boardStudent, setBoardStudent] = useState(null);
   const [savingChat, setSavingChat] = useState(false);
 
+  // 학생 자료(생기부 분석·브리핑·배치·로드맵) — 이 학생에 대한 상담이 되게 하는 컨텍스트
+  const [dossier, setDossier] = useState(null);
+  const [dossierLoading, setDossierLoading] = useState(false);
+  const [recSel, setRecSel] = useState({});        // recordId → 포함 여부
+  const [useProfile, setUseProfile] = useState(true);
+  const [usePlacements, setUsePlacements] = useState(true);
+  const [useRoadmaps, setUseRoadmaps] = useState(true);
+  const [panelTab, setPanelTab] = useState('student'); // 'student' | 'analysis'
+  const [openRecId, setOpenRecId] = useState(null);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -103,6 +144,87 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   }, [analysisData]);
 
   const modelLabels = { claude: 'Claude Sonnet 4.6', 'claude-opus': 'Claude Opus 4.8', gemini: 'Gemini 3.5 Flash', 'gemini-pro': 'Gemini 3.1 Pro', gpt: 'GPT-5.5', 'gpt-mini': 'GPT-5.4 Mini' };
+
+  // ── 학생 자료 불러오기 ────────────────────────────
+  // 기본 선택: 생기부 분석·컨설턴트 브리핑·최근 상담 — 상담에서 가장 자주 근거가 되는 기록들
+  const PRIORITY_TYPES = ['컨설턴트 브리핑', '생기부 분석', '입시상담'];
+  const loadStudentDossier = async (s) => {
+    setBoardStudent(s);
+    setDossier(null); setRecSel({}); setOpenRecId(null);
+    if (!s) return;
+    setDossierLoading(true);
+    try {
+      const tok = localStorage.getItem('ef_token');
+      const r = await fetch(`${API_BASE}/api/board/students/${s.id}/context`, { headers: { Authorization: `Bearer ${tok}` } });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.message || '학생 자료를 불러오지 못했습니다');
+      setDossier(d);
+      setPanelTab('student');
+      setContextPanelOpen(true);
+
+      // 기본 선택 구성
+      const sel = {};
+      const withBody = (d.records || []).filter((x) => x.content);
+      for (const t of PRIORITY_TYPES) {
+        const hit = withBody.find((x) => x.type === t);
+        if (hit) sel[hit.id] = true;
+      }
+      if (!Object.keys(sel).length) withBody.slice(0, 2).forEach((x) => { sel[x.id] = true; });
+      setRecSel(sel);
+
+      const g = d.grades?.length ? ` · 최근 내신 ${d.grades[d.grades.length - 1].gpa ?? '-'}` : '';
+      setMessages((prev) => [...prev, {
+        role: 'assistant', isSystem: true,
+        content: `[${d.student.name} 학생 자료 로드 완료]\n${d.student.school || '학교 미입력'} · ${d.student.grade || '학년 미입력'} · 희망 ${d.student.major || '미입력'} · 목표 ${d.student.target_univ || '미입력'}${g}\n` +
+          `기록 ${d.records.length}건 / 배치 ${d.placements.length}건 / 로드맵 ${d.roadmaps.length}건\n\n` +
+          `왼쪽 패널에서 상담에 넣을 기록을 고를 수 있습니다. 이제 이 학생에 대해 바로 질문하세요.`,
+      }]);
+    } catch (e) {
+      alert('학생 자료 로드 실패: ' + e.message);
+    } finally { setDossierLoading(false); }
+  };
+
+  // AI에 넘길 학생 컨텍스트 (선택된 항목만)
+  const buildStudentContext = () => {
+    if (!dossier) return null;
+    const st = dossier.student || {};
+    const ctx = {};
+    if (useProfile) {
+      ctx.profile = { name: st.name, school: st.school, grade: st.grade, major: st.major, targetUniv: st.target_univ, status: st.status, notes: st.notes };
+      ctx.grades = (dossier.grades || []).map((g) => ({ term: g.term, gpa: g.gpa, note: g.note }));
+    } else {
+      ctx.profile = { name: st.name };
+    }
+    ctx.records = (dossier.records || []).filter((r) => recSel[r.id] && r.content)
+      .map((r) => ({ type: r.type, title: r.title, date: r.created_at, content: r.content }));
+    if (usePlacements) {
+      ctx.placements = (dossier.placements || []).map((p) => ({
+        univName: p.univ_name, dept: p.dept, track: p.track, typeName: p.type_name, verdict: p.verdict,
+        grade: p.grade, cut70: p.snapshot?.cut70, cutYear: p.snapshot?.cutYear,
+        aiVerdict: p.snapshot?.aiVerdict, aiReason: p.snapshot?.aiReason,
+      }));
+    }
+    if (useRoadmaps) {
+      ctx.roadmaps = (dossier.roadmaps || []).map((r) => ({
+        title: r.title, total: r.items.length, done: r.items.filter((i) => i.done).length,
+        pending: r.items.filter((i) => !i.done).map((i) => i.title),
+      }));
+    }
+    const hasAny = ctx.records.length || ctx.placements?.length || ctx.roadmaps?.length || useProfile;
+    return hasAny ? ctx : null;
+  };
+
+  const selectedRecCount = Object.values(recSel).filter(Boolean).length;
+
+  // 학생 맞춤 빠른 질문
+  const QUICK_ASKS = [
+    { label: '종합 진단', q: '이 학생의 현재 상황을 종합 진단해 주세요. 강점·약점·리스크를 근거와 함께 정리하고, 지금 가장 시급한 과제 3가지를 알려주세요.' },
+    { label: '수시 6장 전략', q: '이 학생의 내신·생기부·배치 기록을 근거로 수시 6장 지원 전략을 짜주세요. 안정·적정·소신 구성과 각 카드의 선정 이유를 밝혀주세요.' },
+    { label: '배치 기록 검토', q: '저장된 배치 기록이 이 학생에게 타당한지 검토해 주세요. 과하게 상향이거나 불필요한 카드가 있으면 지적하고 대안을 제시해 주세요.' },
+    { label: '생기부 보완점', q: '이 학생의 생기부에서 지원 전공 대비 비어 있는 부분과, 다음 학기에 채워야 할 활동·탐구 주제를 구체적으로 제안해 주세요.' },
+    { label: '로드맵 점검', q: '로드맵의 미완료 항목을 우선순위대로 정리하고, 남은 기간에 현실적으로 실행할 계획으로 다듬어 주세요.' },
+    { label: '학부모 상담용 정리', q: '학부모 상담에서 그대로 읽을 수 있도록, 이 학생의 현재 위치와 앞으로의 계획을 쉬운 말로 정리해 주세요.' },
+  ];
 
   // ── 파일 처리 (공통) ──────────────────────────────
   const processFiles = async (files) => {
@@ -216,8 +338,8 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   };
 
   // ── 메시지 전송 ──────────────────────────────────
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (override) => {
+    const text = String(typeof override === 'string' ? override : input).trim();
     if ((!text && attachedFiles.length === 0) || loading) return;
 
     const apiKey = getActiveKey();
@@ -251,6 +373,8 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
         history: history.map(h => ({ role: h.role, content: h.content })),
       };
 
+      const studentCtx = buildStudentContext();
+      if (studentCtx) body.studentContext = studentCtx;
       if (analysisContext) body.analysisContext = { studentData: analysisContext.studentData, results: analysisContext.results };
       if (fileContents.length > 0) body.fileContents = fileContents;
       if (imageData.length > 0) body.imageData = imageData;
@@ -394,7 +518,8 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
-          studentData: analysisContext?.studentData || { name: '상담 학생' },
+          studentData: analysisContext?.studentData
+            || (dossier ? { name: dossier.student.name, school: dossier.student.school, major: dossier.student.major, targetUniv: dossier.student.target_univ } : { name: '상담 학생' }),
           analysisText: `[질문]\n${userQuestion}\n\n[${modelLabels[selectedModel]} 답변]\n${msg.content}`,
           originalModel: modelLabels[selectedModel] || 'AI',
         }),
@@ -535,7 +660,7 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
   const clearChat = () => {
     setMessages([{ role: 'assistant', content: '대화가 초기화되었습니다. 새로운 질문을 해주세요!' }]);
     setAnalysisContext(null);
-    setContextPanelOpen(false);
+    setContextPanelOpen(!!dossier); // 불러온 학생 자료는 대화 초기화와 무관하게 유지
     setAttachedFiles([]);
   };
 
@@ -625,13 +750,101 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
   // ── 렌더링 ──────────────────────────────────────
   return (
     <div className="chat-container" style={{ display: 'flex', gap: 0 }}>
-      {/* 분석 컨텍스트 패널 */}
-      {contextPanelOpen && analysisContext && (
+      {/* 컨텍스트 패널 — 학생 자료 / 분석 데이터 */}
+      {contextPanelOpen && (dossier || analysisContext) && (
         <div className="chat-context-panel">
           <div className="context-panel-header">
-            <strong>분석 데이터</strong>
+            <strong>상담 컨텍스트</strong>
             <button className="btn-ghost-sm" onClick={() => setContextPanelOpen(false)}>닫기</button>
           </div>
+
+          {dossier && analysisContext && (
+            <div style={CS.tabRow}>
+              <button style={{ ...CS.tab, ...(panelTab === 'student' ? CS.tabOn : {}) }} onClick={() => setPanelTab('student')}>학생 자료</button>
+              <button style={{ ...CS.tab, ...(panelTab === 'analysis' ? CS.tabOn : {}) }} onClick={() => setPanelTab('analysis')}>분석 데이터</button>
+            </div>
+          )}
+
+          {/* ── 학생 자료 ── */}
+          {dossier && (!analysisContext || panelTab === 'student') && (
+            <div style={CS.wrap}>
+              <div style={CS.sName}>{dossier.student.name}</div>
+              <div style={CS.sMeta}>
+                {dossier.student.school || '학교 미입력'} · {dossier.student.grade || '학년 미입력'}<br />
+                희망 {dossier.student.major || '미입력'} / 목표 {dossier.student.target_univ || '미입력'}
+              </div>
+              {dossier.grades?.length > 0 && (
+                <div style={CS.gradeLine}>내신 {dossier.grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}</div>
+              )}
+
+              <div style={CS.secTitle}>AI에 포함할 자료</div>
+              <label style={CS.chk}><input type="checkbox" checked={useProfile} onChange={(e) => setUseProfile(e.target.checked)} /> 기본 정보·내신·메모</label>
+              <label style={CS.chk}><input type="checkbox" checked={usePlacements} onChange={(e) => setUsePlacements(e.target.checked)} disabled={!dossier.placements.length} />
+                입결 배치 기록 ({dossier.placements.length}건)</label>
+              <label style={CS.chk}><input type="checkbox" checked={useRoadmaps} onChange={(e) => setUseRoadmaps(e.target.checked)} disabled={!dossier.roadmaps.length} />
+                생기부 로드맵 ({dossier.roadmaps.length}건)</label>
+
+              <div style={CS.secTitle}>
+                기록 {selectedRecCount}/{dossier.records.length} 선택
+                <button style={CS.miniBtn} onClick={() => {
+                  const all = {}; dossier.records.filter((r) => r.content).forEach((r) => { all[r.id] = true; }); setRecSel(all);
+                }}>전체</button>
+                <button style={CS.miniBtn} onClick={() => setRecSel({})}>해제</button>
+              </div>
+              <div style={CS.recList}>
+                {!dossier.records.length && <div style={CS.empty}>저장된 기록이 없습니다.</div>}
+                {dossier.records.map((r) => (
+                  <div key={r.id} style={CS.recItem}>
+                    <label style={CS.recTop}>
+                      <input type="checkbox" checked={!!recSel[r.id]} disabled={!r.content}
+                        onChange={(e) => setRecSel((p) => ({ ...p, [r.id]: e.target.checked }))} />
+                      <span style={CS.recType}>{r.type || '기록'}</span>
+                      <span style={CS.recTitle} title={r.title}>{r.title || '(제목 없음)'}</span>
+                    </label>
+                    <div style={CS.recFoot}>
+                      <span style={CS.recDate}>{String(r.created_at).slice(0, 10)}</span>
+                      {r.content && (
+                        <>
+                          <button style={CS.miniBtn} onClick={() => setOpenRecId(openRecId === r.id ? null : r.id)}>
+                            {openRecId === r.id ? '접기' : '내용'}
+                          </button>
+                          <button style={CS.miniBtn} onClick={() => {
+                            setInput(`[${r.type || '기록'}] "${r.title}" 내용을 근거로 이 학생에 대해 설명해 주세요. 보완할 점이 있으면 함께 알려주세요.`);
+                            inputRef.current?.focus();
+                          }}>질문</button>
+                        </>
+                      )}
+                    </div>
+                    {openRecId === r.id && <div style={CS.recBody}>{r.content}</div>}
+                  </div>
+                ))}
+              </div>
+
+              {dossier.placements.length > 0 && (
+                <>
+                  <div style={CS.secTitle}>배치 기록</div>
+                  <div style={CS.plList}>
+                    {dossier.placements.slice(0, 20).map((p) => (
+                      <div key={p.id} style={CS.plRow}>
+                        <span style={CS.plV}>{p.verdict || '—'}</span>
+                        <span style={CS.plName}>{(p.univ_name || '').replace(/\[.*\]$/, '')} {p.dept}</span>
+                        <span style={CS.plCut}>{p.snapshot?.cut70 != null ? Number(p.snapshot.cut70).toFixed(2) : '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <button className="btn-ghost-sm" style={{ width: '100%', marginTop: 10 }}
+                onClick={() => { setDossier(null); setRecSel({}); setBoardStudent(null); }}>
+                학생 자료 해제
+              </button>
+            </div>
+          )}
+
+          {/* ── 분석 데이터(JSON) ── */}
+          {analysisContext && (!dossier || panelTab === 'analysis') && (
+          <>
           <div className="context-student-info">
             <div><strong>{analysisContext.studentData?.name || '학생'}</strong></div>
             <div style={{ fontSize: 12, color: '#64748b' }}>{analysisContext.studentData?.major || ''} / {analysisContext.studentData?.targetUniv || ''}</div>
@@ -657,9 +870,11 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
               );
             })}
           </div>
-          <button className="btn-ghost-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => { setAnalysisContext(null); setContextPanelOpen(false); }}>
-            컨텍스트 해제
+          <button className="btn-ghost-sm" style={{ width: '100%', marginTop: 8 }} onClick={() => { setAnalysisContext(null); if (!dossier) setContextPanelOpen(false); }}>
+            분석 컨텍스트 해제
           </button>
+          </>
+          )}
         </div>
       )}
 
@@ -672,9 +887,15 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
           <div className="chat-header-right">
             <span className="chat-model-badge">{modelLabels[selectedModel] || 'Claude'}</span>
 
-            {/* 학생 배정 대상 선택 */}
-            <StudentPicker value={boardStudent} onChange={setBoardStudent} placeholder="학생 배정 안 함"
+            {/* 학생 선택 — 고르면 그 학생의 분석·상담·배치·로드맵 자료를 통째로 불러온다 */}
+            <StudentPicker value={boardStudent} onChange={loadStudentDossier} placeholder="학생 불러오기"
               style={{ padding: '5px 8px', fontSize: 12, borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#1e293b', maxWidth: 180 }} />
+            {dossierLoading && <span style={{ fontSize: 12, color: '#94a3b8' }}>자료 불러오는 중…</span>}
+            {dossier && !contextPanelOpen && (
+              <button className="btn-ghost chat-clear-btn" onClick={() => { setPanelTab('student'); setContextPanelOpen(true); }} style={{ color: '#2dd4bf' }}>
+                {dossier.student.name} 자료 패널
+              </button>
+            )}
             {boardStudent && (
               <button className="btn-ghost chat-clear-btn" onClick={saveChatToStudent} disabled={savingChat}
                 style={{ color: '#2dd4bf' }}>
@@ -788,6 +1009,16 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                 <span className="attached-file-name">{f.name}</span>
                 <button className="attached-file-remove" onClick={() => removeFile(i)}>x</button>
               </div>
+            ))}
+          </div>
+        )}
+
+        {/* 학생 맞춤 빠른 질문 */}
+        {dossier && (
+          <div style={CS.quickRow}>
+            <span style={CS.quickLabel}>{dossier.student.name} 학생 · 빠른 상담</span>
+            {QUICK_ASKS.map((q) => (
+              <button key={q.label} style={CS.quickChip} disabled={loading} onClick={() => sendMessage(q.q)}>{q.label}</button>
             ))}
           </div>
         )}

@@ -11,9 +11,10 @@ import {
   upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
   listPlacements, addPlacement, deletePlacement, getPlacementOwner,
   listSuhaeng, getSuhaeng, createSuhaeng, deleteSuhaeng, getSuhaengOwner,
-  setStudentCode, getStudentByCode, getStudentFull,
+  setStudentCode, getStudentByCode, getStudentFull, getStudentDossier,
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
+import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
 import {
   listRoadmaps, createRoadmap, updateRoadmap, deleteRoadmap,
   addItem as addRoadmapItem, updateItem as updateRoadmapItem, deleteItem as deleteRoadmapItem,
@@ -1187,6 +1188,19 @@ app.delete('/api/board/placements/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// 학생 자료 묶음 — 입시상담·입결 콘솔에서 "이 학생 자료 불러오기"
+// 기록 본문·성적·배치·로드맵을 한 번에 내려, 화면에서 고른 항목만 AI 컨텍스트로 넣게 한다.
+app.get('/api/board/students/:id/context', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    const sid = Number(req.params.id);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '권한 없음' });
+    const dossier = await getStudentDossier(sid);
+    if (!dossier) return res.status(404).json({ success: false, message: '학생 없음' });
+    res.json({ success: true, ...dossier });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // AI 컨설턴트 브리핑 — 학생의 기록 전체를 컨설턴트 관점으로 정리해 기록으로 저장
 app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
@@ -1641,9 +1655,60 @@ app.post('/api/chat-upload', chatUpload, async (req, res) => {
   }
 });
 
-// ── 채팅 엔드포인트 (파일 컨텍스트 + 분석 컨텍스트 지원) ──
+// 학생 보드 자료를 프롬프트 블록으로 — 상담이 "일반론"이 아니라 이 학생 이야기가 되게 하는 핵심.
+// 기록 본문은 길어서 통째로 넣으면 컨텍스트를 잡아먹으므로 항목당·전체 상한을 둔다.
+function buildStudentSection(sc) {
+  if (!sc) return '';
+  const p = sc.profile || {};
+  const lines = [`\n=== 상담 대상 학생 자료 (학생 보드에서 불러옴) ===`];
+  lines.push(`[학생] ${p.name || '이름없음'} / ${p.school || '학교 미입력'} / ${p.grade || '학년 미입력'}`);
+  lines.push(`[희망 전공] ${p.major || '미입력'} / [목표 대학] ${p.targetUniv || '미입력'} / [진행 단계] ${p.status || '미입력'}`);
+  if (p.notes) lines.push(`[선생님 메모] ${String(p.notes).slice(0, 600)}`);
+
+  const grades = sc.grades || [];
+  if (grades.length) {
+    lines.push(`[내신 추이] ${grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}`);
+  }
+
+  const pls = sc.placements || [];
+  if (pls.length) {
+    lines.push(`[입결 콘솔 배치 기록 — ${pls.length}건]`);
+    pls.slice(0, 25).forEach((x) => {
+      lines.push(` - ${x.univName || ''} ${x.dept || ''} ${x.track || ''}(${x.typeName || ''}) · 판정 ${x.verdict || '—'}` +
+        `${x.aiVerdict ? ` / AI ${x.aiVerdict}` : ''} · 70%컷 ${x.cut70 ?? '—'}(${x.cutYear || ''}) · 저장 내신 ${x.grade ?? '—'}` +
+        `${x.aiReason ? ` · ${String(x.aiReason).slice(0, 80)}` : ''}`);
+    });
+  }
+
+  const rms = sc.roadmaps || [];
+  if (rms.length) {
+    lines.push(`[생기부 로드맵 진행]`);
+    rms.slice(0, 5).forEach((r) => {
+      lines.push(` - ${r.title || '로드맵'} · 완료 ${r.done ?? 0}/${r.total ?? 0}` +
+        (r.pending?.length ? ` · 미완료: ${r.pending.slice(0, 8).join(', ')}` : ''));
+    });
+  }
+
+  const recs = sc.records || [];
+  if (recs.length) {
+    let budget = 40000;
+    lines.push(`[학생 기록 — ${recs.length}건, 선생님이 선택한 항목]`);
+    for (const r of recs) {
+      if (budget <= 0) { lines.push(' (이하 생략 — 분량 초과)'); break; }
+      const body = String(r.content || '').slice(0, Math.min(9000, budget));
+      budget -= body.length;
+      lines.push(`\n──── [${r.type || '기록'}] ${r.title || ''} (${String(r.date || '').slice(0, 10)}) ────\n${body}`);
+    }
+  }
+  lines.push(`=== 학생 자료 끝 ===
+위 자료는 이 학생에 대해 실제로 쌓인 기록이다. 상담 답변은 반드시 이 학생의 내신·기록·배치 상황에 맞춰 구체적으로 하라.
+자료에 없는 사실은 지어내지 말고, 판단에 필요한 자료가 없으면 무엇이 더 필요한지 밝혀라.`);
+  return lines.join('\n');
+}
+
+// ── 채팅 엔드포인트 (파일 컨텍스트 + 분석 컨텍스트 + 학생 보드 자료 지원) ──
 app.post('/api/chat', async (req, res) => {
-  const { message, history = [], analysisContext, fileContents, imageData } = req.body;
+  const { message, history = [], analysisContext, fileContents, imageData, studentContext } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'];
@@ -1664,6 +1729,9 @@ ${Object.entries(results || {}).filter(([_, v]) => v).map(([k, v]) => `[${k}] ${
 === 분석 데이터 끝 ===
 사용자가 위 분석 데이터에 대해 질문하면 해당 내용을 참고하여 답변하라.`;
     }
+
+    // 학생 보드 자료 컨텍스트
+    const studentSection = buildStudentSection(studentContext);
 
     // 파일 컨텍스트 (PDF 텍스트)
     let fileSection = '';
@@ -1693,7 +1761,7 @@ ${kb.대입정책 || '(자료 없음)'}
 ${kb.대학별전형 || '(자료 없음)'}
 
 === 합격자 사례 ===
-${kb.합격자사례 || '(자료 없음)'}${analysisSection}${fileSection}`;
+${kb.합격자사례 || '(자료 없음)'}${studentSection}${analysisSection}${fileSection}`;
 
     let reply;
 
@@ -2437,6 +2505,146 @@ ${JSON.stringify(cards.slice(0, 15), null, 1)}`;
     sendDone({ success: true, judgments });
   } catch (err) {
     console.error('[ipgyeol/judge] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// 입결 콘솔 AI 검색 — 자연어 질문 → 필터 JSON(AI) → 전 대학 결정적 검색(코드) → 요약(AI)
+// 숫자는 전부 코드가 원본 입결에서 뽑는다. AI는 "무엇을 찾을지"와 "어떻게 읽을지"만 담당한다.
+app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
+  const { query, studentProfile, baseYear = '2026', limit = 24 } = req.body || {};
+  if (!String(query || '').trim()) return res.status(400).json({ success: false, message: '검색어가 비었습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+
+  const parsePrompt = `당신은 대한민국 수시 입결 데이터 검색기의 질의 해석기입니다.
+컨설턴트의 자연어 질문을 아래 스키마의 필터 JSON으로만 변환합니다. 검색·판단은 하지 않습니다.
+
+[검색 대상] 대학어디가 공식 입시결과. 전국 216개 대학 × 학과 × 전형 약 7만 건.
+각 건은 연도별로 최종등급 70%컷 / 경쟁률 / 충원인원 / 모집인원을 가집니다.
+
+[사용 가능한 지역] ${IPG_REGIONS.join(', ')}
+[사용 가능한 전형구분] ${IPG_TRACKS.join(', ')} (학생부교과=교과, 학생부종합=종합)
+
+[필터 스키마 — 해당 없는 키는 생략]
+{
+ "regions": ["서울"],            // 지역명 배열. '수도권/인서울'이면 capitalOnly 사용
+ "capitalOnly": true,             // 수도권(서울·경기·인천)
+ "univKeywords": ["중앙대"],      // 특정 대학 지정 시에만
+ "deptKeywords": ["간호","보건"], // 학과명 포함 키워드(OR). 계열 질문이면 대표 학과명을 여러 개 펼쳐라
+ "excludeKeywords": ["야간"],
+ "tracks": ["교과"],
+ "typeKeywords": ["지역균형"],    // 전형명 키워드
+ "gradeMin": 2.0, "gradeMax": 3.5,// 70%컷 등급 범위(숫자가 클수록 낮은 성적)
+ "targetGrade": 2.8,              // 학생 내신 — 주어지면 판정·정렬 기준이 됨
+ "verdicts": ["적정","안정"],     // 안정/적정/소신/위험 중 원하는 것
+ "rateMax": 10, "rateMin": null,  // 경쟁률
+ "recruitMin": 20,                // 모집인원 하한
+ "trend": "easing",               // easing=컷 완화 추세, tightening=컷 상승 추세
+ "sunung": "none",                // none=수능최저 없는 전형, required=있는 전형
+ "sortBy": "fit",                 // fit(내신 근접) | cut(상위권 순) | easy(여유 순) | rate(경쟁률 낮은 순) | recruit(모집 많은 순) | trend(완화 순)
+ "limit": 24,
+ "intent": "질문을 한 문장으로 재진술"
+}
+
+[해석 규칙 — 질문에 있는 조건은 하나도 빠뜨리지 말 것]
+- 지역어는 반드시 반영한다. '수도권/인서울/서울권 통틀어' → capitalOnly:true, '서울' → regions:["서울"],
+  '지방/지역대학' → regions에 비수도권 지역들, 특정 시도명 → 그대로 regions.
+- '교과전형/학생부교과' → tracks:["교과"], '종합/학종/학생부종합' → tracks:["종합"], '논술' → tracks:["논술"].
+- 학생 성적을 뜻하는 표현('내신 3.0으로', '3등급인 학생이', '2.8인데')은 gradeMax가 아니라 targetGrade다.
+  gradeMin/gradeMax는 '컷이 3등급 이내인 곳'처럼 컷 자체를 한정할 때만 쓴다.
+- '적정·안정', '갈 만한', '지원 가능한' → verdicts로 옮긴다. '안정' → ["안정"], '상향/소신' → ["소신","위험"],
+  '갈 만한/무난한' → ["안정","적정"].
+- '경쟁률 낮은' → sortBy:"rate", '뽑는 인원 많은' → sortBy:"recruit", '작년보다 쉬워진/컷 내려간' → trend:"easing",
+  '수능최저 없는' → sunung:"none".
+- 계열어는 학과 키워드로 펼쳐라. 예: '공대'→["공학","기계","전기","전자","컴퓨터","화학공","신소재","산업","토목","건축"],
+  '경영·상경'→["경영","경제","무역","회계","금융"], '간호·보건'→["간호","보건","물리치료","임상병리","작업치료"],
+  '교육계열'→["교육","사범"], 'AI·컴공'→["인공지능","AI","컴퓨터","소프트웨어","데이터"]
+- 학생 정보가 주어졌는데 질문에 등급이 없으면 학생 내신을 targetGrade로 쓴다.
+- 질문에 없는 조건을 상상해서 넣지는 마라. 다만 질문에 적힌 조건은 전부 넣어야 한다.
+
+[예시]
+질문: "수도권 간호학과 중 내신 3.0으로 적정·안정인 교과전형 찾아줘"
+→ {"capitalOnly":true,"deptKeywords":["간호"],"tracks":["교과"],"targetGrade":3.0,"verdicts":["적정","안정"],"sortBy":"fit","intent":"수도권 간호 교과전형 중 내신 3.0 기준 적정·안정 후보"}
+
+질문: "작년보다 컷이 완화된 경기권 경영·경제 학과"
+→ {"regions":["경기"],"deptKeywords":["경영","경제"],"trend":"easing","sortBy":"trend","intent":"경기 지역 경영·경제 중 70%컷이 완화된 학과"}
+
+질문: "수능최저 없는 서울 종합전형 중 2.5등급대"
+→ {"regions":["서울"],"tracks":["종합"],"sunung":"none","targetGrade":2.5,"sortBy":"fit","intent":"수능최저 없는 서울 종합전형 중 내신 2.5 기준 후보"}
+
+[출력] JSON 객체 하나만. 코드펜스·설명 금지.`;
+
+  const profileLine = studentProfile
+    ? `[학생 정보] 이름 ${studentProfile.name || '-'} / 내신 ${studentProfile.gpa ?? '-'} / 희망 전공 ${studentProfile.major || '-'} / 목표 ${studentProfile.targetUniv || '-'}`
+    : '[학생 정보] 없음';
+
+  try {
+    const raw = await callAIModel({
+      aiModel, submodel, apiKey, systemPrompt: parsePrompt, maxTokens: 1200,
+      userMsg: `${profileLine}\n[기준연도] ${baseYear}\n\n[질문]\n${String(query).slice(0, 1000)}`,
+    });
+    const m = String(raw).match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('질문을 검색 조건으로 바꾸지 못했습니다. 조금 더 구체적으로 적어주세요.');
+    const filter = JSON.parse(m[0]);
+    filter.baseYear = baseYear;
+    filter.limit = Math.min(Number(filter.limit) || Number(limit) || 24, 40);
+    if (filter.targetGrade == null && studentProfile?.gpa != null) filter.targetGrade = Number(studentProfile.gpa);
+
+    let { total, results } = searchIpgyeolEntries(filter);
+
+    // 0건이면 조건을 단계적으로 풀어 재검색 — "결과 없음"만 돌려주면 컨설턴트가 손으로 다시 짜야 한다
+    const relaxed = [];
+    const relaxSteps = [
+      ['verdicts', () => { delete filter.verdicts; relaxed.push('배치 판정'); }],
+      ['trend', () => { delete filter.trend; relaxed.push('추세'); }],
+      ['sunung', () => { delete filter.sunung; relaxed.push('수능최저'); }],
+      ['rateMax', () => { delete filter.rateMax; delete filter.rateMin; relaxed.push('경쟁률'); }],
+      ['recruitMin', () => { delete filter.recruitMin; relaxed.push('모집인원'); }],
+      ['gradeMax', () => { delete filter.gradeMin; delete filter.gradeMax; relaxed.push('등급 범위'); }],
+      ['regions', () => { delete filter.regions; delete filter.capitalOnly; relaxed.push('지역'); }],
+    ];
+    for (const [key, drop] of relaxSteps) {
+      if (total > 0) break;
+      if (filter[key] == null && !(key === 'regions' && filter.capitalOnly)) continue;
+      drop();
+      ({ total, results } = searchIpgyeolEntries(filter));
+    }
+
+    let summary = '';
+    if (results.length) {
+      const compact = results.slice(0, 20).map((r) => ({
+        대학: r.univ.name.replace(/\[.*\]$/, ''), 지역: r.univ.region, 학과: r.entry.dept,
+        전형: `${r.entry.track}(${r.entry.typeName})`, 컷70: r.match.cut70, 연도: r.match.cutYear,
+        전년대비: r.match.delta, 경쟁률: r.match.rate, 충원: r.match.fill, 모집: r.match.recruit, 판정: r.match.verdict,
+      }));
+      const sumPrompt = `당신은 수시 배치 상담 컨설턴트입니다. 아래는 공식 입결에서 조건에 맞게 뽑힌 검색 결과입니다.
+이 결과를 컨설턴트가 학생·학부모에게 바로 설명할 수 있도록 정리하십시오.
+
+[출력 — 마크다운, 이모지 금지, 합니다체, 12줄 이내]
+- 첫 줄: 검색 결과 한 줄 요약(몇 건 중 어떤 성격의 후보가 나왔는지)
+- **눈여겨볼 후보**: 3~5개를 이유와 함께 (대학 학과 전형 · 컷 · 근거)
+- **주의할 점**: 경쟁률 급등·충원 적음·컷 상승 등 데이터에서 읽히는 리스크
+- **다음 확인 사항**: 반영교과·수능최저 등 이 데이터만으로 알 수 없는 것
+[원칙] 표에 없는 숫자를 지어내지 마십시오. 표의 값만 인용하십시오.`;
+      summary = await callAIModel({
+        aiModel, submodel, apiKey, systemPrompt: sumPrompt, maxTokens: 1600,
+        userMsg: `[질문] ${query}\n${profileLine}\n[전체 매칭] ${total}건 중 상위 ${compact.length}건\n\n${JSON.stringify(compact, null, 1)}`,
+      });
+    }
+
+    sendDone({ success: true, filter, total, results, summary, relaxed });
+  } catch (err) {
+    console.error('[ipgyeol/ai-search] 오류:', err.message);
     sendDone({ success: false, message: err.message });
   }
 });

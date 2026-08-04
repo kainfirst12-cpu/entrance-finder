@@ -358,6 +358,17 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [aiJudgments, setAiJudgments] = useState({}); // cardKey → {verdict, reason}
   const [aiJudging, setAiJudging] = useState(false);
 
+  // 학생 자료(생기부 분석·브리핑·로드맵) — 배치 판단 근거를 콘솔 안에서 바로 확인
+  const [dossier, setDossier] = useState(null);
+  const [dossierOpen, setDossierOpen] = useState(false);
+  const [openRecId, setOpenRecId] = useState(null);
+
+  // AI 검색
+  const [aiQ, setAiQ] = useState('');
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiSearch, setAiSearch] = useState(null); // {query, filter, total, results, summary, relaxed}
+  const [useStudentCtx, setUseStudentCtx] = useState(true);
+
   useEffect(() => {
     api('/api/ipgyeol/list')
       .then((j) => { if (!j.success) throw new Error(j.error || '목록 로드 실패'); setUnivs(j.universities || []); })
@@ -370,7 +381,12 @@ export default function IpgyeolConsole({ onAuthError }) {
   function selectStudent(id) {
     const s = students.find((x) => String(x.id) === String(id)) || null;
     setStudent(s); setPlacements([]); setAiJudgments({}); setGradeSource('');
+    setDossier(null); setOpenRecId(null); setDossierOpen(false);
     if (!s) return;
+    // 학생 자료 전체(기록 본문·로드맵)를 불러와 판단 근거로 쓴다
+    api(`/api/board/students/${s.id}/context`)
+      .then((j) => { if (j.success) setDossier(j); })
+      .catch((e) => { if (e.auth) onAuthError?.(); });
     // 내신 자동 반영: ① 보드에 입력한 성적 → ② 분석 기록 본문에서 인식
     const gpas = (s.grades || []).filter((g) => g.gpa != null);
     if (gpas.length) {
@@ -390,25 +406,36 @@ export default function IpgyeolConsole({ onAuthError }) {
       .catch((e) => { if (e.auth) onAuthError?.(); });
   }
 
-  // ── AI 종합 판정 (생기부 분석 기반) ──
-  async function runAiJudge() {
-    if (!student || !detail) return;
-    const visible = [...pins.filter((p) => p.univ.unvCd === detail.unvCd), ...unpinnedCards].slice(0, 12);
-    if (!visible.length) { setError('판정할 카드가 없습니다. 대학을 선택하고 전형을 확인하세요.'); return; }
-    const apiKeys = {
-      claude: localStorage.getItem('ef_apikey'), gemini: localStorage.getItem('ef_geminikey'), gpt: localStorage.getItem('ef_gptkey'),
-    };
+  // 현재 선택된 모델의 API 키 (AI 판정·AI 검색 공용)
+  function aiCreds() {
     const model = localStorage.getItem('ef_model') || 'claude';
     const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model === 'o3' || model === 'o4-mini' ? 'gpt' : 'claude';
-    const apiKey = apiKeys[group];
-    if (!apiKey) { setError('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
-    // 최신 생기부 분석 기록 발췌
-    const analysisRec = (student.records || []).find((r) => r.type === '생기부 분석' && r.content) || (student.records || []).find((r) => r.content);
+    const apiKey = { claude: localStorage.getItem('ef_apikey'), gemini: localStorage.getItem('ef_geminikey'), gpt: localStorage.getItem('ef_gptkey') }[group];
+    return { model, group, apiKey };
+  }
+  const aiHeaders = ({ model, group, apiKey }) => ({
+    'Content-Type': 'application/json', 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model,
+    Authorization: `Bearer ${token()}`,
+  });
+
+  // ── AI 종합 판정 (생기부 분석 기반) — list를 주면 그 카드들만 판정 ──
+  async function runAiJudge(list) {
+    if (!student) return;
+    const source = list?.length ? list
+      : (detail ? [...pins.filter((p) => p.univ.unvCd === detail.unvCd), ...unpinnedCards] : []);
+    const visible = source.slice(0, 12);
+    if (!visible.length) { setError('판정할 카드가 없습니다. 대학을 선택하거나 AI 검색을 먼저 실행하세요.'); return; }
+    const creds = aiCreds();
+    if (!creds.apiKey) { setError('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
+    // 최신 생기부 분석 기록 발췌 — 자료 패널을 불러왔으면 본문 전체가 있는 쪽을 쓴다
+    const pool = dossier?.records?.length ? dossier.records : (student.records || []);
+    const analysisRec = pool.find((r) => r.type === '생기부 분석' && r.content)
+      || pool.find((r) => r.type === '컨설턴트 브리핑' && r.content) || pool.find((r) => r.content);
     setAiJudging(true); setError('');
     try {
       const d = await postForResult(`${API_BASE}/api/ipgyeol/judge`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model, Authorization: `Bearer ${token()}` },
+        headers: aiHeaders(creds),
         body: JSON.stringify({
           studentProfile: {
             name: student.name, school: student.school, grade: student.grade, major: student.major,
@@ -425,9 +452,56 @@ export default function IpgyeolConsole({ onAuthError }) {
       if (!d.success) throw new Error(d.message || 'AI 판정 실패');
       const map = {};
       d.judgments.forEach((j) => { map[j.key] = { verdict: j.verdict, reason: j.reason || '' }; });
-      setAiJudgments(map);
+      setAiJudgments((prev) => ({ ...prev, ...map }));
     } catch (e) { setError('AI 판정 오류: ' + e.message); }
     finally { setAiJudging(false); }
+  }
+
+  // ── AI 검색: 자연어 질문 → 전 대학 입결 통합 검색 ──
+  // 서버가 질문을 필터로 바꾼 뒤 원본 입결에서 직접 골라내므로, 카드에 표시되는 숫자는 전부 공식 자료 값이다.
+  async function runAiSearch(qOverride) {
+    const q = String(qOverride ?? aiQ).trim();
+    if (!q || aiSearching) return;
+    const creds = aiCreds();
+    if (!creds.apiKey) { setError('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
+    setAiQ(q); setAiSearching(true); setError('');
+    try {
+      const body = { query: q, baseYear, limit: 24 };
+      if (student && useStudentCtx) {
+        body.studentProfile = { name: student.name, gpa: grade, major: student.major || '', targetUniv: student.target_univ || '' };
+      }
+      const d = await postForResult(`${API_BASE}/api/ipgyeol/ai-search`, {
+        method: 'POST', headers: aiHeaders(creds), body: JSON.stringify(body),
+      });
+      if (!d.success) throw new Error(d.message || 'AI 검색 실패');
+      setAiSearch({ ...d, query: q });
+    } catch (e) { setError('AI 검색 오류: ' + e.message); }
+    finally { setAiSearching(false); }
+  }
+
+  // 해석된 필터를 사람이 읽는 칩으로 (AI가 뭘로 알아들었는지 보이지 않으면 결과를 믿을 수 없다)
+  function filterChips(f = {}) {
+    const out = [];
+    if (f.capitalOnly) out.push('수도권');
+    (f.regions || []).forEach((r) => out.push(r));
+    (f.univKeywords || []).forEach((r) => out.push(`대학: ${r}`));
+    (f.deptKeywords || []).forEach((r) => out.push(`학과: ${r}`));
+    (f.excludeKeywords || []).forEach((r) => out.push(`제외: ${r}`));
+    (f.tracks || []).forEach((r) => out.push(`${r}전형`));
+    (f.typeKeywords || []).forEach((r) => out.push(`전형명: ${r}`));
+    if (f.targetGrade != null) out.push(`기준 내신 ${Number(f.targetGrade).toFixed(2)}`);
+    (f.verdicts || []).forEach((r) => out.push(`판정 ${r}`));
+    if (f.gradeMin != null || f.gradeMax != null) out.push(`70%컷 ${f.gradeMin ?? ''}~${f.gradeMax ?? ''}`);
+    if (f.rateMax != null) out.push(`경쟁률 ≤${f.rateMax}`);
+    if (f.rateMin != null) out.push(`경쟁률 ≥${f.rateMin}`);
+    if (f.recruitMin != null) out.push(`모집 ≥${f.recruitMin}명`);
+    if (f.trend === 'easing') out.push('컷 완화 추세');
+    if (f.trend === 'tightening') out.push('컷 상승 추세');
+    if (f.sunung === 'none') out.push('수능최저 없음');
+    if (f.sunung === 'required') out.push('수능최저 있음');
+    const sortLabel = { fit: '내신 근접순', cut: '상위권순', easy: '여유순', rate: '경쟁률 낮은순', recruit: '모집 많은순', trend: '완화순' }[f.sortBy];
+    if (sortLabel) out.push(`정렬: ${sortLabel}`);
+    return out;
   }
 
   async function savePlacement(card) {
@@ -538,6 +612,39 @@ export default function IpgyeolConsole({ onAuthError }) {
           <div style={S.tile}><div style={S.tileHead}>신뢰·근거</div><div style={S.tileMain}>출처·표기 있음</div><div style={S.tileSub}>어디가 공식 발표자료 + 원문 링크</div></div>
         </div>
 
+        {/* AI 검색 — 자연어로 전 대학 입결을 가로질러 찾는다 */}
+        <div style={S.aiBox}>
+          <div style={S.aiHead}>
+            <span style={S.aiTitle}>🔎 AI 검색</span>
+            <span style={S.aiSub}>전국 216개 대학 · 학과×전형 약 7만 건에서 조건에 맞는 후보를 찾아 카드로 보여줍니다</span>
+            {student && (
+              <label style={S.aiChk}>
+                <input type="checkbox" checked={useStudentCtx} onChange={(e) => setUseStudentCtx(e.target.checked)} />
+                {student.name} 학생 기준(내신 {grade.toFixed(2)})으로 검색
+              </label>
+            )}
+          </div>
+          <div style={S.aiInputRow}>
+            <textarea style={S.aiInput} value={aiQ} rows={2} disabled={aiSearching}
+              placeholder="예) 수도권 간호학과 중 내신 3.0으로 적정·안정인 교과전형 찾아줘 / 작년보다 컷이 내려간 서울 공대 종합전형"
+              onChange={(e) => setAiQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); runAiSearch(); } }} />
+            <button style={{ ...S.aiRunBtn, ...(aiSearching ? S.aiRunBusy : {}) }} onClick={() => runAiSearch()} disabled={aiSearching || !aiQ.trim()}>
+              {aiSearching ? '검색 중…' : 'AI 검색'}
+            </button>
+          </div>
+          <div style={S.exRow}>
+            {[
+              '수도권 간호학과 중 내신 3.0으로 적정·안정인 교과전형',
+              '수능최저 없는 서울 종합전형 중 2.5등급대',
+              '경쟁률 낮고 모집인원 20명 이상인 지방 공대 교과',
+              '작년보다 컷이 완화된 경기권 경영·경제 학과',
+            ].map((ex) => (
+              <button key={ex} style={S.exChip} onClick={() => runAiSearch(ex)} disabled={aiSearching}>{ex}</button>
+            ))}
+          </div>
+        </div>
+
         {/* 컨트롤 바 */}
         <div style={S.controls}>
           <div style={S.ctrlGroup}>
@@ -605,12 +712,92 @@ export default function IpgyeolConsole({ onAuthError }) {
 
         {error && <div style={S.error}>⚠ {error}</div>}
 
+        {/* AI 검색 결과 */}
+        {aiSearch && (
+          <div style={S.aiResBox}>
+            <div style={S.aiResHead}>
+              <b style={{ fontSize: 14 }}>“{aiSearch.query}”</b>
+              <span style={S.plCount}>매칭 {aiSearch.total}건 · 표시 {aiSearch.results.length}건</span>
+              {student && (
+                <button style={S.aiBtn} onClick={() => runAiJudge(aiSearch.results)} disabled={aiJudging}>
+                  {aiJudging ? '🤖 AI 판정 중…' : '🤖 이 결과를 생기부 기반으로 판정'}
+                </button>
+              )}
+              <button style={S.plDel} title="검색 결과 닫기" onClick={() => setAiSearch(null)}>✕</button>
+            </div>
+            {aiSearch.filter?.intent && <div style={S.aiIntent}>해석: {aiSearch.filter.intent}</div>}
+            <div style={S.chipRow}>
+              {filterChips(aiSearch.filter).map((c) => <span key={c} style={S.fchip}>{c}</span>)}
+            </div>
+            {aiSearch.relaxed?.length > 0 && (
+              <div style={S.relaxNote}>조건이 너무 좁아 결과가 없어 {aiSearch.relaxed.join(' · ')} 조건을 풀고 다시 검색했습니다.</div>
+            )}
+            {aiSearch.summary && <div style={S.aiSummary}>{aiSearch.summary}</div>}
+            {!aiSearch.results.length && <div style={S.plEmpty}>조건에 맞는 전형이 없습니다. 지역·등급 범위를 넓혀 다시 물어보세요.</div>}
+            {aiSearch.results.length > 0 && (
+              <div style={S.grid}>
+                {aiSearch.results.map((c) => (
+                  <Card key={`ai-${c.key}`} card={c} grade={grade} baseYear={baseYear} onPin={togglePin}
+                    pinned={pinnedKeys.has(c.key)} student={student} onSave={savePlacement}
+                    saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail} ai={aiJudgments[c.key]} />
+                ))}
+              </div>
+            )}
+            <div style={S.aiFoot}>표시된 수치는 모두 어디가 공식 입결 원본에서 직접 읽은 값입니다. AI는 조건 해석과 요약만 담당합니다.</div>
+          </div>
+        )}
+
+        {/* 학생 자료 패널 — 배치 판단의 근거를 콘솔 안에서 확인 */}
+        {student && dossier && (
+          <div style={S.plBox}>
+            <div style={S.plHead}>
+              📁 {student.name} 학생 자료
+              <span style={S.plCount}>
+                기록 {dossier.records.length}건 · 성적 {dossier.grades.length}건 · 로드맵 {dossier.roadmaps.length}건
+              </span>
+              <button style={S.aiBtn} onClick={() => setDossierOpen((v) => !v)}>{dossierOpen ? '접기' : '펼쳐 보기'}</button>
+              {dossier.grades.length > 0 && (
+                <span style={S.plHint}>내신 추이 {dossier.grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}</span>
+              )}
+            </div>
+            {dossierOpen && (
+              <>
+                <div style={S.dossierMeta}>
+                  {dossier.student.school || '학교 미입력'} · {dossier.student.grade || '학년 미입력'} · 희망 {dossier.student.major || '미입력'} · 목표 {dossier.student.target_univ || '미입력'}
+                  {dossier.student.notes ? ` · 메모: ${dossier.student.notes}` : ''}
+                </div>
+                {dossier.roadmaps.map((r) => {
+                  const done = r.items.filter((i) => i.done).length;
+                  return (
+                    <div key={r.id} style={S.dossierRoad}>
+                      🗺 {r.title} — {done}/{r.items.length} 완료
+                      {r.items.filter((i) => !i.done).slice(0, 4).map((i) => <span key={i.id} style={S.roadChip}>{i.title}</span>)}
+                    </div>
+                  );
+                })}
+                {!dossier.records.length && <div style={S.plEmpty}>저장된 기록이 없습니다. 생기부 분석·상담 기록을 먼저 쌓아주세요.</div>}
+                {dossier.records.map((r) => (
+                  <div key={r.id} style={S.recRow}>
+                    <button style={S.recHead} onClick={() => setOpenRecId(openRecId === r.id ? null : r.id)}>
+                      <span style={S.recType}>{r.type || '기록'}</span>
+                      <span style={S.recTitle}>{r.title || '(제목 없음)'}</span>
+                      <span style={S.recDate}>{String(r.created_at).slice(0, 10)}</span>
+                      <span style={S.recToggle}>{openRecId === r.id ? '▲' : '▼'}</span>
+                    </button>
+                    {openRecId === r.id && <div style={S.recBody}>{r.content || '(본문 없음)'}</div>}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+
         {/* 학생 배치 기록 */}
         {student && (
           <div style={S.plBox}>
             <div style={S.plHead}>
               🎯 {student.name} 학생의 배치 기록 <span style={S.plCount}>({placements.length}건)</span>
-              <button style={S.aiBtn} onClick={runAiJudge} disabled={aiJudging || !detail}
+              <button style={S.aiBtn} onClick={() => runAiJudge()} disabled={aiJudging || !detail}
                 title="학생의 생기부 분석 내용과 카드의 입결 데이터를 종합해 AI가 학과별 배치를 판정합니다">
                 {aiJudging ? '🤖 AI 판정 중…' : '🤖 생기부 기반 AI 종합 판정'}
               </button>
@@ -718,6 +905,35 @@ const S = {
   tileHead: { fontSize: 11.5, fontWeight: 700, color: '#8492a5', marginBottom: 4 },
   tileMain: { fontSize: 14.5, fontWeight: 800, color: '#1d4fa8' },
   tileSub: { fontSize: 11.5, color: '#8492a5', marginTop: 3 },
+  aiBox: { background: 'linear-gradient(180deg,#f7f4ff 0%,#fff 100%)', border: '1px solid #ddd2f5', borderRadius: 14, padding: '13px 16px 12px', marginBottom: 12 },
+  aiHead: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 9 },
+  aiTitle: { fontSize: 14.5, fontWeight: 800, color: '#5b3fb8' },
+  aiSub: { fontSize: 11.5, color: '#8492a5' },
+  aiChk: { marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: '#5b3fb8', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' },
+  aiInputRow: { display: 'flex', gap: 9, alignItems: 'stretch' },
+  aiInput: { flex: 1, minWidth: 0, border: '1px solid #d7cdf0', borderRadius: 10, padding: '9px 12px', fontSize: 13.5, lineHeight: 1.55, background: '#fff', color: '#26313e', outline: 'none', resize: 'vertical', fontFamily: 'inherit' },
+  aiRunBtn: { flex: '0 0 108px', border: 'none', background: '#6b46c1', color: '#fff', borderRadius: 10, fontSize: 13.5, fontWeight: 800, cursor: 'pointer' },
+  aiRunBusy: { background: '#b9a8e6', cursor: 'default' },
+  exRow: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  exChip: { border: '1px solid #e0d8f5', background: '#fff', color: '#6b46c1', borderRadius: 20, padding: '4px 11px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' },
+  aiResBox: { background: '#fff', border: '1px solid #ddd2f5', borderRadius: 14, padding: '13px 15px 10px', marginBottom: 14 },
+  aiResHead: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 7 },
+  aiIntent: { fontSize: 12, color: '#5c6b7c', marginBottom: 7 },
+  chipRow: { display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 },
+  fchip: { fontSize: 11, fontWeight: 700, color: '#4a3a7a', background: '#f2edfc', border: '1px solid #e0d8f5', borderRadius: 7, padding: '2px 8px' },
+  relaxNote: { fontSize: 11.5, color: '#8a6d1f', background: '#fdf7e3', border: '1px solid #f0e6b8', borderRadius: 8, padding: '6px 10px', marginBottom: 8 },
+  aiSummary: { fontSize: 12.8, lineHeight: 1.75, color: '#26313e', background: '#f8f6fe', border: '1px solid #e8e2f8', borderRadius: 10, padding: '11px 13px', marginBottom: 10, whiteSpace: 'pre-wrap' },
+  aiFoot: { fontSize: 10.5, color: '#98a4b3', marginTop: 2 },
+  dossierMeta: { fontSize: 12, color: '#5c6b7c', padding: '2px 0 8px' },
+  dossierRoad: { fontSize: 12, color: '#3d4a5c', background: '#f7f9fc', border: '1px solid #eef2f7', borderRadius: 8, padding: '6px 9px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  roadChip: { fontSize: 11, color: '#5c6b7c', background: '#fff', border: '1px solid #e3e9f1', borderRadius: 6, padding: '1px 7px' },
+  recRow: { borderBottom: '1px solid #f2f5f9' },
+  recHead: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', padding: '7px 2px', cursor: 'pointer', textAlign: 'left' },
+  recType: { fontSize: 10.5, fontWeight: 800, color: '#1d4fa8', background: '#e8f1fc', border: '1px solid #c3dcf7', borderRadius: 6, padding: '1px 7px', whiteSpace: 'nowrap' },
+  recTitle: { fontSize: 12.5, color: '#26313e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 },
+  recDate: { fontSize: 11, color: '#98a4b3' },
+  recToggle: { fontSize: 10, color: '#98a4b3' },
+  recBody: { fontSize: 12.5, lineHeight: 1.8, color: '#3d4a5c', background: '#f7f9fc', border: '1px solid #eef2f7', borderRadius: 8, padding: '10px 12px', margin: '2px 0 9px', maxHeight: 320, overflowY: 'auto', whiteSpace: 'pre-wrap' },
   controls: { display: 'flex', flexWrap: 'wrap', gap: 22, alignItems: 'flex-end', background: '#fff', border: '1px solid #e3e9f1', borderRadius: 12, padding: '12px 16px', marginBottom: 12 },
   ctrlGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
   ctrlLabel: { fontSize: 12, fontWeight: 700, color: '#3d4a5c' },
