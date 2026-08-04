@@ -740,28 +740,74 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
   if (aiModel === 'gemini') {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
+    const modelId = getModelId('gemini', submodel || aiModel);
+    // pro 계열은 사고(thinking) 토큰이 maxOutputTokens 안에서 먼저 소모된다.
+    // 한도를 그대로 두면 본문이 빈 문자열로 돌아온다(GPT pro와 같은 증상).
+    const cap = Math.min(/pro/i.test(modelId) ? maxTokens + 8000 : maxTokens, 32000);
     const model = genAI.getGenerativeModel({
-      model: getModelId('gemini', submodel || aiModel),
-      generationConfig: { maxOutputTokens: Math.min(maxTokens, 32000) },
+      model: modelId,
+      generationConfig: { maxOutputTokens: cap },
     });
     const parts = [{ text: systemPrompt }, { text: userMsg }];
     if (hasImages) for (const img of images) parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
     const result = await model.generateContent(parts);
-    return result.response.text();
+    const text = result.response.text();
+    if (!String(text || '').trim()) {
+      const fin = result.response.candidates?.[0]?.finishReason || 'UNKNOWN';
+      throw new Error(`${modelId}: 응답이 비어 있습니다(finishReason=${fin}). 설정에서 pro가 아닌 모델을 선택해 주세요.`);
+    }
+    return text;
   }
   if (aiModel === 'gpt') {
     const OpenAI = (await import('openai')).default;
     const openai = new OpenAI({ apiKey });
+    const modelId = getModelId('gpt', submodel || aiModel);
+
+    // pro 계열(gpt-5.5-pro 등)은 chat/completions 를 지원하지 않고 Responses API 전용이다.
+    // 그대로 부르면 404 "This is not a chat model" 이 나므로 처음부터 갈라 보낸다.
+    const viaResponses = async () => {
+      const content = [{ type: 'input_text', text: userMsg }];
+      if (hasImages) for (const img of images) {
+        content.push({ type: 'input_image', image_url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' });
+      }
+      // pro 계열은 추론 토큰을 먼저 쓴다. max_output_tokens 를 호출자가 준 값 그대로 두면
+      // 추론만으로 예산을 다 써서 본문이 빈 문자열로 돌아온다(status=incomplete).
+      // 실제로 parse 단계(1200)에서 추론 1200을 전부 소모하고 빈 응답이 나왔다. 여유분을 얹는다.
+      const r = await openai.responses.create({
+        model: modelId,
+        instructions: systemPrompt,
+        input: [{ role: 'user', content }],
+        max_output_tokens: Math.min(maxTokens + 8000, 32000),
+      });
+      const text = r.output_text
+        ?? (r.output || []).map(o => (o.content || []).map(c => c.text || '').join('')).join('');
+      if (!String(text).trim()) {
+        const why = r.incomplete_details?.reason === 'max_output_tokens'
+          ? '추론 토큰이 출력 한도를 모두 소모했습니다'
+          : `응답이 비어 있습니다(status=${r.status})`;
+        throw new Error(`${modelId}: ${why}. 설정에서 pro가 아닌 모델을 선택해 주세요.`);
+      }
+      return text;
+    };
+
+    if (/-pro$/.test(modelId)) return viaResponses();
+
     const userContent = hasImages
       ? [{ type: 'text', text: userMsg },
          ...images.map(img => ({ type: 'image_url', image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' } }))]
       : userMsg;
-    const response = await openai.chat.completions.create({
-      model: getModelId('gpt', submodel || aiModel),
-      max_completion_tokens: Math.min(maxTokens, 16384),
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
-    });
-    return response.choices[0].message.content;
+    try {
+      const response = await openai.chat.completions.create({
+        model: modelId,
+        max_completion_tokens: Math.min(maxTokens, 16384),
+        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userContent }],
+      });
+      return response.choices[0].message.content;
+    } catch (err) {
+      // 이름 규칙에서 벗어난 Responses 전용 모델이 나중에 추가돼도 죽지 않게
+      if (/not a chat model/i.test(String(err?.message || ''))) return viaResponses();
+      throw err;
+    }
   }
   const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
   const client = new AnthropicSDK({ apiKey });
@@ -2661,6 +2707,11 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
       ['rateMax', () => { delete filter.rateMax; delete filter.rateMin; relaxed.push('경쟁률'); }],
       ['recruitMin', () => { delete filter.recruitMin; relaxed.push('모집인원'); }],
       ['gradeMax', () => { delete filter.gradeMin; delete filter.gradeMax; relaxed.push('등급 범위'); }],
+      // 대학·학과·전형명을 한 질문에 다 적으면 AND 로 겹쳐 0건이 되기 쉽다.
+      // (예: 성균관대·중앙대·숭실대 + 정보보호 + 융합인재/성장형인재 → 동시에 만족하는 전형 없음)
+      // 좁은 쪽(전형명 → 학과) 순으로 풀어 준다. 대학은 질문의 핵심이라 끝까지 유지한다.
+      ['typeKeywords', () => { delete filter.typeKeywords; relaxed.push('전형명'); }],
+      ['deptKeywords', () => { delete filter.deptKeywords; relaxed.push('학과'); }],
       ['regions', () => { delete filter.regions; delete filter.capitalOnly; relaxed.push('지역'); }],
     ];
     for (const [key, drop] of relaxSteps) {
