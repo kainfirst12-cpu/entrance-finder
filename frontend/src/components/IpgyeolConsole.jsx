@@ -549,6 +549,216 @@ export default function IpgyeolConsole({ onAuthError }) {
     return out;
   }
 
+  // ── AI 검색 결과를 학생 기록으로 배정 ──
+  // 배치(placements)는 카드 한 장씩의 수치 스냅샷이라, "왜 이 후보들을 봤는지"가 남지 않는다.
+  // 검색어·해석된 조건·요약을 기록으로 남겨야 나중에 상담·브리핑이 맥락을 읽을 수 있다.
+  const [assigning, setAssigning] = useState(false);
+  const [assigned, setAssigned] = useState(false);
+
+  function aiSearchToText() {
+    if (!aiSearch) return '';
+    const lines = [];
+    lines.push(`[검색어] ${aiSearch.query}`);
+    if (aiSearch.filter?.intent) lines.push(`[해석] ${aiSearch.filter.intent}`);
+    const chips = filterChips(aiSearch.filter);
+    if (chips.length) lines.push(`[조건] ${chips.join(' · ')}`);
+    lines.push(`[기준] 기준연도 ${baseYear} · 내신 ${grade.toFixed(2)}`);
+    lines.push(`[매칭] 전체 ${aiSearch.total}건 중 상위 ${aiSearch.results.length}건`);
+    if (aiSearch.relaxed?.length) lines.push(`[조건 완화] ${aiSearch.relaxed.join(' · ')}`);
+    if (aiSearch.summary) lines.push('', aiSearch.summary);
+    if (aiSearch.results.length) {
+      lines.push('', '[후보 목록]');
+      aiSearch.results.forEach((c, i) => {
+        const m = c.match || {};
+        lines.push(`${i + 1}. ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
+          + ` · 70%컷 ${m.cut70 ?? '-'}${m.cutYear ? `(${m.cutYear})` : ''}`
+          + ` · 경쟁률 ${m.rate ?? '-'} · 모집 ${m.recruit ?? '-'}명 · 충원 ${m.fill ?? '-'}명`
+          + (m.verdict ? ` · 판정 ${m.verdict}` : ''));
+      });
+    }
+    return lines.join('\n');
+  }
+
+  async function assignSearchToStudent() {
+    if (!student || !aiSearch) return;
+    setAssigning(true);
+    try {
+      const j = await api(`/api/board/students/${student.id}/records`, {
+        method: 'POST',
+        body: {
+          type: '입결 분석',
+          title: `입결 검색 — ${aiSearch.query.slice(0, 40)}${aiSearch.query.length > 40 ? '…' : ''}`,
+          content: aiSearchToText(),
+        },
+      });
+      if (!j.success) throw new Error(j.message || '배정 실패');
+      setAssigned(true);
+      setTimeout(() => setAssigned(false), 3000);
+    } catch (e) {
+      if (e.auth) onAuthError?.(); else setError(`학생 배정 실패: ${e.message}`);
+    } finally { setAssigning(false); }
+  }
+
+  // ── 입결 리포트 (인쇄용 새 창) ──
+  // 배치 기록과 AI 검색 결과를 한 장으로 묶는다. 상담 자리에서 학부모에게 바로 보여주는 용도라
+  // 화면 조작 없이 인쇄만 하면 되게 만든다.
+  function buildIpgyeolReport() {
+    const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    const VOR = ['안정', '적정', '소신', '위험'];
+
+    const plRows = [...placements].sort((a, b) => VOR.indexOf(a.verdict) - VOR.indexOf(b.verdict)).map((p) => {
+      const s = p.snapshot || {};
+      const now = verdict(s.cut70, grade);
+      const saved = verdict(s.cut70, Number(p.grade));
+      const changed = now && saved && now.label !== saved.label;
+      return `<tr>
+        <td class="v v-${esc(p.verdict)}">${esc(p.verdict || '—')}</td>
+        <td><b>${esc((p.univ_name || '').replace(/\[.*\]$/, ''))}</b> ${esc(p.dept)}<div class="sub">${esc(p.track)}(${esc(p.type_name || '-')})</div></td>
+        <td class="num">${s.cut70 != null ? Number(s.cut70).toFixed(2) : '—'}<div class="sub">${esc(s.cutYear || p.base_year || '')}</div></td>
+        <td class="num">${s.rate ?? '—'}</td>
+        <td class="num">${s.recruit != null ? `${s.recruit}명` : '—'}</td>
+        <td class="num">${s.fill != null ? `${s.fill}명` : '—'}</td>
+        <td class="num">${p.grade != null ? Number(p.grade).toFixed(2) : '—'}</td>
+        <td>${changed ? `<span class="warn">현재 ${grade.toFixed(2)} 기준 → ${esc(now.label)}</span>` : ''}${s.aiReason ? `<div class="sub">판정 근거: ${esc(s.aiReason)}</div>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    const srcRows = (aiSearch?.results || []).map((c, i) => {
+      const m = c.match || {};
+      return `<tr>
+        <td class="num">${i + 1}</td>
+        <td><b>${esc(c.univ.name.replace(/\[.*\]$/, ''))}</b> ${esc(c.entry.dept)}<div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)}) · ${esc(c.univ.region)}</div></td>
+        <td class="num">${m.cut70 ?? '—'}<div class="sub">${esc(m.cutYear || '')}</div></td>
+        <td class="num">${m.rate ?? '—'}</td>
+        <td class="num">${m.recruit != null ? `${m.recruit}명` : '—'}</td>
+        <td class="num">${m.fill != null ? `${m.fill}명` : '—'}</td>
+        <td class="v v-${esc(m.verdict || '')}">${esc(m.verdict || '—')}</td>
+      </tr>`;
+    }).join('');
+
+    const chips = aiSearch ? filterChips(aiSearch.filter).map((c) => `<span class="chip">${esc(c)}</span>`).join('') : '';
+
+    // 화면에 띄워둔 카드 — 고정 카드 + 현재 대학의 카드. 카드가 리포트의 본체다.
+    // 연도별 추이까지 넣어야 "왜 이 판정인지"가 종이 위에서 읽힌다.
+    const reportCards = [...pins, ...unpinnedCards.slice(0, limit)]
+      .filter((c, i, arr) => arr.findIndex((x) => x.key === c.key) === i);
+    const yearsWin = [];
+    for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWin.push(String(y));
+
+    const cardBlocks = reportCards.map((c) => {
+      const cut = latestWithDelta(c.entry, 'grade70', baseYear);
+      const rate = latestWithDelta(c.entry, 'rate', baseYear);
+      const fill = latestWithDelta(c.entry, 'fill', baseYear);
+      const rec = latestWithDelta(c.entry, 'recruit', baseYear);
+      const sc = latestWithDelta(c.entry, 'score70', baseYear);
+      const pc = latestWithDelta(c.entry, 'pct70', baseYear);
+      const v = verdict(cut.v, grade);
+      const ai = aiJudgments[c.key];
+      const trend = yearsWin.map((y) => {
+        const d = c.entry.years[y];
+        return `<td class="num">${d?.grade70 != null ? d.grade70.toFixed(2) : '—'}<div class="sub">${d?.rate != null ? `${d.rate}:1` : ''}</div></td>`;
+      }).join('');
+      return `<div class="card">
+        <div class="card-head">
+          <div><b>${esc(c.univ.name.replace(/\[.*\]$/, ''))}</b> <span class="sub">${esc(c.univ.region)}</span>
+            <div class="card-dept">${esc(c.entry.dept)}</div>
+            <div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)})</div></div>
+          <div class="card-badges">
+            ${v ? `<span class="v v-${esc(v.label)}">배치 ${esc(v.label)}</span>` : ''}
+            ${ai ? `<span class="v v-${esc(ai.verdict)}">종합 ${esc(ai.verdict)}</span>` : ''}
+          </div>
+        </div>
+        <table class="mini"><thead><tr><th>연도</th>${yearsWin.map((y) => `<th class="num">${y}</th>`).join('')}</tr></thead>
+        <tbody><tr><td>70%컷 / 경쟁률</td>${trend}</tr></tbody></table>
+        <div class="kv">
+          <span><b>경쟁률</b> ${rate.v ?? '—'}</span>
+          <span><b>충원</b> ${fill.v != null ? `${fill.v}명` : '—'}</span>
+          <span><b>모집</b> ${rec.v != null ? `${rec.v}명` : '—'}</span>
+          <span><b>환산(70%)</b> ${sc.v ?? '—'}</span>
+          <span><b>득점률</b> ${pc.v != null ? `${pc.v}%` : '—'}</span>
+        </div>
+        ${ai?.reason ? `<div class="ai">판정 근거: ${esc(ai.reason)}</div>` : ''}
+        ${c.sunung?.text ? `<div class="low"><b>수능최저</b> ${esc(c.sunung.text)}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8">
+<title>입결 분석 리포트${student ? ` - ${esc(student.name)}` : ''}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#1c2733;background:#fff;font-size:12.5px;line-height:1.7;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{max-width:960px;margin:0 auto;padding:28px 30px 40px}
+h1{font-size:22px;font-weight:800;margin-bottom:4px}
+.lead{color:#5c6b7c;font-size:12.5px;margin-bottom:16px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;background:#f2f5f9;border:1px solid #e3e9f1;border-radius:10px;padding:12px 14px;margin-bottom:20px;font-size:12.5px}
+.meta b{color:#1d4fa8}
+h2{font-size:15px;font-weight:800;margin:22px 0 8px;padding-top:12px;border-top:2px solid #1d4fa8}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px}
+th{background:#f2f5f9;border:1px solid #dbe3ee;padding:6px 8px;font-weight:700;text-align:left;white-space:nowrap}
+td{border:1px solid #e3e9f1;padding:6px 8px;vertical-align:top}
+td.num{text-align:right;white-space:nowrap}
+.sub{color:#8492a5;font-size:10.5px;font-weight:500}
+.v{font-weight:800;white-space:nowrap;text-align:center}
+.v-안정{color:#1a7f4e;background:#e6f6ee}.v-적정{color:#1d6fd6;background:#e8f1fc}
+.v-소신{color:#b7791f;background:#fdf3e2}.v-위험{color:#d64545;background:#fdeaea}
+.warn{color:#d64545;font-weight:700;font-size:11px}
+.chip{display:inline-block;background:#eef2f7;border:1px solid #dbe3ee;border-radius:6px;padding:1px 7px;margin:0 4px 4px 0;font-size:11px;color:#3d4a5c}
+.summary{background:#f7f9fc;border:1px solid #e3e9f1;border-radius:10px;padding:12px 14px;white-space:pre-wrap;font-size:12.5px;margin-bottom:8px}
+.empty{color:#8492a5;padding:10px 2px}
+.note{margin-top:24px;padding-top:12px;border-top:1px solid #e3e9f1;color:#8492a5;font-size:10.5px;line-height:1.6}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.card{border:1px solid #dbe3ee;border-radius:10px;padding:10px 12px;break-inside:avoid}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.card-dept{font-size:14px;font-weight:800;margin:2px 0 1px}
+.card-badges{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+.card-badges .v{border:1px solid #dbe3ee;border-radius:6px;padding:1px 7px;font-size:10.5px}
+table.mini{margin:4px 0 6px}table.mini th,table.mini td{padding:3px 6px;font-size:11px}
+.kv{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:11px;color:#3d4a5c}
+.kv b{color:#8492a5;font-weight:600}
+.ai{margin-top:6px;background:#f4effc;border:1px solid #e5dcf7;border-radius:7px;padding:4px 8px;font-size:11px;color:#5b3fa8}
+.low{margin-top:5px;background:#fbf6df;border:1px solid #f0e6b8;border-radius:7px;padding:4px 8px;font-size:10.5px;color:#5c5322;line-height:1.5}
+@media print{.page{padding:0}h2{break-after:avoid}tr{break-inside:avoid}.cards{grid-template-columns:1fr 1fr}}
+</style></head><body><div class="page">
+<h1>입결 분석 리포트</h1>
+<div class="lead">2021~2026 다개년 입시결과 기반 지원 후보 검토</div>
+<div class="meta">
+  <div><b>학생</b> ${student ? esc(student.name) + (student.school ? ` · ${esc(student.school)}` : '') : '미지정'}</div>
+  <div><b>기준 내신</b> ${grade.toFixed(2)}등급</div>
+  <div><b>기준 연도</b> ${esc(baseYear)}</div>
+  <div><b>작성일</b> ${today}</div>
+  <div><b>작성</b> 패스파인더 에듀 입시분석팀</div>
+</div>
+
+<h2>저장된 배치 기록 (${placements.length}건)</h2>
+${placements.length ? `<table>
+<thead><tr><th>판정</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>저장내신</th><th>비고</th></tr></thead>
+<tbody>${plRows}</tbody></table>` : '<div class="empty">저장된 배치가 없습니다.</div>'}
+
+${aiSearch ? `<h2>후보 검토</h2>
+<div style="margin-bottom:8px"><b>검토 조건</b> ${esc(aiSearch.query)}</div>
+${aiSearch.filter?.intent ? `<div class="sub" style="margin-bottom:6px">${esc(aiSearch.filter.intent)}</div>` : ''}
+<div style="margin-bottom:8px">${chips}</div>
+<div class="sub" style="margin-bottom:8px">전체 ${aiSearch.total}건 중 상위 ${aiSearch.results.length}건${aiSearch.relaxed?.length ? ` · 조건 완화: ${esc(aiSearch.relaxed.join(' · '))}` : ''}</div>
+${aiSearch.summary ? `<div class="summary">${esc(aiSearch.summary)}</div>` : ''}
+${srcRows ? `<table>
+<thead><tr><th>#</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>판정</th></tr></thead>
+<tbody>${srcRows}</tbody></table>` : ''}` : ''}
+
+${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
+<div class="cards">${cardBlocks}</div>` : ''}
+
+<div class="note">
+배치 판정(안정·적정·소신·위험)은 최종등급 70%컷과 기준 내신의 차이에 따른 참고용 지표입니다. 실제 지원 판단은 반영교과·수능최저·모집인원 변화를 함께 검토해야 합니다.
+올해 신설된 전형은 누적 입시결과가 존재하지 않아 이 리포트에 포함되지 않습니다.
+</div>
+</div></body></html>`;
+
+    const w = window.open('', '_blank');
+    if (w) { w.document.write(html); w.document.close(); }
+    else setError('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
+  }
+
   async function savePlacement(card) {
     if (!student) return;
     setSavingKey(card.key);
@@ -768,6 +978,13 @@ export default function IpgyeolConsole({ onAuthError }) {
                   {aiJudging ? '🤖 AI 판정 중…' : '🤖 이 결과를 생기부 기반으로 판정'}
                 </button>
               )}
+              {student && (
+                <button style={{ ...S.assignBtn, ...(assigned ? S.assignDone : {}) }} disabled={assigning || assigned}
+                  title="검색어·조건·요약·후보 목록을 이 학생의 기록으로 저장합니다. 상담·브리핑에서 근거로 쓰입니다."
+                  onClick={assignSearchToStudent}>
+                  {assigning ? '배정 중…' : assigned ? `✓ ${student.name} 기록에 저장됨` : `📋 ${student.name} 학생에 배정`}
+                </button>
+              )}
               <button style={S.plDel} title="검색 결과 닫기" onClick={() => setAiSearch(null)}>✕</button>
             </div>
             {aiSearch.filter?.intent && <div style={S.aiIntent}>해석: {aiSearch.filter.intent}</div>}
@@ -845,6 +1062,11 @@ export default function IpgyeolConsole({ onAuthError }) {
               <button style={S.aiBtn} onClick={() => runAiJudge()} disabled={aiJudging || !detail}
                 title="학생의 생기부 분석 내용과 카드의 입결 데이터를 종합해 AI가 학과별 배치를 판정합니다">
                 {aiJudging ? '🤖 AI 판정 중…' : '🤖 생기부 기반 AI 종합 판정'}
+              </button>
+              <button style={S.reportBtn} onClick={buildIpgyeolReport}
+                title="배치 기록과 AI 검색 결과를 인쇄용 리포트로 엽니다"
+                disabled={!placements.length && !aiSearch}>
+                🖨 입결 리포트
               </button>
               <span style={S.plHint}>카드의 💾 버튼으로 추가 · 내신 슬라이더를 움직이면 현재 기준 재평가가 표시됩니다</span>
             </div>
@@ -1000,6 +1222,9 @@ const S = {
   plMeta: { color: '#98a4b3', fontSize: 11.5 },
   plDel: { marginLeft: 'auto', border: 'none', background: 'transparent', color: '#c2cbd8', cursor: 'pointer', fontSize: 13, padding: '0 4px' },
   aiBtn: { border: '1px solid #c9b8f0', background: '#f4effc', color: '#6b46c1', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  assignBtn: { border: '1px solid #bfe0d6', background: '#e8f7f2', color: '#0f766e', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  assignDone: { background: '#e6f6ee', border: '1px solid #bfe8d2', color: '#1a7f4e', cursor: 'default' },
+  reportBtn: { border: '1px solid #d7dfea', background: '#fff', color: '#1d4fa8', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
   aiReason: { marginTop: 7, fontSize: 11.5, color: '#6b46c1', background: '#f4effc', border: '1px solid #e5dcf7', borderRadius: 8, padding: '5px 9px', lineHeight: 1.5 },
   segBtn: { border: '1px solid #d7dfea', background: '#fff', color: '#3d4a5c', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   segOn: { background: '#2b6fe3', border: '1px solid #2b6fe3', color: '#fff' },

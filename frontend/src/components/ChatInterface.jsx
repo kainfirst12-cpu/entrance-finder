@@ -179,6 +179,24 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     setEditRec((p) => ({ ...p, content }));
   };
 
+  const deleteRecord = async (r) => {
+    if (!confirm(`"${r.title || '(제목 없음)'}" 기록을 삭제할까요?\n되돌릴 수 없습니다.`)) return;
+    try {
+      const tok = localStorage.getItem('ef_token');
+      const res = await fetch(`${API_BASE}/api/board/records/${r.id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${tok}` },
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.message || '삭제 실패');
+      setDossier((prev) => prev && { ...prev, records: prev.records.filter((x) => x.id !== r.id) });
+      setRecSel((p) => { const n = { ...p }; delete n[r.id]; return n; });
+      if (editRecId === r.id) cancelRecEdit();
+      if (openRecId === r.id) setOpenRecId(null);
+    } catch (e) {
+      alert('기록 삭제 실패: ' + e.message);
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -927,7 +945,8 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                             setInput(`아래 [${r.type || '기록'}] "${r.title}" 내용을 다듬어 주세요. 사실은 바꾸지 말고 표현과 구성만 정리해 전체 본문을 그대로 다시 출력해 주세요.\n\n---\n${r.content}`);
                             startRecEdit(r);
                             inputRef.current?.focus();
-                          }}>AI로 수정</button>
+                          }}>다듬기</button>
+                          <button style={{ ...CS.miniBtn, color: '#ef4444' }} onClick={() => deleteRecord(r)}>삭제</button>
                         </>
                       )}
                     </div>
