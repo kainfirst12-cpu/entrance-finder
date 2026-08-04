@@ -4,7 +4,7 @@
 //   입결 7만 건(27MB)은 프롬프트에 넣을 수 없고, 넣더라도 모델이 숫자를 지어낼 여지가 생긴다.
 //   그래서 학생 자료(유한)는 프롬프트에 직접 넣고, 입결·지식베이스는 도구로만 닿게 한다.
 import { searchEntries } from './ipgyeolSearch.js';
-import { embedQuery, searchByType, kbReady } from './vectorStore.js';
+import { embedQuery, searchByType, searchByKeywords, kbReady } from './vectorStore.js';
 import { addPlacement } from './boardStore.js';
 
 // OpenAI tools 스키마
@@ -131,19 +131,42 @@ export function toolsForProvider(group) {
 export async function lookupAdmissionGuide(query, types) {
   if (!kbReady()) return [];
   const kinds = types?.length ? types : ['대학별전형', '대입정책', '합격자사례'];
-  const emb = await embedQuery(String(query || '').slice(0, 500));
-  const found = await Promise.all(kinds.map((t) => searchByType(emb, t, 4)));
+  const q = String(query || '').slice(0, 500);
+
+  // 1) 의미 검색
+  const emb = await embedQuery(q);
+  const found = await Promise.all(kinds.map((t) => searchByType(emb, t, 6)));
   const blocks = [];
+  const seen = new Set();
+  const push = (b) => {
+    const key = `${b.제목}|${b.내용.slice(0, 80)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    blocks.push(b);
+  };
   kinds.forEach((t, i) => {
     for (const h of found[i] || []) {
-      blocks.push({
-        종류: t,
-        제목: h.title || h.metadata?.filename || '',
-        관련도: Math.round((h.score || 0) * 100),
-        내용: String(h.content || '').slice(0, 1200),
-      });
+      push({ 종류: t, 제목: h.title || h.metadata?.filename || '', 관련도: Math.round((h.score || 0) * 100), 내용: String(h.content || '').slice(0, 1200) });
     }
   });
+
+  // 2) 키워드 검색 — 전형명·대학명 같은 고유명사는 임베딩이 자주 놓친다.
+  //    흔한 입시 용어는 아무 데나 걸리므로 제외하고, 드문 말만 남긴다.
+  const STOP = new Set(['학생부', '전형', '수능', '최저', '학과', '대학', '모집', '교과', '종합', '논술',
+    '학년도', '수시', '정시', '등급', '내신', '경쟁률', '이번', '신설', '어떤', '기준', '지원', '가능']);
+  const keywords = [...new Set((q.match(/[가-힣]{2,}/g) || []))]
+    .filter((w) => w.length >= 3 && !STOP.has(w))
+    .slice(0, 5);
+  if (keywords.length) {
+    try {
+      const hits = await searchByKeywords(keywords, kinds, 8);
+      for (const h of hits) {
+        push({ 종류: h.type, 제목: h.title || h.metadata?.filename || '', 관련도: null, 키워드일치: `${h.matchedKeywords}/${keywords.length}`, 내용: String(h.content || '').slice(0, 1200) });
+      }
+    } catch (e) {
+      console.warn('[knowledge] 키워드 검색 건너뜀:', e.message);
+    }
+  }
   return blocks;
 }
 

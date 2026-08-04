@@ -135,6 +135,33 @@ export async function searchByType(queryEmbedding, type, k = 6) {
   return rows;
 }
 
+// ── 키워드 검색 (하이브리드 검색용) ─────────────────────
+// 벡터 검색만으로는 '융합인재'처럼 드물지만 결정적인 고유명사를 놓친다.
+// 질문 전체가 임베딩되면 흔한 단어에 방향이 끌려, 정작 그 전형명이 적힌 청크가
+// 상위 k 밖으로 밀려나기 때문이다. 실제로 지식베이스에 융합인재 청크가 28개
+// 있는데도 검색이 못 찾는 일이 있었다. 그래서 고유명사는 문자열로 직접 집는다.
+// 키워드를 따로따로 뽑으면 안 된다. '성균관대'와 '융합인재'를 각각 3건씩 집으면
+// 엉뚱한 대학의 융합인재 전형이 올라오고, 정작 둘 다 적힌 청크는 밀려난다.
+// 그래서 몇 개의 키워드가 함께 들었는지로 점수를 매겨 정렬한다.
+export async function searchByKeywords(keywords, types, limit = 8) {
+  const pool = getPool();
+  if (!vectorEnabled() || !pool || !keywords?.length) return [];
+  const kws = keywords.slice(0, 5);
+  const params = [types, ...kws.map((k) => `%${k}%`), limit];
+  const idx = (i) => `$${i + 2}`;                                   // $1 = types
+  const score = kws.map((_, i) => `(content ILIKE ${idx(i)})::int`).join(' + ');
+  const any = kws.map((_, i) => `content ILIKE ${idx(i)}`).join(' OR ');
+  const { rows } = await pool.query(
+    `SELECT content, title, type, metadata, (${score}) AS hits
+       FROM documents
+      WHERE type = ANY($1) AND (${any})
+      ORDER BY hits DESC
+      LIMIT $${kws.length + 2}`,
+    params
+  );
+  return rows.map((r) => ({ ...r, matchedKeywords: r.hits }));
+}
+
 // ── 카운트 / 상태 ──────────────────────────────────────
 export async function countByType() {
   const pool = getPool();
