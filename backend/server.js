@@ -15,7 +15,7 @@ import {
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
 import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
-import { CONSULT_TOOLS, runConsultTool } from './services/consultAgent.js';
+import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
 import {
   listRoadmaps, createRoadmap, updateRoadmap, deleteRoadmap,
   addItem as addRoadmapItem, updateItem as updateRoadmapItem, deleteItem as deleteRoadmapItem,
@@ -2782,29 +2782,60 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
       ({ total, results } = searchIpgyeolEntries(filter));
     }
 
+    // 전형 자료(지식베이스)도 같이 붙인다.
+    // 신설 전형은 입결이 존재하지 않아 검색만으로는 0건이다. 그때 "없습니다"로 끝내면
+    // 컨설턴트는 아무것도 못 얻는다. 전형방법·수능최저는 입결이 아니라 여기에 있다.
+    let knowledge = [];
+    try {
+      knowledge = await lookupAdmissionGuide(query);
+    } catch (e) {
+      console.warn('[ipgyeol/ai-search] 지식베이스 조회 건너뜀:', e.message);
+    }
+
     let summary = '';
-    if (results.length) {
+    if (results.length || knowledge.length) {
       const compact = results.slice(0, 20).map((r) => ({
         대학: r.univ.name.replace(/\[.*\]$/, ''), 지역: r.univ.region, 학과: r.entry.dept,
         전형: `${r.entry.track}(${r.entry.typeName})`, 컷70: r.match.cut70, 연도: r.match.cutYear,
         전년대비: r.match.delta, 경쟁률: r.match.rate, 충원: r.match.fill, 모집: r.match.recruit, 판정: r.match.verdict,
       }));
-      const sumPrompt = `당신은 수시 배치 상담 컨설턴트입니다. 아래는 공식 입결에서 조건에 맞게 뽑힌 검색 결과입니다.
-이 결과를 컨설턴트가 학생·학부모에게 바로 설명할 수 있도록 정리하십시오.
+      const sumPrompt = `당신은 수시 배치 상담 컨설턴트입니다. 두 가지 자료가 주어집니다.
+ (가) 입결 표 — 대학어디가 공식 입시결과에서 조건에 맞게 뽑힌 것
+ (나) 전형 자료 — 입시가이드·모집요강 성격의 지식베이스 검색 결과
+컨설턴트가 학생·학부모에게 바로 설명할 수 있도록 정리하십시오.
 
-[출력 — 마크다운, 이모지 금지, 합니다체, 12줄 이내]
-- 첫 줄: 검색 결과 한 줄 요약(몇 건 중 어떤 성격의 후보가 나왔는지)
+[출력 — 마크다운, 이모지 금지, 합니다체, 16줄 이내]
+- 첫 줄: 검색 결과 한 줄 요약
 - **눈여겨볼 후보**: 3~5개를 이유와 함께 (대학 학과 전형 · 컷 · 근거)
 - **주의할 점**: 경쟁률 급등·충원 적음·컷 상승 등 데이터에서 읽히는 리스크
-- **다음 확인 사항**: 반영교과·수능최저 등 이 데이터만으로 알 수 없는 것
-[원칙] 표에 없는 숫자를 지어내지 마십시오. 표의 값만 인용하십시오.`;
+- **다음 확인 사항**: 이 자료만으로 알 수 없는 것
+
+[입결이 0건일 때 — 이 경우가 특히 중요합니다]
+질문이 올해 신설된 전형을 가리키면 입결은 존재하지 않는 것이 정상입니다.
+"자료 없음"으로 끝내지 말고, 다음 순서로 답하십시오.
+ 1. 그 전형에 입결이 없는 이유를 한 줄로 밝힙니다(신설이라 누적 결과가 없음).
+ 2. (나) 전형 자료에서 확인되는 전형방법·수능최저·선발 성격을 정리합니다.
+ 3. (가)에 같은 대학의 유사 전형 입결이 있으면 그것을 대리 지표로 제시하되,
+    "같은 전형이 아니라 참고용"임을 반드시 밝힙니다.
+
+[원칙]
+- 입결 숫자는 (가) 표의 값만 인용하고 새로 계산하거나 추정하지 마십시오.
+- 전형방법·최저는 (나)에 적힌 내용만 쓰고, 없으면 "모집요강 확인 필요"라고 하십시오.
+- (나)에서 확인되지 않은 전형명을 확정된 사실처럼 쓰지 마십시오.`;
       summary = await callAIModel({
-        aiModel, submodel, apiKey, systemPrompt: sumPrompt, maxTokens: 1600,
-        userMsg: `[질문] ${query}\n${profileLine}\n[전체 매칭] ${total}건 중 상위 ${compact.length}건\n\n${JSON.stringify(compact, null, 1)}`,
+        aiModel, submodel, apiKey, systemPrompt: sumPrompt, maxTokens: 2200,
+        userMsg: `[질문] ${query}\n${profileLine}
+[전체 매칭] ${total}건 중 상위 ${compact.length}건
+
+=== (가) 입결 표 ===
+${compact.length ? JSON.stringify(compact, null, 1) : '(조건에 맞는 입결 0건)'}
+
+=== (나) 전형 자료 ===
+${knowledge.length ? knowledge.map((k) => `[${k.종류}] ${k.제목}\n${k.내용}`).join('\n\n---\n\n') : '(관련 전형 자료를 찾지 못했습니다)'}`,
       });
     }
 
-    sendDone({ success: true, filter, total, results, summary, relaxed });
+    sendDone({ success: true, filter, total, results, summary, relaxed, knowledgeUsed: knowledge.length });
   } catch (err) {
     console.error('[ipgyeol/ai-search] 오류:', err.message);
     sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
@@ -2823,13 +2854,10 @@ app.post('/api/chat/agent', requireAuth, async (req, res) => {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
 
-  // 도구 호출은 제공사마다 규격이 달라 우선 GPT 계열만 지원한다.
-  // 지원하지 않는 모델을 조용히 다른 모델로 바꾸면 사용자가 무엇으로 답을 받았는지 알 수 없게 된다.
-  if (aiModel !== 'gpt') {
-    return res.status(400).json({ success: false, message: '상담 에이전트는 현재 GPT 계열에서만 동작합니다. 설정에서 GPT 모델을 선택해 주세요.' });
-  }
-  const modelId = getModelId('gpt', submodel);
-  if (/-pro$/.test(modelId)) {
+  const modelId = getModelId(aiModel, submodel);
+  // OpenAI pro 계열만 예외 — chat/completions 를 아예 지원하지 않아 도구 호출을 걸 자리가 없다.
+  // 조용히 다른 모델로 바꾸지 않고 이유를 밝히고 거절한다.
+  if (aiModel === 'gpt' && /-pro$/.test(modelId)) {
     return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. GPT-5.5 등 pro가 아닌 모델을 선택해 주세요.` });
   }
 
@@ -2902,60 +2930,20 @@ ${studentSection}
   const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
   const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
 
-  const toolLog = [];     // 화면에 "무엇을 조회했는지" 보여주기 위한 기록
   const savedPlacements = [];
   try {
-    const OpenAI = (await import('openai')).default;
-    const openai = new OpenAI({ apiKey });
-    const msgs = [
-      { role: 'system', content: systemPrompt },
-      ...history.slice(-10).filter((h) => h && h.role && h.content)
-        .map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 6000) })),
-      { role: 'user', content: String(message).slice(0, 8000) },
-    ];
-
-    let reply = '';
-    const MAX_TURNS = 8;   // 도구 호출이 끝없이 이어지는 것을 막는 상한
-    for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const r = await openai.chat.completions.create({
-        model: modelId,
-        messages: msgs,
-        tools: CONSULT_TOOLS,
-        max_completion_tokens: 8000,
-      });
-      const m = r.choices[0].message;
-      msgs.push(m);
-      if (!m.tool_calls?.length) { reply = m.content || ''; break; }
-
-      for (const tc of m.tool_calls) {
-        let args = {};
-        try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
-        let out;
-        try {
-          out = await runConsultTool(tc.function.name, args, {
-            studentId: sid, baseYear, defaultGrade,
-            onSaved: (p) => savedPlacements.push(p),
-          });
-        } catch (e) {
-          out = { 오류: e.message };
-        }
-        toolLog.push({
-          name: tc.function.name,
-          args,
-          summary: out?.전체매칭 != null ? `${out.전체매칭}건 매칭 · ${out.반환}건 확인`
-            : out?.자료 ? `자료 ${out.자료.length}건`
-            : out?.저장됨 ? `저장 — ${out.내용}`
-            : out?.오류 || '완료',
-        });
-        msgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out).slice(0, 60000) });
-      }
-      if (turn === MAX_TURNS - 1) reply = m.content || '자료 조회가 상한에 도달했습니다. 질문을 좁혀 다시 물어봐 주세요.';
-    }
-
-    sendDone({ success: true, reply, toolLog, savedPlacements });
+    const { reply, toolLog, truncated } = await runAgentLoop({
+      group: aiModel, modelId, apiKey, systemPrompt, history, message,
+      ctx: { studentId: sid, baseYear, defaultGrade, onSaved: (p) => savedPlacements.push(p) },
+    });
+    sendDone({
+      success: true,
+      reply: reply || (truncated ? '자료 조회가 상한에 도달했습니다. 질문을 좁혀 다시 물어봐 주세요.' : '(응답이 비었습니다)'),
+      toolLog, savedPlacements, truncated,
+    });
   } catch (err) {
     console.error('[chat/agent] 오류:', err.message);
-    sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel), toolLog });
+    sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
   }
 });
 

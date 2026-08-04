@@ -92,6 +92,61 @@ export const CONSULT_TOOLS = [
   },
 ];
 
+// ── 제공사별 도구 규격 변환 ───────────────────────────
+// 도구 정의는 위 CONSULT_TOOLS(OpenAI 형태) 하나만 두고, 나머지는 거기서 파생시킨다.
+// 세 벌을 따로 관리하면 도구를 하나 고칠 때마다 어긋난다.
+
+// Gemini 는 JSON Schema 전체가 아니라 OpenAPI 부분집합만 받는다.
+// 모르는 키가 섞이면 400 이 나므로 허용된 키만 남긴다.
+function toGeminiSchema(s) {
+  if (!s || typeof s !== 'object') return s;
+  const out = {};
+  if (s.type) out.type = s.type;
+  if (s.description) out.description = s.description;
+  if (s.enum) out.enum = s.enum;
+  if (s.items) out.items = toGeminiSchema(s.items);
+  if (s.properties) {
+    out.properties = {};
+    for (const [k, v] of Object.entries(s.properties)) out.properties[k] = toGeminiSchema(v);
+  }
+  if (Array.isArray(s.required) && s.required.length) out.required = s.required;
+  return out;
+}
+
+export function toolsForProvider(group) {
+  const defs = CONSULT_TOOLS.map((t) => t.function);
+  if (group === 'gemini') {
+    return [{ functionDeclarations: defs.map((d) => ({ name: d.name, description: d.description, parameters: toGeminiSchema(d.parameters) })) }];
+  }
+  if (group === 'claude') {
+    return defs.map((d) => ({ name: d.name, description: d.description, input_schema: d.parameters }));
+  }
+  return CONSULT_TOOLS;
+}
+
+/**
+ * 전형 자료(지식베이스) 의미 검색 — 도구와 입결 콘솔 요약이 함께 쓴다.
+ * 신설 전형처럼 입결이 아예 없는 건은 여기에만 단서가 있다.
+ */
+export async function lookupAdmissionGuide(query, types) {
+  if (!kbReady()) return [];
+  const kinds = types?.length ? types : ['대학별전형', '대입정책', '합격자사례'];
+  const emb = await embedQuery(String(query || '').slice(0, 500));
+  const found = await Promise.all(kinds.map((t) => searchByType(emb, t, 4)));
+  const blocks = [];
+  kinds.forEach((t, i) => {
+    for (const h of found[i] || []) {
+      blocks.push({
+        종류: t,
+        제목: h.title || h.metadata?.filename || '',
+        관련도: Math.round((h.score || 0) * 100),
+        내용: String(h.content || '').slice(0, 1200),
+      });
+    }
+  });
+  return blocks;
+}
+
 // 결과를 프롬프트에 도로 넣어야 하므로 토큰을 아껴 압축한다.
 function compactHit(r) {
   return {
@@ -135,15 +190,7 @@ export async function runConsultTool(name, args = {}, ctx = {}) {
 
   if (name === 'search_knowledge') {
     if (!kbReady()) return { 오류: '지식베이스가 비어 있다. 이 도구로는 답할 수 없으니 입결 자료나 학생 기록으로 답하라.' };
-    const types = (args.types?.length ? args.types : ['대입정책', '대학별전형', '합격자사례']);
-    const emb = await embedQuery(String(args.query || '').slice(0, 500));
-    const found = await Promise.all(types.map((t) => searchByType(emb, t, 4)));
-    const blocks = [];
-    types.forEach((t, i) => {
-      for (const h of found[i] || []) {
-        blocks.push({ 종류: t, 제목: h.title || h.metadata?.filename || '', 관련도: Math.round((h.score || 0) * 100), 내용: String(h.content || '').slice(0, 1200) });
-      }
-    });
+    const blocks = await lookupAdmissionGuide(args.query, args.types);
     return blocks.length ? { 자료: blocks } : { 자료: [], 비고: '관련 자료를 찾지 못했다.' };
   }
 
@@ -163,4 +210,114 @@ export async function runConsultTool(name, args = {}, ctx = {}) {
   }
 
   return { 오류: `알 수 없는 도구: ${name}` };
+}
+
+// ── 도구 호출 루프 (claude / gpt / gemini) ─────────────
+// 세 제공사의 규격이 전부 달라 루프도 따로다. 공통으로 뽑아내면 오히려 읽기 어렵다.
+//   · OpenAI  : message.tool_calls → role:'tool' 메시지로 결과 회신
+//   · Anthropic: content[].tool_use → user 메시지 안 tool_result 블록으로 회신
+//   · Gemini  : response.functionCalls() → functionResponse 파트로 회신
+
+const MAX_TURNS = 8;   // 도구 호출이 끝없이 이어지는 것을 막는 상한
+
+function summarize(out) {
+  if (out?.전체매칭 != null) return `${out.전체매칭}건 매칭 · ${out.반환}건 확인`;
+  if (out?.자료) return `자료 ${out.자료.length}건`;
+  if (out?.저장됨) return `저장 — ${out.내용}`;
+  return out?.오류 || '완료';
+}
+
+/**
+ * @returns {{ reply: string, toolLog: Array, truncated: boolean }}
+ */
+export async function runAgentLoop({ group, modelId, apiKey, systemPrompt, history = [], message, ctx = {} }) {
+  const toolLog = [];
+  const call = async (name, args) => {
+    let out;
+    try { out = await runConsultTool(name, args, ctx); }
+    catch (e) { out = { 오류: e.message }; }
+    toolLog.push({ name, args, summary: summarize(out) });
+    return out;
+  };
+  const hist = history.slice(-10).filter((h) => h && h.role && h.content);
+
+  // ── OpenAI ──
+  if (group === 'gpt') {
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({ apiKey });
+    const msgs = [
+      { role: 'system', content: systemPrompt },
+      ...hist.map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 6000) })),
+      { role: 'user', content: String(message).slice(0, 8000) },
+    ];
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const r = await openai.chat.completions.create({
+        model: modelId, messages: msgs, tools: toolsForProvider('gpt'), max_completion_tokens: 8000,
+      });
+      const m = r.choices[0].message;
+      msgs.push(m);
+      if (!m.tool_calls?.length) return { reply: m.content || '', toolLog, truncated: false };
+      for (const tc of m.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+        const out = await call(tc.function.name, args);
+        msgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(out).slice(0, 60000) });
+      }
+    }
+    return { reply: '', toolLog, truncated: true };
+  }
+
+  // ── Anthropic ──
+  if (group === 'claude') {
+    const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
+    const client = new AnthropicSDK({ apiKey });
+    const msgs = [
+      ...hist.map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 6000) })),
+      { role: 'user', content: String(message).slice(0, 8000) },
+    ];
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const r = await client.messages.create({
+        model: modelId, max_tokens: 8000, system: systemPrompt,
+        tools: toolsForProvider('claude'), messages: msgs,
+      });
+      const uses = (r.content || []).filter((c) => c.type === 'tool_use');
+      if (!uses.length) {
+        return { reply: (r.content || []).filter((c) => c.type === 'text').map((c) => c.text).join(''), toolLog, truncated: false };
+      }
+      msgs.push({ role: 'assistant', content: r.content });
+      const results = [];
+      for (const u of uses) {
+        const out = await call(u.name, u.input || {});
+        results.push({ type: 'tool_result', tool_use_id: u.id, content: JSON.stringify(out).slice(0, 60000) });
+      }
+      msgs.push({ role: 'user', content: results });
+    }
+    return { reply: '', toolLog, truncated: true };
+  }
+
+  // ── Gemini ──
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: modelId,
+    systemInstruction: systemPrompt,
+    tools: toolsForProvider('gemini'),
+    // pro 계열은 사고 토큰이 출력 한도를 먼저 먹는다(GPT pro와 같은 증상). 여유를 얹는다.
+    generationConfig: { maxOutputTokens: /pro/i.test(modelId) ? 16000 : 8000 },
+  });
+  const chat = model.startChat({
+    history: hist.map((h) => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(h.content).slice(0, 6000) }] })),
+  });
+  let res = await chat.sendMessage(String(message).slice(0, 8000));
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const calls = res.response.functionCalls?.() || [];
+    if (!calls.length) return { reply: res.response.text() || '', toolLog, truncated: false };
+    const parts = [];
+    for (const c of calls) {
+      const out = await call(c.name, c.args || {});
+      parts.push({ functionResponse: { name: c.name, response: out } });
+    }
+    res = await chat.sendMessage(parts);
+  }
+  return { reply: '', toolLog, truncated: true };
 }
