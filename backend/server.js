@@ -779,6 +779,48 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
   return final.content.map(b => (b.type === 'text' ? b.text : '')).join('');
 }
 
+// ── AI 제공사 오류를 사람이 읽는 문장으로 ──────────────────
+// SDK 오류를 그대로 내보내면 화면에 `400 {"type":"error",...}` 원문이 뜬다.
+// 그러면 결제·키 문제가 "기능 고장"으로 읽혀서, 고칠 수 있는 사람이 고치질 못한다.
+const AI_LABEL = { claude: 'Claude(Anthropic)', gpt: 'GPT(OpenAI)', gemini: 'Gemini(Google)' };
+function friendlyAIError(err, group = 'claude') {
+  const label = AI_LABEL[group] || AI_LABEL.claude;
+  const other = group === 'gpt' ? 'Claude·Gemini' : group === 'gemini' ? 'Claude·GPT' : 'GPT·Gemini';
+  const raw = String(err?.message || err || '');
+  const t = raw.toLowerCase();
+  const status = err?.status ?? err?.statusCode ?? null;
+  const swap = `또는 ${other} 모델로 바꿔도 됩니다.`;
+
+  // 잔액·쿼터 소진 — 키는 유효하지만 결제가 막힌 상태
+  if (t.includes('credit balance is too low') || t.includes('insufficient_quota')
+    || t.includes('exceeded your current quota') || t.includes('billing')) {
+    return `${label} 크레딧이 부족해 AI 호출이 거부됐습니다. 제공사 콘솔에서 결제·크레딧을 충전해 주세요. ${swap}`;
+  }
+  // 키 자체가 틀렸거나 폐기됨
+  if (status === 401 || status === 403 || t.includes('invalid x-api-key')
+    || t.includes('incorrect api key') || t.includes('api key not valid') || t.includes('api_key_invalid')) {
+    return `${label} API 키가 유효하지 않습니다. 설정에서 키를 다시 입력해 주세요. ${swap}`;
+  }
+  // 호출량 제한 — 잠시 뒤 재시도하면 풀린다
+  if (status === 429 || t.includes('rate limit') || t.includes('rate_limit')) {
+    return `${label} 호출량 제한에 걸렸습니다. 1~2분 뒤 다시 시도해 주세요. ${swap}`;
+  }
+  // 제공사 과부하·장애
+  if (status === 529 || status === 503 || t.includes('overloaded')) {
+    return `${label} 서버가 일시적으로 과부하 상태입니다. 잠시 뒤 다시 시도해 주세요. ${swap}`;
+  }
+  if (status >= 500) {
+    return `${label} 서버 오류(${status})로 응답을 받지 못했습니다. 잠시 뒤 다시 시도해 주세요. ${swap}`;
+  }
+  // 네트워크 계층 — 제공사에 닿지도 못한 경우
+  if (t.includes('econnreset') || t.includes('etimedout') || t.includes('enotfound')
+    || t.includes('fetch failed') || t.includes('socket hang up')) {
+    return `${label} 서버에 연결하지 못했습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.`;
+  }
+  // 그 밖의 오류는 원문을 짧게 붙여 둔다 — 단서까지 지우면 디버깅이 불가능해진다
+  return `${label} 호출 실패: ${raw.slice(0, 200)}`;
+}
+
 // ── 수행평가: 결과물 작성 / 첨삭·평가 (SSE keepalive) ──────
 app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
   const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric, images, current, instruction } = req.body || {};
@@ -2508,12 +2550,12 @@ ${JSON.stringify(cards.slice(0, 15), null, 1)}`;
   try {
     const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 4000 });
     const m = String(reply).match(/\[[\s\S]*\]/);
-    if (!m) throw new Error('AI 응답에서 판정 JSON을 찾지 못했습니다');
+    if (!m) throw Object.assign(new Error('AI 응답에서 판정 JSON을 찾지 못했습니다'), { userFacing: true });
     const judgments = JSON.parse(m[0]).filter((j) => j && j.key && j.verdict);
     sendDone({ success: true, judgments });
   } catch (err) {
     console.error('[ipgyeol/judge] 오류:', err.message);
-    sendDone({ success: false, message: err.message });
+    sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
   }
 });
 
@@ -2602,7 +2644,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
       userMsg: `${profileLine}\n[기준연도] ${baseYear}\n\n[질문]\n${String(query).slice(0, 1000)}`,
     });
     const m = String(raw).match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('질문을 검색 조건으로 바꾸지 못했습니다. 조금 더 구체적으로 적어주세요.');
+    if (!m) throw Object.assign(new Error('질문을 검색 조건으로 바꾸지 못했습니다. 조금 더 구체적으로 적어주세요.'), { userFacing: true });
     const filter = JSON.parse(m[0]);
     filter.baseYear = baseYear;
     filter.limit = Math.min(Number(filter.limit) || Number(limit) || 24, 40);
@@ -2653,7 +2695,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
     sendDone({ success: true, filter, total, results, summary, relaxed });
   } catch (err) {
     console.error('[ipgyeol/ai-search] 오류:', err.message);
-    sendDone({ success: false, message: err.message });
+    sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
   }
 });
 
