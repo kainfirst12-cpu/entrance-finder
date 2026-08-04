@@ -11,7 +11,7 @@ import {
   upsertStudentByName, addFile, getFile, deleteFile, getFileStudentOwner,
   listPlacements, addPlacement, deletePlacement, getPlacementOwner,
   listSuhaeng, getSuhaeng, createSuhaeng, deleteSuhaeng, getSuhaengOwner,
-  setStudentCode, getStudentByCode, getStudentFull, getStudentDossier,
+  setStudentCode, getStudentByCode, getStudentDossier,
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
 import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
@@ -1305,14 +1305,24 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
 
-  const s = await getStudentFull(sid);
-  if (!s) return res.status(404).json({ success: false, message: '학생 없음' });
+  // 기록만 보던 것을 dossier(기록+배치+로드맵)로 넓힌다.
+  // 입결 콘솔에서 저장한 배치와 로드맵 진행률이 빠지면 "지금 이 학생이 어디까지 왔는지"를
+  // 브리핑이 알 수 없어, 이미 검토가 끝난 카드를 다시 추천하는 일이 생긴다.
+  const dossier = await getStudentDossier(sid);
+  if (!dossier) return res.status(404).json({ success: false, message: '학생 없음' });
+  const s = { ...dossier.student, grades: dossier.grades, records: dossier.records };
+  const placements = dossier.placements || [];
+  const roadmaps = dossier.roadmaps || [];
   const sourceRecords = (s.records || []).filter((r) => r.type !== '컨설턴트 브리핑' && r.content);
-  if (!sourceRecords.length) return res.status(400).json({ success: false, message: '정리할 기록이 없습니다. 생기부 분석·수행평가·상담 기록을 먼저 쌓아주세요.' });
+  if (!sourceRecords.length && !placements.length && !roadmaps.length) {
+    return res.status(400).json({ success: false, message: '정리할 자료가 없습니다. 생기부 분석·수행평가·상담 기록이나 입결 배치를 먼저 쌓아주세요.' });
+  }
 
   const systemPrompt = `당신은 학원 원장을 보좌하는 수시 컨설팅 수석 조교입니다.
-한 학생에 대해 쌓인 기록(생기부 분석·수행평가·상담·배치 등)을 전부 읽고,
-컨설턴트가 이 학생을 지도할 때 바로 쓸 수 있는 브리핑을 작성합니다.
+한 학생에 대해 쌓인 자료를 세 갈래로 전부 읽고, 컨설턴트가 바로 쓸 수 있는 브리핑을 씁니다.
+ (1) 기록 — 생기부 분석·수행평가·상담
+ (2) 입결 배치 — 입결 콘솔에서 저장한 지원 후보와 그때의 판정
+ (3) 로드맵 — 학생이 실제로 무엇을 끝냈고 무엇이 남았는지
 
 [출력 — 마크다운, 이모지 금지, 합니다체]
 ## 학생 한눈에
@@ -1321,22 +1331,72 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
 (기록에서 확인되는 강점 — 근거가 된 기록을 괄호로 표시)
 ## 보완점·리스크
 (약점, 빠진 활동, 최저 리스크 등)
+## 지원 카드 재검토
+(저장된 배치를 다시 봅니다. 세 가지를 반드시 짚으십시오.
+ · 저장 당시 내신과 현재 대표 내신이 다르면 판정이 어떻게 바뀌는지
+ · 안정·적정·소신·위험의 분포가 한쪽으로 쏠려 있지는 않은지
+ · 생기부 기록의 강점이 그 학과·전형과 실제로 맞는지
+ 배치가 없으면 '저장된 배치 없음 — 입결 콘솔에서 후보를 먼저 담아야 합니다'라고 쓰십시오.)
+## 로드맵 진행 점검
+(끝낸 항목과 밀린 항목을 보고, 지금 밀린 것 중 무엇이 위 지원 카드에 직접 영향을 주는지.
+ 로드맵이 없으면 '로드맵 없음'이라고만 쓰십시오.)
 ## 추천 전략
 (수시 방향: 유리한 전형 유형, 강화할 활동, 다음 학기 과목/탐구 방향)
 ## 다음 액션 체크리스트
 (- [ ] 형태로 5개 내외, 구체적으로)
-[원칙] 기록에 없는 사실은 지어내지 않고, 부족하면 '기록 부족'이라고 명시.`;
+
+[원칙]
+- 자료에 없는 사실은 지어내지 않고, 부족하면 '자료 부족'이라고 명시합니다.
+- 배치의 컷·경쟁률 숫자는 주어진 값만 인용하고 새로 계산하거나 추정하지 않습니다.
+- 세 갈래를 따로 요약하지 말고 서로 연결해서 읽으십시오. 브리핑의 값어치는 거기서 나옵니다.`;
 
   const gradeLine = (s.grades || []).map((g) => `${g.term}: ${g.gpa ?? '-'}`).join(', ');
   const recordsText = sourceRecords.map((r) =>
     `[${r.type}] ${r.title} (${String(r.created_at).slice(0, 10)})\n${String(r.content).slice(0, 6000)}`).join('\n\n---\n\n');
+  // 배치는 저장 당시 내신(p.grade)과 지금 대표 내신(s.gpa)을 나란히 준다.
+  // 그래야 "그 사이 성적이 바뀌어 판정이 달라졌다"를 모델이 스스로 짚을 수 있다.
+  const placementsText = placements.length
+    ? placements.map((p) => {
+        const snap = p.snapshot || {};
+        const parts = [
+          `${String(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'})`,
+          `저장판정 ${p.verdict || '-'}`,
+          `70%컷 ${snap.cut70 ?? '-'}${snap.cutYear ? `(${snap.cutYear})` : ''}`,
+          `저장당시 내신 ${p.grade ?? '-'}`,
+        ];
+        if (snap.rate != null) parts.push(`경쟁률 ${snap.rate}`);
+        if (snap.recruit != null) parts.push(`모집 ${snap.recruit}명`);
+        if (snap.fill != null) parts.push(`충원 ${snap.fill}명`);
+        if (snap.aiVerdict) parts.push(`AI판정 ${snap.aiVerdict}${snap.aiReason ? ` — ${snap.aiReason}` : ''}`);
+        if (p.memo) parts.push(`메모 ${p.memo}`);
+        return `- ${parts.join(' · ')} (저장 ${String(p.created_at).slice(0, 10)})`;
+      }).join('\n')
+    : '(저장된 배치 없음)';
+
+  const roadmapText = roadmaps.length
+    ? roadmaps.map((m) => {
+        const items = m.items || [];
+        const done = items.filter((i) => i.done).length;
+        const pending = items.filter((i) => !i.done)
+          .map((i) => `    · [${i.section || '기타'}${i.subject ? `/${i.subject}` : ''}] ${i.title}${i.period ? ` (${i.period})` : ''}`)
+          .slice(0, 25).join('\n');
+        return `- ${m.title} — ${done}/${items.length} 완료\n${pending ? `  남은 항목:\n${pending}` : '  남은 항목 없음'}`;
+      }).join('\n')
+    : '(로드맵 없음)';
+
   const userMsg = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
 [대표 내신] ${s.gpa != null ? `${s.gpa}등급 (전 교과 환산 — 기준값)` : '미입력'}
 [학기별 내신] ${gradeLine || '미입력'}
 [메모] ${s.notes || '없음'}
 
+[입결 배치 — ${placements.length}건]
+${placementsText}
+
+[로드맵 — ${roadmaps.length}개]
+${roadmapText.slice(0, 6000)}
+
 [기록 전체 — ${sourceRecords.length}건]
-${recordsText.slice(0, 45000)}`;
+${recordsText.slice(0, 40000)}`;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
