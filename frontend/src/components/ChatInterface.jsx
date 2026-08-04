@@ -190,7 +190,7 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     const st = dossier.student || {};
     const ctx = {};
     if (useProfile) {
-      ctx.profile = { name: st.name, school: st.school, grade: st.grade, major: st.major, targetUniv: st.target_univ, status: st.status, notes: st.notes };
+      ctx.profile = { name: st.name, school: st.school, grade: st.grade, major: st.major, targetUniv: st.target_univ, status: st.status, notes: st.notes, gpa: st.gpa };
       ctx.grades = (dossier.grades || []).map((g) => ({ term: g.term, gpa: g.gpa, note: g.note }));
     } else {
       ctx.profile = { name: st.name };
@@ -773,8 +773,11 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                 {dossier.student.school || '학교 미입력'} · {dossier.student.grade || '학년 미입력'}<br />
                 희망 {dossier.student.major || '미입력'} / 목표 {dossier.student.target_univ || '미입력'}
               </div>
+              {dossier.student.gpa != null && (
+                <div style={CS.gradeLine}>대표 내신 {Number(dossier.student.gpa).toFixed(2)} (전 교과 환산)</div>
+              )}
               {dossier.grades?.length > 0 && (
-                <div style={CS.gradeLine}>내신 {dossier.grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}</div>
+                <div style={CS.gradeLine}>학기별 {dossier.grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}</div>
               )}
 
               <div style={CS.secTitle}>AI에 포함할 자료</div>

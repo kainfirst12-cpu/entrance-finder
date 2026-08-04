@@ -1092,9 +1092,15 @@ app.post('/api/board/upsert', requireAuth, async (req, res) => {
     return res.json({ success: false, skipped: true, message: '보드에 배정하려면 다시 로그인해 주세요(토큰 갱신 필요)' });
   }
   try {
-    const { name, school, grade, major, targetUniv, record } = req.body || {};
+    const { name, school, grade, major, targetUniv, gpa, record } = req.body || {};
     if (!name?.trim()) return res.json({ success: false, skipped: true });
-    const student = await upsertStudentByName(req.user.userId, { name: name.trim(), school, grade, major, targetUniv });
+    // gpa(분석 폼에 입력한 전 교과 내신)는 여기서 학생 카드에 박아둔다.
+    // 저장하지 않으면 입결 콘솔이 분석 본문에서 등급을 추정하게 되고, 그 추정이 틀리면 배치가 통째로 어긋난다.
+    const g = gpa === '' || gpa == null ? null : Number(gpa);
+    const student = await upsertStudentByName(req.user.userId, {
+      name: name.trim(), school, grade, major, targetUniv,
+      gpa: Number.isFinite(g) && g >= 1 && g <= 9 ? g : null,
+    });
     if (record?.title || record?.type) await addRecord(student.id, record);
     res.json({ success: true, studentId: student.id });
   } catch (e) {
@@ -1237,7 +1243,8 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
   const recordsText = sourceRecords.map((r) =>
     `[${r.type}] ${r.title} (${String(r.created_at).slice(0, 10)})\n${String(r.content).slice(0, 6000)}`).join('\n\n---\n\n');
   const userMsg = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
-[내신] ${gradeLine || '미입력'}
+[대표 내신] ${s.gpa != null ? `${s.gpa}등급 (전 교과 환산 — 기준값)` : '미입력'}
+[학기별 내신] ${gradeLine || '미입력'}
 [메모] ${s.notes || '없음'}
 
 [기록 전체 — ${sourceRecords.length}건]
@@ -1663,6 +1670,7 @@ function buildStudentSection(sc) {
   const lines = [`\n=== 상담 대상 학생 자료 (학생 보드에서 불러옴) ===`];
   lines.push(`[학생] ${p.name || '이름없음'} / ${p.school || '학교 미입력'} / ${p.grade || '학년 미입력'}`);
   lines.push(`[희망 전공] ${p.major || '미입력'} / [목표 대학] ${p.targetUniv || '미입력'} / [진행 단계] ${p.status || '미입력'}`);
+  if (p.gpa != null && p.gpa !== '') lines.push(`[대표 내신(전 교과 환산)] ${p.gpa}등급 — 지원 판단은 이 값을 기준으로 하라`);
   if (p.notes) lines.push(`[선생님 메모] ${String(p.notes).slice(0, 600)}`);
 
   const grades = sc.grades || [];

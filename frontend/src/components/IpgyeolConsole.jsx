@@ -39,17 +39,57 @@ async function postForResult(url, opts) {
   return result || { success: false, message: '서버 응답이 비었습니다' };
 }
 
-// 학생 기록(생기부 분석 등) 본문에서 내신 등급 자동 인식
+// 학생 기록(생기부 분석 등) 본문에서 내신 등급 찾기 — 학생 카드에 대표 내신이 없을 때만 쓰는 최후 수단.
+//
+// 예전 방식(기록을 전부 이어붙여 '내신…N등급'류 패턴의 첫 매치를 취함)은 수능최저 문구의 '등급 합 4'나
+// 과목별 등급 같은 남의 숫자를 집어와 배치 판정을 통째로 틀어놨다. 그래서
+//  ① 분석·브리핑 기록만 보고 ② 줄 단위로 신뢰도 순서대로 찾고 ③ 근거 문구를 함께 돌려준다.
+const GPA_TOKEN = /(?<![\d.])([1-9](?:\.\d{1,3})?)(?![\d.])/g;
+const NOISE_LINE = /수능|모의고사|모평|최저|백분위|표준점수|영역\s*등급|등급\s*합/;
+const round2 = (v) => Math.round(v * 100) / 100;
+
+function gpaTokens(line) {
+  const out = [];
+  for (const m of line.matchAll(GPA_TOKEN)) {
+    const v = parseFloat(m[1]);
+    if (v >= 1 && v <= 9) out.push({ v, decimal: m[1].includes('.') });
+  }
+  return out;
+}
+
 function extractGradeFromRecords(s) {
-  const texts = (s.records || []).map((r) => r.content || '').join('\n');
-  const patterns = [
-    /(?:전\s*교과|전체|평균)\s*(?:내신|등급)[^0-9\n]{0,10}([1-9](?:\.\d{1,2})?)\s*등급/,
-    /내신[^0-9\n]{0,12}([1-9](?:\.\d{1,2})?)\s*등급/,
-    /(?:평균|전교과)\s*([1-9]\.\d{1,2})\s*등급/,
-  ];
-  for (const p of patterns) {
-    const m = texts.match(p);
-    if (m) { const v = parseFloat(m[1]); if (v >= 1 && v <= 9) return v; }
+  const all = (s.records || []).filter((r) => r.content);
+  const pool = all.filter((r) => ['생기부 분석', '컨설턴트 브리핑'].includes(r.type));
+  const targets = pool.length ? pool : all; // 분석 기록이 없으면 어쩔 수 없이 전체
+  for (const rec of targets) {
+    const lines = String(rec.content).split('\n');
+    // 신뢰도 순: ① "…2.69등급을 기준으로" ② 전체 합산·전 교과·최종/환산 내신 줄 ③ '내신 2.69'
+    const rules = [
+      (line) => {
+        const m = line.match(/([1-9](?:\.\d{1,3})?)\s*등급(?:을|를)?\s*(?:기준|적용|사용)/);
+        return m ? parseFloat(m[1]) : null;
+      },
+      (line) => {
+        if (!/전체\s*합산|전\s*교과|최종\s*내신|환산\s*내신|평균\s*등급|내신\s*평균|평균\s*내신/.test(line)) return null;
+        const toks = gpaTokens(line);
+        const dec = toks.filter((t) => t.decimal);
+        return dec.length ? dec[dec.length - 1].v : null; // 표 행이면 마지막 열(평균등급)
+      },
+      (line) => {
+        if (!/내신/.test(line)) return null;
+        const dec = gpaTokens(line).filter((t) => t.decimal);
+        return dec.length ? dec[0].v : null;
+      },
+    ];
+    for (const rule of rules) {
+      for (const line of lines) {
+        if (NOISE_LINE.test(line)) continue; // 수능·최저 문구에서 등급 숫자를 집지 않는다
+        const v = rule(line);
+        if (v != null && v >= 1 && v <= 9) {
+          return { value: round2(v), snippet: line.trim().slice(0, 90), from: rec.type || '기록' };
+        }
+      }
+    }
   }
   return null;
 }
@@ -387,18 +427,23 @@ export default function IpgyeolConsole({ onAuthError }) {
     api(`/api/board/students/${s.id}/context`)
       .then((j) => { if (j.success) setDossier(j); })
       .catch((e) => { if (e.auth) onAuthError?.(); });
-    // 내신 자동 반영: ① 보드에 입력한 성적 → ② 분석 기록 본문에서 인식
-    const gpas = (s.grades || []).filter((g) => g.gpa != null);
-    if (gpas.length) {
+    // 내신 반영 순서: ① 학생 카드의 대표 내신(분석 때 입력한 값) → ② 보드 학기 성적 → ③ 기록 본문 추정
+    // ③은 글에서 숫자를 찾아내는 추정이라 틀릴 수 있다. 그래서 어느 문장에서 가져왔는지 함께 보여준다.
+    const g = s.gpa == null || s.gpa === '' ? null : Number(s.gpa);
+    const gpas = (s.grades || []).filter((x) => x.gpa != null);
+    if (Number.isFinite(g) && g >= 1 && g <= 9) {
+      setGrade(g);
+      setGradeSource(`학생 카드의 대표 내신 ${g.toFixed(2)} 적용 (분석 입력값)`);
+    } else if (gpas.length) {
       setGrade(Math.min(9, Math.max(1, Number(gpas[gpas.length - 1].gpa))));
-      setGradeSource(`보드 성적(${gpas[gpas.length - 1].term})에서 내신 자동 반영`);
+      setGradeSource(`보드 성적(${gpas[gpas.length - 1].term})에서 내신 반영`);
     } else {
-      const extracted = extractGradeFromRecords(s);
-      if (extracted != null) {
-        setGrade(extracted);
-        setGradeSource('생기부 분석 기록에서 내신 자동 인식');
+      const found = extractGradeFromRecords(s);
+      if (found) {
+        setGrade(found.value);
+        setGradeSource(`추정: ${found.from} 본문에서 인식 — "${found.snippet}" · 다르면 직접 고쳐 주세요`);
       } else {
-        setGradeSource('기록에서 내신을 찾지 못함 — 직접 입력해 주세요');
+        setGradeSource('내신 자료 없음 — 학생 카드의 대표 내신을 채우거나 여기서 직접 입력해 주세요');
       }
     }
     api(`/api/board/students/${s.id}/placements`)
@@ -669,7 +714,7 @@ export default function IpgyeolConsole({ onAuthError }) {
                 style={S.gradeInput} />
               <span style={{ fontSize: 12, fontWeight: 600, color: '#5c6b7c' }}>등급</span>
             </div>
-            {gradeSource && <span style={{ fontSize: 11, color: '#8492a5' }}>{gradeSource}</span>}
+            {gradeSource && <span style={{ fontSize: 11, color: '#8492a5', maxWidth: 360, lineHeight: 1.5, wordBreak: 'break-all' }}>{gradeSource}</span>}
           </div>
           <div style={S.ctrlGroup}>
             <span style={S.ctrlLabel}>기준 연도</span>

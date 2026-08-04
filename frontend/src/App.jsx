@@ -188,6 +188,7 @@ export default function App() {
                   body: JSON.stringify({
                     name: studentData.name, school: studentData.school, grade: studentData.grade,
                     major: studentData.major, targetUniv: studentData.targetUniv,
+                    gpa: studentData.gpa, // 입결 콘솔이 이 값을 그대로 쓴다 (본문 추정 불필요)
                     record: { type: '생기부 분석', title: `${selectedModel} 분석${pdfCount ? ` · PDF ${pdfCount}건` : ''}`, content: analysisText },
                   }),
                 }).catch(() => {});

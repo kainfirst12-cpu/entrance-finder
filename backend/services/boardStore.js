@@ -41,7 +41,12 @@ export async function upsertStudentByName(ownerId, f = {}) {
   for (const [k, col] of Object.entries(pairs)) {
     if ((!student[col] || student[col] === '') && f[k]) upd[k] = f[k];
   }
-  if (Object.keys(upd).length) await updateStudent(student.id, upd);
+  // 대표 내신은 빈 칸 보완이 아니라 덮어쓴다 — 가장 최근 분석에 입력한 값이 현재 성적이다
+  if (f.gpa != null && f.gpa !== '') upd.gpa = f.gpa;
+  if (Object.keys(upd).length) {
+    await updateStudent(student.id, upd);
+    Object.assign(student, { gpa: upd.gpa ?? student.gpa });
+  }
   return student;
 }
 
@@ -83,9 +88,10 @@ export async function getStudentOwner(id) {
 export async function createStudent(ownerId, f = {}) {
   const pool = getPool();
   const { rows } = await pool.query(
-    `INSERT INTO ef_students (owner_id, name, school, grade, major, target_univ, status, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [ownerId, f.name || '이름없음', f.school || '', f.grade || '', f.major || '', f.targetUniv || '', f.status || '신규', f.notes || '']
+    `INSERT INTO ef_students (owner_id, name, school, grade, major, target_univ, status, notes, gpa)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [ownerId, f.name || '이름없음', f.school || '', f.grade || '', f.major || '', f.targetUniv || '', f.status || '신규', f.notes || '',
+     f.gpa === '' || f.gpa == null ? null : Number(f.gpa)]
   );
   return { ...rows[0], grades: [], records: [] };
 }
@@ -97,6 +103,7 @@ export async function updateStudent(id, f = {}) {
   for (const [k, col] of Object.entries(map)) {
     if (f[k] !== undefined) { vals.push(f[k]); fields.push(`${col} = $${vals.length}`); }
   }
+  if (f.gpa !== undefined) { vals.push(f.gpa === '' || f.gpa == null ? null : Number(f.gpa)); fields.push(`gpa = $${vals.length}`); }
   if (fields.length === 0) return;
   vals.push(id);
   await pool.query(`UPDATE ef_students SET ${fields.join(', ')}, updated_at = now() WHERE id = $${vals.length}`, vals);

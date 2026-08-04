@@ -195,6 +195,10 @@ export async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_roadmaps_student ON ef_roadmaps(student_id);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_roadmap_items_map ON ef_roadmap_items(roadmap_id);`);
 
+    // 대표 내신(전 교과 환산 등급) — 분석 폼에 입력한 값을 그대로 보관한다.
+    // 이게 없으면 입결 콘솔이 분석 본문에서 등급을 정규식으로 추정하다가 엉뚱한 숫자를 집는다.
+    await pool.query(`ALTER TABLE ef_students ADD COLUMN IF NOT EXISTS gpa NUMERIC;`);
+
     // 학생 셀프 열람 코드 (코드만으로 본인 배정 내용 조회)
     await pool.query(`ALTER TABLE ef_students ADD COLUMN IF NOT EXISTS student_code TEXT;`);
     await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_ef_students_code ON ef_students(student_code) WHERE student_code IS NOT NULL;`);

@@ -331,6 +331,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
   const [form, setForm] = useState({
     name: student.name || '', school: student.school || '', grade: student.grade || '',
     major: student.major || '', targetUniv: student.target_univ || '', status: student.status, notes: student.notes || '',
+    gpa: student.gpa ?? '',
   });
   const [gTerm, setGTerm] = useState(''); const [gGpa, setGGpa] = useState(''); const [gNote, setGNote] = useState('');
   const [rType, setRType] = useState('생기부 분석'); const [rTitle, setRTitle] = useState(''); const [rContent, setRContent] = useState('');
@@ -495,6 +496,15 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
               {columns.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+          <div>
+            <label style={S.label}>대표 내신 (전 교과 환산)</label>
+            <input style={S.input} type="number" min="1" max="9" step="0.01" value={form.gpa}
+              placeholder="예: 2.69"
+              onChange={e => setForm(f => ({ ...f, gpa: e.target.value }))} />
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: '#6b7d8a', margin: '2px 0 6px', lineHeight: 1.6 }}>
+          대표 내신은 <b style={{ color: '#9db0bd' }}>입결 콘솔의 배치 판정 기준</b>이 됩니다. 분석할 때 입력한 내신이 자동으로 들어오고, 여기서 고치면 그 값이 우선합니다.
         </div>
 
         <label style={S.label}>보완점 / 메모</label>
