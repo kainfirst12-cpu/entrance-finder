@@ -16,6 +16,12 @@ const ADIGA_URL = 'https://www.adiga.kr/uct/acd/ade/criteriaAndResultView.do?men
 const PIN_KEY = 'ef_ipgyeol_pins';
 const REPORT_KEY = 'ef_ipgyeol_report'; // 리포트 제목·총평 등 편집값 (상담 때마다 다시 쓰지 않게 남긴다)
 
+// 합격선 백분위 — 어디가가 발표하는 항목만. 40%·20%컷은 발표된 적이 없어 존재하지 않는다.
+// 50%·70%는 대부분의 전형에 있고, 85·90·100%는 제출한 대학이 극소수다(전체의 0~5%).
+const CUT_FIELD = { 50: 'grade50', 70: 'grade70', 85: 'grade85', 90: 'grade90', 100: 'grade100' };
+const CUT_OPTS = [50, 70, 90, 100];
+const cutField = (pct) => CUT_FIELD[pct] || 'grade70';
+
 const DEFAULT_NOTE = `배치 판정(안정·적정·소신·위험)은 최종등급 70%컷과 기준 내신의 차이에 따른 참고용 지표입니다. 실제 지원 판단은 반영교과·수능최저·모집인원 변화를 함께 검토해야 합니다.
 올해 신설된 전형은 누적 입시결과가 존재하지 않아 이 리포트에 포함되지 않습니다.`;
 
@@ -186,11 +192,13 @@ function Sparkline({ series }) {
 // ── 카드 한 장의 "왜 유리한가 / 왜 불리한가 / 어디가 리스크인가" ──
 // AI 없이 원본 입결만으로 계산한다. 상담 자리에서 근거를 물었을 때 숫자로 답할 수 있어야 하고,
 // AI 키가 없거나 호출이 실패해도 리포트에는 근거가 남아 있어야 하기 때문이다.
-function cardSignals(card, grade, baseYear) {
+function cardSignals(card, grade, baseYear, cutPct = 70) {
   const e = card.entry;
+  const CF = cutField(cutPct);
+  const P = `${cutPct}%컷`;
   const pros = [], cons = [], risks = [];
   const ys = Object.keys(e.years).filter((y) => y <= baseYear).sort();
-  const cut = latestWithDelta(e, 'grade70', baseYear);
+  const cut = latestWithDelta(e, CF, baseYear);
   const rate = latestWithDelta(e, 'rate', baseYear);
   const fill = latestWithDelta(e, 'fill', baseYear);
   const rec = latestWithDelta(e, 'recruit', baseYear);
@@ -200,16 +208,16 @@ function cardSignals(card, grade, baseYear) {
   if (cut.v != null) {
     const diff = Math.round((cut.v - grade) * 100) / 100;
     const dz = Math.abs(diff).toFixed(2);
-    if (diff >= 0.35) pros.push(`내신 ${g}이 ${cut.y}년 70%컷 ${cut.v.toFixed(2)}보다 ${dz}등급 앞섭니다 — 합격선 위 여유가 뚜렷합니다.`);
-    else if (diff >= -0.05) pros.push(`내신 ${g}이 70%컷 ${cut.v.toFixed(2)}과 ${dz}등급 차이 — 합격선 언저리의 경쟁권입니다.`);
-    else if (diff >= -0.4) cons.push(`내신이 ${cut.y}년 70%컷 ${cut.v.toFixed(2)}보다 ${dz}등급 부족합니다 — 상향 지원 구간입니다.`);
-    else cons.push(`내신이 70%컷 ${cut.v.toFixed(2)}보다 ${dz}등급 부족합니다 — 통상적인 지원선 밖입니다.`);
+    if (diff >= 0.35) pros.push(`내신 ${g}이 ${cut.y}년 ${P} ${cut.v.toFixed(2)}보다 ${dz}등급 앞섭니다 — 합격선 위 여유가 뚜렷합니다.`);
+    else if (diff >= -0.05) pros.push(`내신 ${g}이 ${P} ${cut.v.toFixed(2)}과 ${dz}등급 차이 — 합격선 언저리의 경쟁권입니다.`);
+    else if (diff >= -0.4) cons.push(`내신이 ${cut.y}년 ${P} ${cut.v.toFixed(2)}보다 ${dz}등급 부족합니다 — 상향 지원 구간입니다.`);
+    else cons.push(`내신이 ${P} ${cut.v.toFixed(2)}보다 ${dz}등급 부족합니다 — 통상적인 지원선 밖입니다.`);
   } else {
-    risks.push('70%컷이 공개되지 않은 전형입니다 — 경쟁률·충원 흐름만으로 판단해야 합니다.');
+    risks.push(`${P}이 공개되지 않은 전형입니다 — 경쟁률·충원 흐름만으로 판단해야 합니다.`);
   }
 
   // ② 합격선 추이 — 올해 판정이 한 단계 밀릴지의 예고
-  const series = ys.map((y) => ({ y, v: e.years[y].grade70 })).filter((p) => p.v != null);
+  const series = ys.map((y) => ({ y, v: e.years[y][CF] })).filter((p) => p.v != null);
   if (series.length >= 2) {
     const a = series[0], b = series[series.length - 1];
     const d = Math.round((b.v - a.v) * 100) / 100;
@@ -217,7 +225,7 @@ function cardSignals(card, grade, baseYear) {
     else if (d <= -0.1) cons.push(`합격선이 ${a.y}년 ${a.v.toFixed(2)} → ${b.y}년 ${b.v.toFixed(2)}로 ${Math.abs(d).toFixed(2)}등급 올라왔습니다(상승 추세) — 올해도 오르면 판정이 한 단계 밀립니다.`);
     else pros.push(`합격선이 ${a.y}~${b.y}년 ${Math.abs(d).toFixed(2)}등급 안에서 움직여 예측 가능성이 높습니다.`);
   } else if (series.length === 1) {
-    risks.push(`70%컷 자료가 ${series[0].y}년 한 해뿐입니다 — 추세를 볼 수 없어 판정의 근거가 얇습니다.`);
+    risks.push(`${P} 자료가 ${series[0].y}년 한 해뿐입니다 — 추세를 볼 수 없어 판정의 근거가 얇습니다.`);
   }
 
   // ③ 경쟁률·충원 — 서류상 경쟁률과 실제 합격선은 다르다
@@ -227,7 +235,7 @@ function cardSignals(card, grade, baseYear) {
   }
   if (fill.v != null && rec.v) {
     const pct = Math.round((fill.v / rec.v) * 100);
-    if (pct >= 50) pros.push(`충원 ${fill.v}명으로 모집 ${rec.v}명의 ${pct}%가 추가합격 — 실질 합격선은 70%컷보다 아래로 내려갑니다.`);
+    if (pct >= 50) pros.push(`충원 ${fill.v}명으로 모집 ${rec.v}명의 ${pct}%가 추가합격 — 실질 합격선은 ${P}보다 아래로 내려갑니다.`);
     else if (pct <= 10) cons.push(`충원이 ${fill.v}명(모집 대비 ${pct}%)에 그칩니다 — 최초 합격선이 사실상 마지노선입니다.`);
   }
 
@@ -253,20 +261,23 @@ function cardSignals(card, grade, baseYear) {
   // ⑦ 같은 학과 종합전형과의 문턱 차이
   const sib = card.jonghapSiblings?.[0];
   if (sib && cut.v != null) {
-    const sc = latestWithDelta(sib, 'grade70', baseYear);
+    const sc = latestWithDelta(sib, CF, baseYear);
     if (sc.v != null) {
       const gap = Math.round((sc.v - cut.v) * 100) / 100;
-      if (gap >= 0.15) pros.push(`같은 학과 종합전형 70%컷은 ${sc.v.toFixed(2)}로 교과보다 ${gap.toFixed(2)}등급 낮은 내신도 합격했습니다 — 생기부가 강하면 종합 병행이 유리합니다.`);
-      else if (gap <= -0.15) cons.push(`같은 학과 종합전형 70%컷 ${sc.v.toFixed(2)}가 교과보다 ${Math.abs(gap).toFixed(2)}등급 높습니다 — 종합으로 돌리면 문턱이 더 높습니다.`);
+      if (gap >= 0.15) pros.push(`같은 학과 종합전형 ${P}은 ${sc.v.toFixed(2)}로 교과보다 ${gap.toFixed(2)}등급 낮은 내신도 합격했습니다 — 생기부가 강하면 종합 병행이 유리합니다.`);
+      else if (gap <= -0.15) cons.push(`같은 학과 종합전형 ${P} ${sc.v.toFixed(2)}가 교과보다 ${Math.abs(gap).toFixed(2)}등급 높습니다 — 종합으로 돌리면 문턱이 더 높습니다.`);
     }
   }
 
   return { pros, cons, risks };
 }
 
-// 저장용 스냅샷: 카드 핵심 수치를 기록 시점 그대로 보존
-function buildSnapshot(entry, baseYear) {
+// 저장용 스냅샷: 카드 핵심 수치를 기록 시점 그대로 보존.
+// cut70은 예전 기록과 호환을 위해 항상 70%컷을 담고, 다른 백분위로 보고 있었다면 cutSel에 함께 남긴다.
+// (읽는 쪽은 snapCut()으로 꺼낸다 — 옛 기록은 cutPct가 없어 70으로 읽힌다)
+function buildSnapshot(entry, baseYear, cutPct = 70) {
   const cut = latestWithDelta(entry, 'grade70', baseYear);
+  const sel = latestWithDelta(entry, cutField(cutPct), baseYear);
   const rate = latestWithDelta(entry, 'rate', baseYear);
   const fill = latestWithDelta(entry, 'fill', baseYear);
   const recruit = latestWithDelta(entry, 'recruit', baseYear);
@@ -274,19 +285,28 @@ function buildSnapshot(entry, baseYear) {
   const pct = latestWithDelta(entry, 'pct70', baseYear);
   const series = {};
   for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) {
-    const v = entry.years[String(y)]?.grade70;
+    const v = entry.years[String(y)]?.[cutField(cutPct)];
     if (v != null) series[y] = v;
   }
-  return { cut70: cut.v, cutYear: cut.y, rate: rate.v, fill: fill.v, recruit: recruit.v, score70: score.v, pct70: pct.v, series };
+  return { cut70: cut.v, cutYear: cut.y, cutPct, cutSel: sel.v, cutSelYear: sel.y,
+    rate: rate.v, fill: fill.v, recruit: recruit.v, score70: score.v, pct70: pct.v, series };
 }
 
-function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, saved, onDetail, ai }) {
+// 저장된 배치의 합격선 — 어느 백분위로 저장했든 그 값과 라벨을 그대로 읽는다
+const snapCut = (s = {}) => ({
+  pct: s.cutPct || 70,
+  v: s.cutPct && s.cutSel != null ? s.cutSel : s.cut70,
+  year: s.cutPct && s.cutSel != null ? (s.cutSelYear || s.cutYear) : s.cutYear,
+});
+
+function Card({ card, grade, baseYear, cutPct, onPin, pinned, student, onSave, saving, saved, onDetail, ai }) {
   const { univ, entry, sunung, jonghapSiblings } = card;
+  const CF = cutField(cutPct);
   const yearsWindow = [];
   for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWindow.push(String(y));
-  const series = yearsWindow.map((y) => ({ year: y, v: entry.years[y]?.grade70 ?? null }));
+  const series = yearsWindow.map((y) => ({ year: y, v: entry.years[y]?.[CF] ?? null }));
 
-  const cut = latestWithDelta(entry, 'grade70', baseYear);
+  const cut = latestWithDelta(entry, CF, baseYear);
   const rate = latestWithDelta(entry, 'rate', baseYear);
   const fill = latestWithDelta(entry, 'fill', baseYear);
   const score = latestWithDelta(entry, 'score70', baseYear);
@@ -321,7 +341,7 @@ function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, s
       </div>
 
       <div style={S.cutRow}>
-        <span style={S.cutLabel}>{entry.track} 최종등급 70%컷 추이</span>
+        <span style={S.cutLabel}>{entry.track} 최종등급 {cutPct}%컷 추이</span>
         <span style={S.cutValue}>{cut.v != null ? `${cut.v.toFixed(2)}등급` : '—'} <span style={S.cutYear}>({cut.y})</span></span>
       </div>
       <Sparkline series={series} />
@@ -340,8 +360,8 @@ function Card({ card, grade, baseYear, onPin, pinned, student, onSave, saving, s
       {jonghapSiblings?.length > 0 && (
         <div style={S.sibBox}>
           {jonghapSiblings.map((s) => {
-            const sc = latestWithDelta(s, 'grade70', baseYear);
-            const trend = yearsWindow.map((y) => s.years[y]?.grade70).filter((x) => x != null).map((x) => x.toFixed(1)).join(' → ');
+            const sc = latestWithDelta(s, CF, baseYear);
+            const trend = yearsWindow.map((y) => s.years[y]?.[CF]).filter((x) => x != null).map((x) => x.toFixed(1)).join(' → ');
             return (
               <div key={s.typeName} style={S.sibRow}>
                 <span style={S.sibTag}>종합</span>
@@ -375,6 +395,12 @@ function DetailModal({ card, guide, guideLoading, onClose }) {
   const { univ, entry, sunung } = card;
   const years = Object.keys(entry.years).sort();
   const fmt = (v, suffix = '') => (v == null ? '—' : `${v}${suffix}`);
+  const EXTRA = [
+    { key: 'grade80', label: '등급 80%컷' }, { key: 'grade85', label: '등급 85%컷' },
+    { key: 'grade90', label: '등급 90%컷' }, { key: 'grade100', label: '등급 100%컷' },
+    { key: 'gradeAvg', label: '등급 평균' },
+  ];
+  const extraCuts = EXTRA.filter((x) => years.some((y) => entry.years[y][x.key] != null));
   // 해당 전형구분(교과/종합)의 안내 표만 추림
   const guideTables = (guide?.tables || []).filter((t) =>
     t.some((row) => row[0] === '전형명' && row.slice(1).join(' ').includes(entry.track === '교과' ? '교과' : '종합')));
@@ -390,12 +416,14 @@ function DetailModal({ card, guide, guideLoading, onClose }) {
           <button style={S.mClose} onClick={onClose}>✕</button>
         </div>
 
+        {/* 85·90·100%컷과 평균등급은 제출한 대학이 드물다 — 값이 있는 전형에서만 열을 만든다 */}
         <div style={S.mSecTitle}>연도별 입시결과</div>
         <div style={{ overflowX: 'auto' }}>
           <table style={S.mTable}>
             <thead>
               <tr>
-                {['연도', '모집(최초+이월)', '경쟁률', '충원', '등급 50%컷', '등급 70%컷', '환산 50%', '환산 70%', '총점', '득점률(70%)'].map((h) => (
+                {['연도', '모집(최초+이월)', '경쟁률', '충원', '등급 50%컷', '등급 70%컷',
+                  ...extraCuts.map((x) => x.label), '환산 50%', '환산 70%', '총점', '득점률(70%)'].map((h) => (
                   <th key={h} style={S.mTh}>{h}</th>
                 ))}
               </tr>
@@ -411,6 +439,7 @@ function DetailModal({ card, guide, guideLoading, onClose }) {
                     <td style={S.mTd}>{fmt(d.fill, '명')}</td>
                     <td style={S.mTd}>{fmt(d.grade50)}</td>
                     <td style={{ ...S.mTd, fontWeight: 800, color: '#1d4fa8' }}>{fmt(d.grade70)}</td>
+                    {extraCuts.map((x) => <td key={x.key} style={S.mTd}>{fmt(d[x.key])}</td>)}
                     <td style={S.mTd}>{fmt(d.score50)}</td>
                     <td style={S.mTd}>{fmt(d.score70)}</td>
                     <td style={S.mTd}>{fmt(d.scoreTotal)}</td>
@@ -557,7 +586,7 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
               const s = p.snapshot || {};
               return <RepItem key={p.id} {...itemProps(`pl-${p.id}`)}
                 name={`${(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept}`}
-                sub={`${p.track}(${p.type_name || '-'}) · 70%컷 ${s.cut70 != null ? Number(s.cut70).toFixed(2) : '—'} · ${p.verdict || '판정 없음'}`} />;
+                sub={`${p.track}(${p.type_name || '-'}) · ${snapCut(s).pct}%컷 ${snapCut(s).v != null ? Number(snapCut(s).v).toFixed(2) : '—'} · ${p.verdict || '판정 없음'}`} />;
             })}
           </>
         )}
@@ -616,6 +645,7 @@ export default function IpgyeolConsole({ onAuthError }) {
 
   const [grade, setGrade] = useState(2.3);
   const [baseYear, setBaseYear] = useState('2026');
+  const [cutPct, setCutPct] = useState(70); // 기준 합격선 백분위
   const [track, setTrack] = useState('교과');
   const [deptQ, setDeptQ] = useState('');
   const [limit, setLimit] = useState(18);
@@ -759,9 +789,10 @@ export default function IpgyeolConsole({ onAuthError }) {
             gpa: grade, analysisExcerpt: analysisRec?.content || '',
           },
           cards: visible.map((c) => {
-            const snap = buildSnapshot(c.entry, baseYear);
+            const snap = buildSnapshot(c.entry, baseYear, cutPct);
             return { key: c.key, univ: c.univ.name, dept: c.entry.dept, track: c.entry.track, typeName: c.entry.typeName,
-              cut70: snap.cut70, cutYear: snap.cutYear, trend: snap.series, rate: snap.rate, fill: snap.fill, recruit: snap.recruit,
+              기준컷: `${cutPct}%컷`, cut: snap.cutSel ?? snap.cut70, cutYear: snap.cutSelYear || snap.cutYear,
+              trend: snap.series, rate: snap.rate, fill: snap.fill, recruit: snap.recruit,
               sunung: c.sunung?.text?.slice(0, 150) || null };
           }),
         }),
@@ -797,14 +828,14 @@ export default function IpgyeolConsole({ onAuthError }) {
           } : { gpa: grade },
           context: rep.comment || '',
           cards: target.map((c) => {
-            const snap = buildSnapshot(c.entry, baseYear);
-            const sig = cardSignals(c, grade, baseYear);
-            const v = verdict(snap.cut70, grade);
+            const snap = buildSnapshot(c.entry, baseYear, cutPct);
+            const sig = cardSignals(c, grade, baseYear, cutPct);
+            const v = verdict(snap.cutSel ?? snap.cut70, grade);
             return {
               key: c.key, univ: c.univ.name, region: c.univ.region, dept: c.entry.dept,
               track: c.entry.track, typeName: c.entry.typeName,
               학생내신: grade, 배치판정: v ? v.label : null,
-              cut70: snap.cut70, cutYear: snap.cutYear, 연도별70컷: snap.series,
+              기준컷: `${cutPct}%컷`, cut: snap.cutSel ?? snap.cut70, cutYear: snap.cutSelYear || snap.cutYear, 연도별컷: snap.series,
               경쟁률: snap.rate, 충원: snap.fill, 모집: snap.recruit, 득점률: snap.pct70,
               수능최저: c.sunung?.text?.slice(0, 300) || null,
               자동산출지표: sig,
@@ -926,7 +957,7 @@ export default function IpgyeolConsole({ onAuthError }) {
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     const L = [];
     L.push(`[입결 리포트] ${rep.title || '입결 분석 리포트'}`);
-    L.push(`작성일 ${rep.dateText?.trim() || today} · 기준 내신 ${grade.toFixed(2)} · 기준 연도 ${baseYear}`
+    L.push(`작성일 ${rep.dateText?.trim() || today} · 기준 내신 ${grade.toFixed(2)} · 기준 연도 ${baseYear} · 기준 합격선 ${cutPct}%컷`
       + (student ? ` · ${student.name}${student.school ? `(${student.school})` : ''}` : ''));
 
     if (rep.comment?.trim()) L.push('', '[컨설턴트 총평]', rep.comment.trim());
@@ -947,7 +978,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       pls.forEach((p, i) => {
         const s = p.snapshot || {};
         L.push(`${i + 1}. ${(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'})`
-          + ` · 판정 ${p.verdict || '-'} · 70%컷 ${s.cut70 ?? '-'}${s.cutYear ? `(${s.cutYear})` : ''}`
+          + ` · 판정 ${p.verdict || '-'} · ${snapCut(s).pct}%컷 ${snapCut(s).v ?? '-'}${snapCut(s).year ? `(${snapCut(s).year})` : ''}`
           + ` · 경쟁률 ${s.rate ?? '-'} · 모집 ${s.recruit ?? '-'}명 · 충원 ${s.fill ?? '-'}명 · 저장내신 ${p.grade ?? '-'}`);
         if (s.aiReason) L.push(`   판정 근거: ${s.aiReason}`);
         if (memoOf(`pl-${p.id}`)) L.push(`   메모: ${memoOf(`pl-${p.id}`)}`);
@@ -971,12 +1002,12 @@ export default function IpgyeolConsole({ onAuthError }) {
       if (rep.showAnalysis) (analysis?.cards || []).forEach((a) => { aiMap[a.key] = a; });
       L.push('', `[전형 카드별 분석] ${cds.length}건`);
       cds.forEach((c) => {
-        const sig = rep.showWhy ? cardSignals(c, grade, baseYear) : { pros: [], cons: [], risks: [] };
+        const sig = rep.showWhy ? cardSignals(c, grade, baseYear, cutPct) : { pros: [], cons: [], risks: [] };
         const a = aiMap[c.key];
-        const cut = latestWithDelta(c.entry, 'grade70', baseYear);
+        const cut = latestWithDelta(c.entry, cutField(cutPct), baseYear);
         const v = verdict(cut.v, grade);
         L.push('', `■ ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
-          + ` · 70%컷 ${cut.v != null ? cut.v.toFixed(2) : '-'}${cut.y ? `(${cut.y})` : ''} · 배치 ${v ? v.label : '-'}`
+          + ` · ${cutPct}%컷 ${cut.v != null ? cut.v.toFixed(2) : '-'}${cut.y ? `(${cut.y})` : ''} · 배치 ${v ? v.label : '-'}`
           + (a?.headline ? ` — ${a.headline}` : ''));
         [...sig.pros, ...(a?.pros || [])].forEach((t) => L.push(`  [유리] ${t}`));
         [...sig.cons, ...(a?.cons || [])].forEach((t) => L.push(`  [불리] ${t}`));
@@ -1035,13 +1066,14 @@ export default function IpgyeolConsole({ onAuthError }) {
 
     const plRows = [...repPlacements].sort((a, b) => VOR.indexOf(a.verdict) - VOR.indexOf(b.verdict)).map((p) => {
       const s = p.snapshot || {};
-      const now = verdict(s.cut70, grade);
-      const saved = verdict(s.cut70, Number(p.grade));
+      const sc = snapCut(s);
+      const now = verdict(sc.v, grade);
+      const saved = verdict(sc.v, Number(p.grade));
       const changed = now && saved && now.label !== saved.label;
       return `<tr>
         <td class="v v-${esc(p.verdict)}">${esc(p.verdict || '—')}</td>
         <td><b>${esc((p.univ_name || '').replace(/\[.*\]$/, ''))}</b> ${esc(p.dept)}<div class="sub">${esc(p.track)}(${esc(p.type_name || '-')})</div></td>
-        <td class="num">${s.cut70 != null ? Number(s.cut70).toFixed(2) : '—'}<div class="sub">${esc(s.cutYear || p.base_year || '')}</div></td>
+        <td class="num">${sc.v != null ? Number(sc.v).toFixed(2) : '—'}<div class="sub">${esc(sc.year || p.base_year || '')}${sc.pct !== 70 ? ` · ${sc.pct}%` : ''}</div></td>
         <td class="num">${s.rate ?? '—'}</td>
         <td class="num">${s.recruit != null ? `${s.recruit}명` : '—'}</td>
         <td class="num">${s.fill != null ? `${s.fill}명` : '—'}</td>
@@ -1089,7 +1121,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       return hit / Math.min(A.size, B.size) >= 0.5;
     });
     function whyBlock(c) {
-      const sig = rep.showWhy ? cardSignals(c, grade, baseYear) : { pros: [], cons: [], risks: [] };
+      const sig = rep.showWhy ? cardSignals(c, grade, baseYear, cutPct) : { pros: [], cons: [], risks: [] };
       const a = aiCardMap[c.key];
       const fresh = (arr, base) => (arr || []).filter((t) => t && !overlaps(t, base));
       const pros = [...sig.pros, ...fresh(a?.pros, sig.pros)];
@@ -1118,7 +1150,7 @@ ${(ov.risks || []).length ? `<div class="ov-sec risk"><b>전체 리스크</b><ul
     for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWin.push(String(y));
 
     const cardBlocks = repCardList.map((c) => {
-      const cut = latestWithDelta(c.entry, 'grade70', baseYear);
+      const cut = latestWithDelta(c.entry, cutField(cutPct), baseYear);
       const rate = latestWithDelta(c.entry, 'rate', baseYear);
       const fill = latestWithDelta(c.entry, 'fill', baseYear);
       const rec = latestWithDelta(c.entry, 'recruit', baseYear);
@@ -1128,7 +1160,8 @@ ${(ov.risks || []).length ? `<div class="ov-sec risk"><b>전체 리스크</b><ul
       const ai = aiJudgments[c.key];
       const trend = yearsWin.map((y) => {
         const d = c.entry.years[y];
-        return `<td class="num">${d?.grade70 != null ? d.grade70.toFixed(2) : '—'}<div class="sub">${d?.rate != null ? `${d.rate}:1` : ''}</div></td>`;
+        const cv = d?.[cutField(cutPct)];
+        return `<td class="num">${cv != null ? cv.toFixed(2) : '—'}<div class="sub">${d?.rate != null ? `${d.rate}:1` : ''}</div></td>`;
       }).join('');
       return `<div class="card">
         <div class="card-head">
@@ -1141,7 +1174,7 @@ ${(ov.risks || []).length ? `<div class="ov-sec risk"><b>전체 리스크</b><ul
           </div>
         </div>
         <table class="mini"><thead><tr><th>연도</th>${yearsWin.map((y) => `<th class="num">${y}</th>`).join('')}</tr></thead>
-        <tbody><tr><td>70%컷 / 경쟁률</td>${trend}</tr></tbody></table>
+        <tbody><tr><td>${cutPct}%컷 / 경쟁률</td>${trend}</tr></tbody></table>
         <div class="kv">
           <span><b>경쟁률</b> ${rate.v ?? '—'}</span>
           <span><b>충원</b> ${fill.v != null ? `${fill.v}명` : '—'}</span>
@@ -1230,6 +1263,7 @@ ${rep.lead ? `<div class="lead">${esc(rep.lead)}</div>` : ''}
   <div><b>학생</b> ${student ? esc(student.name) + (student.school ? ` · ${esc(student.school)}` : '') : '미지정'}</div>
   <div><b>기준 내신</b> ${grade.toFixed(2)}등급</div>
   <div><b>기준 연도</b> ${esc(baseYear)}</div>
+  <div><b>기준 합격선</b> 최종등급 ${cutPct}%컷</div>
   <div><b>작성일</b> ${esc(rep.dateText?.trim() || today)}</div>
   ${rep.author?.trim() ? `<div><b>작성</b> ${esc(rep.author)}</div>` : ''}
 </div>
@@ -1241,7 +1275,7 @@ ${overallBlock}
 
 ${rep.showPlacements ? `<h2>저장된 배치 기록 (${repPlacements.length}건)</h2>
 ${repPlacements.length ? `<table>
-<thead><tr><th>판정</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>저장내신</th><th>비고</th></tr></thead>
+<thead><tr><th>판정</th><th>대학 · 학과 · 전형</th><th>합격선</th><th>경쟁률</th><th>모집</th><th>충원</th><th>저장내신</th><th>비고</th></tr></thead>
 <tbody>${plRows}</tbody></table>` : '<div class="empty">저장된 배치가 없습니다.</div>'}` : ''}
 
 ${rep.showSearch && aiSearch ? `<h2>후보 검토</h2>
@@ -1281,10 +1315,10 @@ function toggleEdit(){
     if (!student) return;
     setSavingKey(card.key);
     try {
-      const snap = buildSnapshot(card.entry, baseYear);
+      const snap = buildSnapshot(card.entry, baseYear, cutPct);
       const ai = aiJudgments[card.key];
       if (ai) { snap.aiVerdict = ai.verdict; snap.aiReason = ai.reason; }
-      const v = verdict(snap.cut70, grade);
+      const v = verdict(snap.cutSel ?? snap.cut70, grade);
       // 같은 (대학·학과·전형) 기존 기록은 덮어쓰기
       const dup = placements.find((p) => p.unv_cd === card.univ.unvCd && p.dept === card.entry.dept
         && p.track === card.entry.track && p.type_name === card.entry.typeName);
@@ -1402,6 +1436,12 @@ function toggleEdit(){
       return next;
     });
   }
+  // 선택한 백분위 컷이 이 대학·전형에 실제로 몇 개나 공개돼 있는지 (빈 화면을 오해하지 않게)
+  const cutCoverage = useMemo(
+    () => cards.filter((c) => Object.values(c.entry.years).some((y) => y[cutField(cutPct)] != null)).length,
+    [cards, cutPct],
+  );
+
   const pinnedKeys = new Set(pins.map((p) => p.key));
   // 고정 카드·배치 카드는 위쪽에 이미 떠 있으므로 아래 목록에서는 뺀다(같은 카드가 두 번 보이지 않게)
   const autoKeys = new Set([...pinnedKeys, ...placementCards.map((c) => c.key)]);
@@ -1482,7 +1522,7 @@ function toggleEdit(){
             </select>
           </div>
           <div style={S.ctrlGroup}>
-            <span style={S.ctrlLabel}>학생 내신 등급 <span style={S.ctrlHint}>(최종등급 70%컷 대비)</span></span>
+            <span style={S.ctrlLabel}>학생 내신 등급 <span style={S.ctrlHint}>(최종등급 {cutPct}%컷 대비)</span></span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <input type="range" min="1" max="6" step="0.05" value={Math.min(6, grade)}
                 onChange={(e) => setGrade(Number(e.target.value))} style={{ width: 170, accentColor: '#2b6fe3' }} />
@@ -1508,6 +1548,20 @@ function toggleEdit(){
                 <button key={tr} onClick={() => setTrack(tr)} style={{ ...S.segBtn, ...(track === tr ? S.segOn : {}) }}>{tr}</button>
               ))}
             </div>
+          </div>
+          <div style={S.ctrlGroup}>
+            <span style={S.ctrlLabel}>기준 합격선 <span style={S.ctrlHint}>(최종등록자 백분위 컷)</span></span>
+            <div style={S.segRow}>
+              {CUT_OPTS.map((p) => (
+                <button key={p} onClick={() => setCutPct(p)} style={{ ...S.segBtn, ...(cutPct === p ? S.segOn : {}) }}>{p}%</button>
+              ))}
+            </div>
+            <span style={S.ctrlHint}>
+              {cutPct >= 85
+                ? `${cutPct}%컷은 제출한 대학이 매우 적습니다${cards.length ? ` — 이 대학 ${track} 카드 ${cards.length}개 중 ${cutCoverage}개 공개` : ''}`
+                : cutPct === 50 ? '50%컷 = 합격자 절반이 이 성적 이상 (70%컷보다 문턱이 높게 보입니다)'
+                  : '70%컷 = 합격자 70%가 이 성적 이상 (통상 기준선)'}
+            </span>
           </div>
         </div>
 
@@ -1566,7 +1620,7 @@ function toggleEdit(){
             {aiSearch.results.length > 0 && (
               <div style={S.grid}>
                 {aiSearch.results.map((c) => (
-                  <Card key={`ai-${c.key}`} card={c} grade={grade} baseYear={baseYear} onPin={togglePin}
+                  <Card key={`ai-${c.key}`} card={c} grade={grade} baseYear={baseYear} cutPct={cutPct} onPin={togglePin}
                     pinned={pinnedKeys.has(c.key)} student={student} onSave={savePlacement}
                     saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail} ai={aiJudgments[c.key]} />
                 ))}
@@ -1645,8 +1699,9 @@ function toggleEdit(){
                 <div key={vl} style={{ marginBottom: 6 }}>
                   {group.map((p) => {
                     const snap = p.snapshot || {};
-                    const savedV = verdict(snap.cut70, Number(p.grade));
-                    const nowV = verdict(snap.cut70, grade);
+                    const sc = snapCut(snap);
+                    const savedV = verdict(sc.v, Number(p.grade));
+                    const nowV = verdict(sc.v, grade);
                     const changed = nowV && savedV && nowV.label !== savedV.label;
                     return (
                       <div key={p.id} style={S.plRow}>
@@ -1659,7 +1714,7 @@ function toggleEdit(){
                           <b>{p.univ_name.replace(/\[.*\]$/, '')}</b> {p.dept} <span style={S.plType}>{p.track}({(p.type_name || '').replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '')})</span>
                         </span>
                         <span style={S.plMeta}>
-                          70%컷 {snap.cut70 != null ? Number(snap.cut70).toFixed(2) : '—'}({snap.cutYear || p.base_year}) ·
+                          {sc.pct}%컷 {sc.v != null ? Number(sc.v).toFixed(2) : '—'}({sc.year || p.base_year}) ·
                           저장 내신 {p.grade != null ? Number(p.grade).toFixed(2) : '—'} · {String(p.created_at).slice(0, 10)}
                         </span>
                         {changed && (
@@ -1688,7 +1743,7 @@ function toggleEdit(){
             {plOnlyCards.length > 0 && (
               <div style={S.grid}>
                 {plOnlyCards.map((c) => (
-                  <Card key={`pl-${c.key}`} card={c} grade={grade} baseYear={baseYear} onPin={togglePin}
+                  <Card key={`pl-${c.key}`} card={c} grade={grade} baseYear={baseYear} cutPct={cutPct} onPin={togglePin}
                     pinned={false} student={student} onSave={savePlacement} saving={savingKey === c.key}
                     saved={isSaved(c)} onDetail={openDetail} ai={aiJudgments[c.key]} />
                 ))}
@@ -1703,7 +1758,7 @@ function toggleEdit(){
             <div style={S.pinHead}>📌 고정 카드 (대학 간 비교)</div>
             <div style={S.grid}>
               {pins.map((c) => (
-                <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned
+                <Card key={c.key} card={c} grade={grade} baseYear={baseYear} cutPct={cutPct} onPin={togglePin} pinned
                   student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail}
                   ai={aiJudgments[c.key]} />
               ))}
@@ -1720,7 +1775,7 @@ function toggleEdit(){
         {detail && (
           <div style={S.grid}>
             {unpinnedCards.slice(0, limit).map((c) => (
-              <Card key={c.key} card={c} grade={grade} baseYear={baseYear} onPin={togglePin} pinned={false}
+              <Card key={c.key} card={c} grade={grade} baseYear={baseYear} cutPct={cutPct} onPin={togglePin} pinned={false}
                 student={student} onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)} onDetail={openDetail}
                 ai={aiJudgments[c.key]} />
             ))}
@@ -1752,7 +1807,8 @@ function toggleEdit(){
         <p style={S.footNote}>
           출처: 대학어디가(한국대학교육협의회) 공식 발표 입시결과. 2021~2025는 발표자료 취합본, 2026은 어디가 대학별
           입시결과 서비스 수집분입니다. ‘실질경쟁률(추정)’은 충원인원을 반영한 단순 추정치이며, ‘환산 득점률’은
-          환산점수 70%컷 ÷ 학생부 총점입니다. 배치 판정(안정·적정·소신·위험)은 70%컷과 입력 내신의 차이에 따른
+          환산점수 70%컷 ÷ 학생부 총점입니다. 합격선은 어디가가 발표하는 백분위(50·70%, 일부 대학 85·90·100%)만
+          고를 수 있고 40%·20%컷은 발표 항목 자체가 없습니다. 배치 판정(안정·적정·소신·위험)은 선택한 컷과 입력 내신의 차이에 따른
           참고용 지표로, 실제 지원 판단은 반영교과·최저·모집인원 변화를 함께 검토해야 합니다.
         </p>
       </div>
