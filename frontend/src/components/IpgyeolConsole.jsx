@@ -473,7 +473,7 @@ function RepItem({ k, name, sub, off, memo, onToggle, onMemo }) {
 // 입결 리포트 편집창 — 인쇄 전에 제목·총평·포함 항목·항목별 코멘트를 직접 손본다.
 // 상담 자리에서 내미는 종이라 매번 뺄 항목과 덧붙일 말이 다르다. 그래서 고정된 양식으로 뽑지 않는다.
 function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSearch, cards, student, grade, baseYear,
-  analysis, analyzing, analysisMsg, onAnalyze, onClose, onPrint }) {
+  analysis, analyzing, analysisMsg, onAnalyze, assigningReport, assignedReport, onAssign, onClose, onPrint }) {
   const setF = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.value }));
   const setC = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.checked }));
   const onMemo = (k, v) => setMemo((m) => ({ ...m, [k]: v }));
@@ -591,6 +591,13 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
           <button style={S.rpReset} onClick={() => { setRep({ ...DEFAULT_REPORT }); setOff({}); setMemo({}); }}>기본값으로 되돌리기</button>
           <span style={S.rpHint}>인쇄 창에서도 “✏ 직접 수정”을 켜면 글자를 바로 고칠 수 있습니다</span>
           <button style={S.rpCancel} onClick={onClose}>닫기</button>
+          <button style={{ ...S.rpAssign, ...(assignedReport ? S.rpAssignDone : {}) }} onClick={onAssign}
+            disabled={!student || assigningReport || assignedReport}
+            title={student ? '지금 보이는 그대로(뺀 항목·코멘트·분석 포함) 학생 기록으로 저장합니다. 상담·브리핑·AI가 근거로 읽습니다.'
+              : '학생을 먼저 선택하세요'}>
+            {assigningReport ? '배정 중…' : assignedReport ? `✓ ${student?.name} 기록에 저장됨`
+              : `📋 ${student ? `${student.name} 학생` : '학생'} 기록으로 배정`}
+          </button>
           <button style={S.rpGo} onClick={onPrint}>🖨 리포트 열기</button>
         </div>
       </div>
@@ -908,6 +915,106 @@ export default function IpgyeolConsole({ onAuthError }) {
     } catch (e) {
       if (e.auth) onAuthError?.(); else setError(`학생 배정 실패: ${e.message}`);
     } finally { setAssigning(false); }
+  }
+
+  // ── 리포트를 학생 기록으로 ──
+  // 인쇄물은 상담이 끝나면 사라진다. 같은 내용을 글로 남겨야 다음 상담·브리핑·AI가 근거로 읽는다.
+  // 인쇄본과 같은 취사선택(뺀 항목·코멘트·분석 포함 여부)을 그대로 따른다.
+  function reportToText() {
+    const on = (k) => !repOff[k];
+    const memoOf = (k) => (repMemo[k] || '').trim();
+    const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    const L = [];
+    L.push(`[입결 리포트] ${rep.title || '입결 분석 리포트'}`);
+    L.push(`작성일 ${rep.dateText?.trim() || today} · 기준 내신 ${grade.toFixed(2)} · 기준 연도 ${baseYear}`
+      + (student ? ` · ${student.name}${student.school ? `(${student.school})` : ''}` : ''));
+
+    if (rep.comment?.trim()) L.push('', '[컨설턴트 총평]', rep.comment.trim());
+
+    const ov = rep.showAnalysis ? analysis?.overall : null;
+    if (ov) {
+      L.push('', '[종합 분석]');
+      if (ov.headline) L.push(ov.headline);
+      if (ov.summary) L.push(ov.summary);
+      if (ov.strategy) L.push('', `· 지원 전략: ${ov.strategy}`);
+      (ov.risks || []).forEach((r) => L.push(`· 전체 리스크: ${r}`));
+    }
+
+    if (rep.showPlacements) {
+      const pls = placements.filter((p) => on(`pl-${p.id}`));
+      L.push('', `[저장된 배치 기록] ${pls.length}건`);
+      if (!pls.length) L.push('(없음)');
+      pls.forEach((p, i) => {
+        const s = p.snapshot || {};
+        L.push(`${i + 1}. ${(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'})`
+          + ` · 판정 ${p.verdict || '-'} · 70%컷 ${s.cut70 ?? '-'}${s.cutYear ? `(${s.cutYear})` : ''}`
+          + ` · 경쟁률 ${s.rate ?? '-'} · 모집 ${s.recruit ?? '-'}명 · 충원 ${s.fill ?? '-'}명 · 저장내신 ${p.grade ?? '-'}`);
+        if (s.aiReason) L.push(`   판정 근거: ${s.aiReason}`);
+        if (memoOf(`pl-${p.id}`)) L.push(`   메모: ${memoOf(`pl-${p.id}`)}`);
+      });
+    }
+
+    if (rep.showSearch && aiSearch) {
+      const rs = (aiSearch.results || []).filter((c, i) => on(`sr-${i}-${c.key}`));
+      L.push('', `[후보 검토] ${aiSearch.query}`);
+      if (aiSearch.summary) L.push(aiSearch.summary);
+      rs.forEach((c, i) => {
+        const m = c.match || {};
+        L.push(`${i + 1}. ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
+          + ` · 70%컷 ${m.cut70 ?? '-'} · 경쟁률 ${m.rate ?? '-'} · 판정 ${m.verdict || '-'}`);
+      });
+    }
+
+    if (rep.showCards) {
+      const cds = reportCards.filter((c) => on(`cd-${c.key}`));
+      const aiMap = {};
+      if (rep.showAnalysis) (analysis?.cards || []).forEach((a) => { aiMap[a.key] = a; });
+      L.push('', `[전형 카드별 분석] ${cds.length}건`);
+      cds.forEach((c) => {
+        const sig = rep.showWhy ? cardSignals(c, grade, baseYear) : { pros: [], cons: [], risks: [] };
+        const a = aiMap[c.key];
+        const cut = latestWithDelta(c.entry, 'grade70', baseYear);
+        const v = verdict(cut.v, grade);
+        L.push('', `■ ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
+          + ` · 70%컷 ${cut.v != null ? cut.v.toFixed(2) : '-'}${cut.y ? `(${cut.y})` : ''} · 배치 ${v ? v.label : '-'}`
+          + (a?.headline ? ` — ${a.headline}` : ''));
+        [...sig.pros, ...(a?.pros || [])].forEach((t) => L.push(`  [유리] ${t}`));
+        [...sig.cons, ...(a?.cons || [])].forEach((t) => L.push(`  [불리] ${t}`));
+        [...sig.risks, ...(a?.risks || [])].forEach((t) => L.push(`  [리스크] ${t}`));
+        if (a?.watch) L.push(`  [지원 전 확인] ${a.watch}`);
+        if (memoOf(`cd-${c.key}`)) L.push(`  [메모] ${memoOf(`cd-${c.key}`)}`);
+        if (c.sunung?.text) L.push(`  [수능최저] ${c.sunung.text.replace(/\s+/g, ' ')}`);
+      });
+    }
+
+    if (rep.note?.trim()) L.push('', rep.note.trim());
+    return L.join('\n');
+  }
+
+  const [assigningReport, setAssigningReport] = useState(false);
+  const [assignedReport, setAssignedReport] = useState(false);
+
+  async function assignReportToStudent() {
+    if (!student) return;
+    setAssigningReport(true);
+    try {
+      const cnt = reportCards.filter((c) => !repOff[`cd-${c.key}`]).length;
+      const j = await api(`/api/board/students/${student.id}/records`, {
+        method: 'POST',
+        body: {
+          type: '입결 분석',
+          title: `입결 리포트 — ${rep.title || '입결 분석 리포트'} (카드 ${cnt}건)`,
+          content: reportToText(),
+        },
+      });
+      if (!j.success) throw new Error(j.message || '배정 실패');
+      setAssignedReport(true);
+      setTimeout(() => setAssignedReport(false), 4000);
+      // 자료 패널을 열어둔 경우 방금 남긴 기록이 바로 보이게 갱신
+      api(`/api/board/students/${student.id}/context`).then((r) => { if (r.success) setDossier(r); }).catch(() => {});
+    } catch (e) {
+      if (e.auth) onAuthError?.(); else setAnalysisMsg(`기록 배정 실패: ${e.message}`);
+    } finally { setAssigningReport(false); }
   }
 
   // ── 입결 리포트 (인쇄용 새 창) ──
@@ -1632,6 +1739,7 @@ function toggleEdit(){
             grade={grade} baseYear={baseYear}
             analysis={analysis} analyzing={analyzing} analysisMsg={analysisMsg}
             onAnalyze={() => runReportAnalysis(reportCards.filter((c) => !repOff[`cd-${c.key}`]))}
+            assigningReport={assigningReport} assignedReport={assignedReport} onAssign={assignReportToStudent}
             onClose={() => setReportOpen(false)}
             onPrint={() => { setReportOpen(false); buildIpgyeolReport(); }} />
         )}
@@ -1789,6 +1897,8 @@ const S = {
   rpHint: { fontSize: 11.5, color: '#8492a5', marginLeft: 'auto' },
   rpReset: { border: '1px solid #e3e9f1', background: '#fff', color: '#8492a5', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
   rpCancel: { border: '1px solid #d7dfea', background: '#fff', color: '#5c6b7c', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+  rpAssign: { border: '1px solid #c3dcf7', background: '#e8f1fc', color: '#1d4fa8', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' },
+  rpAssignDone: { background: '#e6f6ee', border: '1px solid #bfe8d2', color: '#1a7f4e', cursor: 'default' },
   rpGo: { border: 'none', background: '#2b6fe3', color: '#fff', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 800, cursor: 'pointer' },
   placeholder: { background: '#fff', border: '1px dashed #d7dfea', borderRadius: 12, padding: '38px 20px', textAlign: 'center', color: '#5c6b7c', fontSize: 14, lineHeight: 1.7, marginBottom: 12 },
   moreBtn: { display: 'block', margin: '0 auto 10px', border: '1px solid #d7dfea', background: '#fff', color: '#1d4fa8', borderRadius: 9, padding: '8px 22px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
