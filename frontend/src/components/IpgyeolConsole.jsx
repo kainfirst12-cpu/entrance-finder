@@ -14,6 +14,22 @@ async function api(path, opts = {}) {
 
 const ADIGA_URL = 'https://www.adiga.kr/uct/acd/ade/criteriaAndResultView.do?menuId=PCUCTACD3100';
 const PIN_KEY = 'ef_ipgyeol_pins';
+const REPORT_KEY = 'ef_ipgyeol_report'; // 리포트 제목·총평 등 편집값 (상담 때마다 다시 쓰지 않게 남긴다)
+
+const DEFAULT_NOTE = `배치 판정(안정·적정·소신·위험)은 최종등급 70%컷과 기준 내신의 차이에 따른 참고용 지표입니다. 실제 지원 판단은 반영교과·수능최저·모집인원 변화를 함께 검토해야 합니다.
+올해 신설된 전형은 누적 입시결과가 존재하지 않아 이 리포트에 포함되지 않습니다.`;
+
+const DEFAULT_REPORT = {
+  title: '입결 분석 리포트',
+  lead: '2021~2026 다개년 입시결과 기반 지원 후보 검토',
+  author: '패스파인더 에듀 입시분석팀',
+  dateText: '',       // 비우면 오늘 날짜
+  comment: '',        // 컨설턴트 총평
+  showPlacements: true,
+  showSearch: true,
+  showCards: true,
+  note: DEFAULT_NOTE,
+};
 
 // SSE(keepalive) 응답 처리
 async function postForResult(url, opts) {
@@ -355,6 +371,123 @@ function DetailModal({ card, guide, guideLoading, onClose }) {
   );
 }
 
+// 리포트에 실을 항목 한 줄 (체크 + 코멘트).
+// ReportModal 안에 두면 렌더마다 새 컴포넌트가 되어 입력 중 포커스가 튄다 — 반드시 바깥에 둔다.
+function RepItem({ k, name, sub, off, memo, onToggle, onMemo }) {
+  return (
+    <div style={S.rpItem}>
+      <label style={S.rpItemHead}>
+        <input type="checkbox" checked={!off} onChange={() => onToggle(k)} />
+        <span style={{ ...S.rpItemName, ...(off ? S.rpItemDim : {}) }}>{name}</span>
+        <span style={S.rpItemSub}>{sub}</span>
+      </label>
+      <input style={S.rpMemo} value={memo} onChange={(e) => onMemo(k, e.target.value)} disabled={off}
+        placeholder="이 항목에 덧붙일 코멘트 (리포트 비고란에 들어갑니다)" />
+    </div>
+  );
+}
+
+// 입결 리포트 편집창 — 인쇄 전에 제목·총평·포함 항목·항목별 코멘트를 직접 손본다.
+// 상담 자리에서 내미는 종이라 매번 뺄 항목과 덧붙일 말이 다르다. 그래서 고정된 양식으로 뽑지 않는다.
+function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSearch, cards, student, grade, baseYear, onClose, onPrint }) {
+  const setF = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.value }));
+  const setC = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.checked }));
+  const onMemo = (k, v) => setMemo((m) => ({ ...m, [k]: v }));
+  const onToggle = (k) => setOff((o) => ({ ...o, [k]: !o[k] }));
+  const countOn = (keys) => keys.filter((k) => !off[k]).length;
+  const itemProps = (k) => ({ k, off: !!off[k], memo: memo[k] || '', onToggle, onMemo });
+
+  const plKeys = placements.map((p) => `pl-${p.id}`);
+  const srKeys = (aiSearch?.results || []).map((c, i) => `sr-${i}-${c.key}`);
+  const cdKeys = cards.map((c) => `cd-${c.key}`);
+
+  return (
+    <div style={S.mOverlay} onClick={onClose}>
+      <div style={{ ...S.mBox, maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
+        <div style={S.mHead}>
+          <div>
+            <div style={{ ...S.cardDept, fontSize: 18 }}>입결 리포트 편집</div>
+            <div style={S.cardType}>
+              {student ? `${student.name} 학생 · ` : ''}기준 내신 {grade.toFixed(2)} · 기준 연도 {baseYear}
+            </div>
+          </div>
+          <button style={S.mClose} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={S.rpSec}>표지</div>
+        <div style={S.rpGrid}>
+          <label style={S.rpField}><span style={S.rpLabel}>리포트 제목</span>
+            <input style={S.rpInput} value={rep.title} onChange={setF('title')} placeholder="입결 분석 리포트" /></label>
+          <label style={S.rpField}><span style={S.rpLabel}>부제 · 한 줄 설명</span>
+            <input style={S.rpInput} value={rep.lead} onChange={setF('lead')} placeholder="다개년 입시결과 기반 지원 후보 검토" /></label>
+          <label style={S.rpField}><span style={S.rpLabel}>작성</span>
+            <input style={S.rpInput} value={rep.author} onChange={setF('author')} placeholder="패스파인더 에듀 입시분석팀" /></label>
+          <label style={S.rpField}><span style={S.rpLabel}>작성일 <span style={S.ctrlHint}>(비우면 오늘 날짜)</span></span>
+            <input style={S.rpInput} value={rep.dateText} onChange={setF('dateText')} placeholder="2026년 8월 5일" /></label>
+        </div>
+
+        <div style={S.rpSec}>컨설턴트 총평 <span style={S.ctrlHint}>(리포트 맨 앞에 들어갑니다. 비우면 표시하지 않습니다)</span></div>
+        <textarea style={S.rpArea} rows={5} value={rep.comment} onChange={setF('comment')}
+          placeholder="예) 현재 내신 1.36 기준으로 지방 의약계열 교과전형은 적정~소신 구간입니다. 6장 중 2장은 안정 카드로 채우기를 권합니다." />
+
+        <div style={S.rpSec}>포함할 내용</div>
+        <div style={S.rpToggles}>
+          <label style={S.rpChk}><input type="checkbox" checked={rep.showPlacements} onChange={setC('showPlacements')} />
+            저장된 배치 기록 <span style={S.ctrlHint}>({countOn(plKeys)}/{plKeys.length}건)</span></label>
+          <label style={S.rpChk}><input type="checkbox" checked={rep.showSearch} onChange={setC('showSearch')} disabled={!aiSearch} />
+            AI 검색 후보 검토 <span style={S.ctrlHint}>({countOn(srKeys)}/{srKeys.length}건)</span></label>
+          <label style={S.rpChk}><input type="checkbox" checked={rep.showCards} onChange={setC('showCards')} />
+            전형 카드 상세 <span style={S.ctrlHint}>({countOn(cdKeys)}/{cdKeys.length}건)</span></label>
+        </div>
+
+        {rep.showPlacements && placements.length > 0 && (
+          <>
+            <div style={S.rpSec}>배치 기록 — 뺄 항목은 체크를 풀어주세요</div>
+            {placements.map((p) => {
+              const s = p.snapshot || {};
+              return <RepItem key={p.id} {...itemProps(`pl-${p.id}`)}
+                name={`${(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept}`}
+                sub={`${p.track}(${p.type_name || '-'}) · 70%컷 ${s.cut70 != null ? Number(s.cut70).toFixed(2) : '—'} · ${p.verdict || '판정 없음'}`} />;
+            })}
+          </>
+        )}
+
+        {rep.showSearch && (aiSearch?.results || []).length > 0 && (
+          <>
+            <div style={S.rpSec}>AI 검색 후보</div>
+            {aiSearch.results.map((c, i) => (
+              <RepItem key={`${i}-${c.key}`} {...itemProps(`sr-${i}-${c.key}`)}
+                name={`${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept}`}
+                sub={`${c.entry.track}(${c.entry.typeName}) · 70%컷 ${c.match?.cut70 ?? '—'} · ${c.match?.verdict || '판정 없음'}`} />
+            ))}
+          </>
+        )}
+
+        {rep.showCards && cards.length > 0 && (
+          <>
+            <div style={S.rpSec}>전형 카드</div>
+            {cards.map((c) => (
+              <RepItem key={c.key} {...itemProps(`cd-${c.key}`)}
+                name={`${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept}`}
+                sub={`${c.entry.track}(${c.entry.typeName}) · ${c.univ.region}`} />
+            ))}
+          </>
+        )}
+
+        <div style={S.rpSec}>하단 안내 문구</div>
+        <textarea style={S.rpArea} rows={3} value={rep.note} onChange={setF('note')} />
+
+        <div style={S.rpFoot}>
+          <button style={S.rpReset} onClick={() => { setRep({ ...DEFAULT_REPORT }); setOff({}); setMemo({}); }}>기본값으로 되돌리기</button>
+          <span style={S.rpHint}>인쇄 창에서도 “✏ 직접 수정”을 켜면 글자를 바로 고칠 수 있습니다</span>
+          <button style={S.rpCancel} onClick={onClose}>닫기</button>
+          <button style={S.rpGo} onClick={onPrint}>🖨 리포트 열기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function IpgyeolConsole({ onAuthError }) {
   const [univs, setUnivs] = useState([]);
   const [q, setQ] = useState('');
@@ -402,6 +535,21 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [dossier, setDossier] = useState(null);
   const [dossierOpen, setDossierOpen] = useState(false);
   const [openRecId, setOpenRecId] = useState(null);
+
+  // 배치 저장 카드 — 학생에게 배치되면 고정(📌)하지 않아도 카드가 뜬다
+  const [univCache, setUnivCache] = useState({}); // unvCd → detail
+  const [placementCards, setPlacementCards] = useState([]);
+  const [plCardsLoading, setPlCardsLoading] = useState(false);
+
+  // 리포트 편집
+  const [reportOpen, setReportOpen] = useState(false);
+  const [rep, setRep] = useState(() => {
+    try { return { ...DEFAULT_REPORT, ...JSON.parse(localStorage.getItem(REPORT_KEY) || '{}') }; }
+    catch { return { ...DEFAULT_REPORT }; }
+  });
+  const [repOff, setRepOff] = useState({});   // 리포트에서 뺀 항목 (기본은 전부 포함)
+  const [repMemo, setRepMemo] = useState({}); // 항목별 코멘트
+  useEffect(() => { try { localStorage.setItem(REPORT_KEY, JSON.stringify(rep)); } catch {} }, [rep]);
 
   // AI 검색
   const [aiQ, setAiQ] = useState('');
@@ -466,8 +614,10 @@ export default function IpgyeolConsole({ onAuthError }) {
   // ── AI 종합 판정 (생기부 분석 기반) — list를 주면 그 카드들만 판정 ──
   async function runAiJudge(list) {
     if (!student) return;
+    // 대학을 열지 않았어도 학생 배치 카드가 있으면 그걸 판정 대상으로 삼는다
     const source = list?.length ? list
-      : (detail ? [...pins.filter((p) => p.univ.unvCd === detail.unvCd), ...unpinnedCards] : []);
+      : (detail ? [...pins.filter((p) => p.univ.unvCd === detail.unvCd), ...placementCards, ...unpinnedCards]
+        : [...placementCards]);
     const visible = source.slice(0, 12);
     if (!visible.length) { setError('판정할 카드가 없습니다. 대학을 선택하거나 AI 검색을 먼저 실행하세요.'); return; }
     const creds = aiCreds();
@@ -602,12 +752,20 @@ export default function IpgyeolConsole({ onAuthError }) {
   // ── 입결 리포트 (인쇄용 새 창) ──
   // 배치 기록과 AI 검색 결과를 한 장으로 묶는다. 상담 자리에서 학부모에게 바로 보여주는 용도라
   // 화면 조작 없이 인쇄만 하면 되게 만든다.
+  // 편집창(ReportModal)에서 고른 제목·총평·포함 항목·항목별 코멘트를 그대로 반영한다.
   function buildIpgyeolReport() {
     const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const nl = (s) => esc(s).replace(/\n/g, '<br>');
     const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     const VOR = ['안정', '적정', '소신', '위험'];
+    const on = (k) => !repOff[k];
+    const memoOf = (k) => (repMemo[k] || '').trim();
 
-    const plRows = [...placements].sort((a, b) => VOR.indexOf(a.verdict) - VOR.indexOf(b.verdict)).map((p) => {
+    const repPlacements = rep.showPlacements ? placements.filter((p) => on(`pl-${p.id}`)) : [];
+    const repSearch = rep.showSearch ? (aiSearch?.results || []).filter((c, i) => on(`sr-${i}-${c.key}`)) : [];
+    const repCardList = rep.showCards ? reportCards.filter((c) => on(`cd-${c.key}`)) : [];
+
+    const plRows = [...repPlacements].sort((a, b) => VOR.indexOf(a.verdict) - VOR.indexOf(b.verdict)).map((p) => {
       const s = p.snapshot || {};
       const now = verdict(s.cut70, grade);
       const saved = verdict(s.cut70, Number(p.grade));
@@ -620,15 +778,16 @@ export default function IpgyeolConsole({ onAuthError }) {
         <td class="num">${s.recruit != null ? `${s.recruit}명` : '—'}</td>
         <td class="num">${s.fill != null ? `${s.fill}명` : '—'}</td>
         <td class="num">${p.grade != null ? Number(p.grade).toFixed(2) : '—'}</td>
-        <td>${changed ? `<span class="warn">현재 ${grade.toFixed(2)} 기준 → ${esc(now.label)}</span>` : ''}${s.aiReason ? `<div class="sub">판정 근거: ${esc(s.aiReason)}</div>` : ''}</td>
+        <td>${changed ? `<span class="warn">현재 ${grade.toFixed(2)} 기준 → ${esc(now.label)}</span>` : ''}${s.aiReason ? `<div class="sub">판정 근거: ${esc(s.aiReason)}</div>` : ''}${memoOf(`pl-${p.id}`) ? `<div class="memo">${nl(memoOf(`pl-${p.id}`))}</div>` : ''}</td>
       </tr>`;
     }).join('');
 
-    const srcRows = (aiSearch?.results || []).map((c, i) => {
+    const srcRows = repSearch.map((c, i) => {
       const m = c.match || {};
+      const mk = memoOf(`sr-${(aiSearch?.results || []).indexOf(c)}-${c.key}`);
       return `<tr>
         <td class="num">${i + 1}</td>
-        <td><b>${esc(c.univ.name.replace(/\[.*\]$/, ''))}</b> ${esc(c.entry.dept)}<div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)}) · ${esc(c.univ.region)}</div></td>
+        <td><b>${esc(c.univ.name.replace(/\[.*\]$/, ''))}</b> ${esc(c.entry.dept)}<div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)}) · ${esc(c.univ.region)}</div>${mk ? `<div class="memo">${nl(mk)}</div>` : ''}</td>
         <td class="num">${m.cut70 ?? '—'}<div class="sub">${esc(m.cutYear || '')}</div></td>
         <td class="num">${m.rate ?? '—'}</td>
         <td class="num">${m.recruit != null ? `${m.recruit}명` : '—'}</td>
@@ -639,14 +798,12 @@ export default function IpgyeolConsole({ onAuthError }) {
 
     const chips = aiSearch ? filterChips(aiSearch.filter).map((c) => `<span class="chip">${esc(c)}</span>`).join('') : '';
 
-    // 화면에 띄워둔 카드 — 고정 카드 + 현재 대학의 카드. 카드가 리포트의 본체다.
+    // 카드가 리포트의 본체다 — 고정 카드 + 학생 배치 카드 + 지금 보고 있는 대학의 카드.
     // 연도별 추이까지 넣어야 "왜 이 판정인지"가 종이 위에서 읽힌다.
-    const reportCards = [...pins, ...unpinnedCards.slice(0, limit)]
-      .filter((c, i, arr) => arr.findIndex((x) => x.key === c.key) === i);
     const yearsWin = [];
     for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWin.push(String(y));
 
-    const cardBlocks = reportCards.map((c) => {
+    const cardBlocks = repCardList.map((c) => {
       const cut = latestWithDelta(c.entry, 'grade70', baseYear);
       const rate = latestWithDelta(c.entry, 'rate', baseYear);
       const fill = latestWithDelta(c.entry, 'fill', baseYear);
@@ -679,6 +836,7 @@ export default function IpgyeolConsole({ onAuthError }) {
           <span><b>득점률</b> ${pc.v != null ? `${pc.v}%` : '—'}</span>
         </div>
         ${ai?.reason ? `<div class="ai">판정 근거: ${esc(ai.reason)}</div>` : ''}
+        ${memoOf(`cd-${c.key}`) ? `<div class="memo">${nl(memoOf(`cd-${c.key}`))}</div>` : ''}
         ${c.sunung?.text ? `<div class="low"><b>수능최저</b> ${esc(c.sunung.text)}</div>` : ''}
       </div>`;
     }).join('');
@@ -718,41 +876,66 @@ table.mini{margin:4px 0 6px}table.mini th,table.mini td{padding:3px 6px;font-siz
 .kv b{color:#8492a5;font-weight:600}
 .ai{margin-top:6px;background:#f4effc;border:1px solid #e5dcf7;border-radius:7px;padding:4px 8px;font-size:11px;color:#5b3fa8}
 .low{margin-top:5px;background:#fbf6df;border:1px solid #f0e6b8;border-radius:7px;padding:4px 8px;font-size:10.5px;color:#5c5322;line-height:1.5}
-@media print{.page{padding:0}h2{break-after:avoid}tr{break-inside:avoid}.cards{grid-template-columns:1fr 1fr}}
-</style></head><body><div class="page">
-<h1>입결 분석 리포트</h1>
-<div class="lead">2021~2026 다개년 입시결과 기반 지원 후보 검토</div>
+.memo{margin-top:5px;background:#eef7f1;border-left:3px solid #1a7f4e;border-radius:0 6px 6px 0;padding:4px 8px;font-size:11px;color:#1f5c3d;line-height:1.55}
+.bar{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#1c2733;color:#e8eef6;padding:9px 16px;font-size:12.5px}
+.bar button{border:1px solid #4a5a6d;background:#2b3947;color:#e8eef6;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+.bar button.on{background:#2b6fe3;border-color:#2b6fe3;color:#fff}
+.bar .spacer{flex:1}
+.editing .page{outline:2px dashed #2b6fe3;outline-offset:-6px}
+@media print{.page{padding:0}h2{break-after:avoid}tr{break-inside:avoid}.cards{grid-template-columns:1fr 1fr}.no-print{display:none!important}.editing .page{outline:none}}
+</style></head><body>
+<div class="bar no-print">
+  <span>리포트가 준비되었습니다. 문구를 고치려면 <b>✏ 직접 수정</b>을 켜고 글자를 클릭해 바로 고치세요.</span>
+  <span class="spacer"></span>
+  <button id="editBtn" onclick="toggleEdit()">✏ 직접 수정</button>
+  <button onclick="window.print()">🖨 인쇄 / PDF 저장</button>
+</div>
+<div class="page">
+<h1>${esc(rep.title || '입결 분석 리포트')}</h1>
+${rep.lead ? `<div class="lead">${esc(rep.lead)}</div>` : ''}
 <div class="meta">
   <div><b>학생</b> ${student ? esc(student.name) + (student.school ? ` · ${esc(student.school)}` : '') : '미지정'}</div>
   <div><b>기준 내신</b> ${grade.toFixed(2)}등급</div>
   <div><b>기준 연도</b> ${esc(baseYear)}</div>
-  <div><b>작성일</b> ${today}</div>
-  <div><b>작성</b> 패스파인더 에듀 입시분석팀</div>
+  <div><b>작성일</b> ${esc(rep.dateText?.trim() || today)}</div>
+  ${rep.author?.trim() ? `<div><b>작성</b> ${esc(rep.author)}</div>` : ''}
 </div>
 
-<h2>저장된 배치 기록 (${placements.length}건)</h2>
-${placements.length ? `<table>
-<thead><tr><th>판정</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>저장내신</th><th>비고</th></tr></thead>
-<tbody>${plRows}</tbody></table>` : '<div class="empty">저장된 배치가 없습니다.</div>'}
+${rep.comment?.trim() ? `<h2>컨설턴트 총평</h2>
+<div class="summary">${esc(rep.comment.trim())}</div>` : ''}
 
-${aiSearch ? `<h2>후보 검토</h2>
+${rep.showPlacements ? `<h2>저장된 배치 기록 (${repPlacements.length}건)</h2>
+${repPlacements.length ? `<table>
+<thead><tr><th>판정</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>저장내신</th><th>비고</th></tr></thead>
+<tbody>${plRows}</tbody></table>` : '<div class="empty">저장된 배치가 없습니다.</div>'}` : ''}
+
+${rep.showSearch && aiSearch ? `<h2>후보 검토</h2>
 <div style="margin-bottom:8px"><b>검토 조건</b> ${esc(aiSearch.query)}</div>
 ${aiSearch.filter?.intent ? `<div class="sub" style="margin-bottom:6px">${esc(aiSearch.filter.intent)}</div>` : ''}
 <div style="margin-bottom:8px">${chips}</div>
-<div class="sub" style="margin-bottom:8px">전체 ${aiSearch.total}건 중 상위 ${aiSearch.results.length}건${aiSearch.relaxed?.length ? ` · 조건 완화: ${esc(aiSearch.relaxed.join(' · '))}` : ''}</div>
+<div class="sub" style="margin-bottom:8px">전체 ${aiSearch.total}건 중 ${repSearch.length}건 수록${aiSearch.relaxed?.length ? ` · 조건 완화: ${esc(aiSearch.relaxed.join(' · '))}` : ''}</div>
 ${aiSearch.summary ? `<div class="summary">${esc(aiSearch.summary)}</div>` : ''}
 ${srcRows ? `<table>
 <thead><tr><th>#</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>판정</th></tr></thead>
 <tbody>${srcRows}</tbody></table>` : ''}` : ''}
 
-${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
+${cardBlocks ? `<h2>전형 카드 상세 (${repCardList.length}건)</h2>
 <div class="cards">${cardBlocks}</div>` : ''}
 
-<div class="note">
-배치 판정(안정·적정·소신·위험)은 최종등급 70%컷과 기준 내신의 차이에 따른 참고용 지표입니다. 실제 지원 판단은 반영교과·수능최저·모집인원 변화를 함께 검토해야 합니다.
-올해 신설된 전형은 누적 입시결과가 존재하지 않아 이 리포트에 포함되지 않습니다.
+${rep.note?.trim() ? `<div class="note">${nl(rep.note.trim())}</div>` : ''}
 </div>
-</div></body></html>`;
+<script>
+function toggleEdit(){
+  var p=document.querySelector('.page'), b=document.getElementById('editBtn');
+  var on=p.getAttribute('contenteditable')==='true';
+  p.setAttribute('contenteditable', on?'false':'true');
+  document.body.classList.toggle('editing', !on);
+  b.classList.toggle('on', !on);
+  b.textContent = on ? '✏ 직접 수정' : '✓ 수정 끝내기';
+  if(!on) p.focus();
+}
+<\/script>
+</body></html>`;
 
     const w = window.open('', '_blank');
     if (w) { w.document.write(html); w.document.close(); }
@@ -837,6 +1020,46 @@ ${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
     return out;
   }, [detail, track, deptQ, baseYear]);
 
+  // 배치 기록 한 줄 → 카드 한 장. 저장된 건 수치 스냅샷뿐이라 카드로 그리려면 원본 입결을 다시 읽어야 한다.
+  function cardFromPlacement(p, d) {
+    if (!d) return null;
+    const e = (d.entries || []).find((x) => x.dept === p.dept && x.track === p.track && x.typeName === p.type_name);
+    if (!e) return null;
+    const sibs = p.track === '교과'
+      ? (d.entries || [])
+          .filter((s) => s.dept === p.dept && s.track === '종합' && Object.values(s.years).some((y) => y.grade70 != null))
+          .sort((a, b) => Object.keys(b.years).length - Object.keys(a.years).length)
+          .slice(0, 2)
+      : [];
+    return {
+      key: `${d.unvCd}|${e.dept}|${e.track}|${e.typeName}`,
+      univ: { unvCd: d.unvCd, name: d.name, region: d.region },
+      entry: e, sunung: sunungFor(d, p.track), jonghapSiblings: sibs,
+    };
+  }
+
+  // 배치가 저장되면(또는 학생을 바꾸면) 해당 대학 입결을 받아 카드로 되살린다.
+  useEffect(() => {
+    if (!placements.length) { setPlacementCards([]); return; }
+    let alive = true;
+    (async () => {
+      const codes = [...new Set(placements.map((p) => p.unv_cd).filter(Boolean))];
+      const missing = codes.filter((cd) => !univCache[cd]);
+      if (missing.length) setPlCardsLoading(true);
+      const fetched = {};
+      for (const cd of missing) {
+        try { const j = await api(`/api/ipgyeol/${cd}`); if (j.success) fetched[cd] = j; }
+        catch (e) { if (e.auth) onAuthError?.(); }
+      }
+      if (!alive) return;
+      const cache = { ...univCache, ...fetched };
+      if (Object.keys(fetched).length) setUnivCache(cache);
+      setPlacementCards(placements.map((p) => cardFromPlacement(p, cache[p.unv_cd])).filter(Boolean));
+      setPlCardsLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [placements]);
+
   function togglePin(card) {
     setPins((prev) => {
       const next = prev.some((p) => p.key === card.key) ? prev.filter((p) => p.key !== card.key) : [...prev, card];
@@ -845,7 +1068,16 @@ ${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
     });
   }
   const pinnedKeys = new Set(pins.map((p) => p.key));
-  const unpinnedCards = cards.filter((c) => !pinnedKeys.has(c.key));
+  // 고정 카드·배치 카드는 위쪽에 이미 떠 있으므로 아래 목록에서는 뺀다(같은 카드가 두 번 보이지 않게)
+  const autoKeys = new Set([...pinnedKeys, ...placementCards.map((c) => c.key)]);
+  const unpinnedCards = cards.filter((c) => !autoKeys.has(c.key));
+  const plOnlyCards = placementCards.filter((c) => !pinnedKeys.has(c.key));
+
+  // 리포트에 실릴 카드 = 고정 + 배치 + 지금 화면의 카드
+  const reportCards = useMemo(() => {
+    const all = [...pins, ...placementCards, ...(detail ? unpinnedCards.slice(0, limit) : [])];
+    return all.filter((c, i, arr) => arr.findIndex((x) => x.key === c.key) === i);
+  }, [pins, placementCards, cards, limit, detail, track, deptQ]);
 
   // 현재 내신·기준연도로 이미 저장된 카드인지 (변경 시 다시 저장 가능)
   const isSaved = (c) => placements.some((p) => p.unv_cd === c.univ.unvCd && p.dept === c.entry.dept
@@ -1059,14 +1291,14 @@ ${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
           <div style={S.plBox}>
             <div style={S.plHead}>
               🎯 {student.name} 학생의 배치 기록 <span style={S.plCount}>({placements.length}건)</span>
-              <button style={S.aiBtn} onClick={() => runAiJudge()} disabled={aiJudging || !detail}
+              <button style={S.aiBtn} onClick={() => runAiJudge()} disabled={aiJudging || (!detail && !placementCards.length)}
                 title="학생의 생기부 분석 내용과 카드의 입결 데이터를 종합해 AI가 학과별 배치를 판정합니다">
                 {aiJudging ? '🤖 AI 판정 중…' : '🤖 생기부 기반 AI 종합 판정'}
               </button>
-              <button style={S.reportBtn} onClick={buildIpgyeolReport}
-                title="배치 기록과 AI 검색 결과를 인쇄용 리포트로 엽니다"
-                disabled={!placements.length && !aiSearch}>
-                🖨 입결 리포트
+              <button style={S.reportBtn} onClick={() => setReportOpen(true)}
+                title="제목·총평·포함 항목을 고친 뒤 인쇄용 리포트를 엽니다"
+                disabled={!placements.length && !aiSearch && !reportCards.length}>
+                📄 입결 리포트 편집·인쇄
               </button>
               <span style={S.plHint}>카드의 💾 버튼으로 추가 · 내신 슬라이더를 움직이면 현재 기준 재평가가 표시됩니다</span>
             </div>
@@ -1110,6 +1342,26 @@ ${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
           </div>
         )}
 
+        {/* 배치 카드 — 배치 저장만 하면 고정하지 않아도 여기에 뜬다 */}
+        {student && (plOnlyCards.length > 0 || plCardsLoading) && (
+          <>
+            <div style={S.pinHead}>
+              🎯 {student.name} 학생 배치 카드
+              <span style={S.pinHint}>배치 저장한 전형은 고정(📌)하지 않아도 자동으로 표시됩니다</span>
+            </div>
+            {plCardsLoading && !plOnlyCards.length && <div style={S.placeholder}>배치한 전형의 입결 카드를 불러오는 중…</div>}
+            {plOnlyCards.length > 0 && (
+              <div style={S.grid}>
+                {plOnlyCards.map((c) => (
+                  <Card key={`pl-${c.key}`} card={c} grade={grade} baseYear={baseYear} onPin={togglePin}
+                    pinned={false} student={student} onSave={savePlacement} saving={savingKey === c.key}
+                    saved={isSaved(c)} onDetail={openDetail} ai={aiJudgments[c.key]} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         {/* 고정 카드 */}
         {pins.length > 0 && (
           <>
@@ -1124,7 +1376,7 @@ ${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
           </>
         )}
 
-        {!selected && !pins.length && (
+        {!selected && !pins.length && !plOnlyCards.length && (
           <div style={S.placeholder}>위 검색창에서 대학을 선택하면 학과별 입결 카드가 표시됩니다.<br />
             <span style={{ fontSize: 12.5, color: '#98a4b3' }}>카드의 📍 버튼으로 고정하면 다른 대학과 나란히 비교할 수 있습니다.</span></div>
         )}
@@ -1144,6 +1396,14 @@ ${cardBlocks ? `<h2>전형 카드 상세 (${reportCards.length}건)</h2>
         )}
         {detail && !unpinnedCards.length && !loading && (
           <div style={S.placeholder}>조건에 맞는 학과 카드가 없습니다. 전형(교과/종합)이나 필터를 바꿔보세요.</div>
+        )}
+
+        {reportOpen && (
+          <ReportModal rep={rep} setRep={setRep} off={repOff} setOff={setRepOff} memo={repMemo} setMemo={setRepMemo}
+            placements={placements} aiSearch={aiSearch} cards={reportCards} student={student}
+            grade={grade} baseYear={baseYear}
+            onClose={() => setReportOpen(false)}
+            onPrint={() => { setReportOpen(false); buildIpgyeolReport(); }} />
         )}
 
         {detailCard && (
@@ -1272,7 +1532,28 @@ const S = {
   mTd: { border: '1px solid #e3e9f1', padding: '6px 8px', color: '#26313e' },
   mTdHead: { background: '#f7f9fc', fontWeight: 700, color: '#3d4a5c', whiteSpace: 'nowrap' },
   mSunung: { background: '#fbf6df', border: '1px solid #f0e6b8', borderRadius: 9, padding: '9px 12px', fontSize: 12.5, lineHeight: 1.7, color: '#5c5322' },
-  pinHead: { fontSize: 13, fontWeight: 800, color: '#3d4a5c', margin: '2px 0 8px' },
+  pinHead: { fontSize: 13, fontWeight: 800, color: '#3d4a5c', margin: '2px 0 8px', display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },
+  pinHint: { fontSize: 11.5, fontWeight: 500, color: '#8492a5' },
+  // 리포트 편집 모달
+  rpSec: { fontSize: 12.5, fontWeight: 800, color: '#1d4fa8', margin: '16px 0 8px', paddingTop: 10, borderTop: '1px solid #eef2f7' },
+  rpGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 },
+  rpField: { display: 'flex', flexDirection: 'column', gap: 4 },
+  rpLabel: { fontSize: 11.5, fontWeight: 700, color: '#5c6b7c' },
+  rpInput: { border: '1px solid #d7dfea', borderRadius: 8, padding: '7px 10px', fontSize: 13, background: '#fff', color: '#26313e', outline: 'none' },
+  rpArea: { width: '100%', border: '1px solid #d7dfea', borderRadius: 8, padding: '9px 11px', fontSize: 13, lineHeight: 1.7, background: '#fff', color: '#26313e', outline: 'none', resize: 'vertical', fontFamily: 'inherit' },
+  rpToggles: { display: 'flex', flexWrap: 'wrap', gap: 14 },
+  rpChk: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#3d4a5c', cursor: 'pointer' },
+  rpItem: { borderBottom: '1px solid #f2f5f9', padding: '6px 0' },
+  rpItemHead: { display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' },
+  rpItemName: { fontSize: 12.5, fontWeight: 700, color: '#26313e' },
+  rpItemDim: { color: '#b3bdc9', textDecoration: 'line-through' },
+  rpItemSub: { fontSize: 11.5, color: '#8492a5' },
+  rpMemo: { width: '100%', marginTop: 4, border: '1px solid #e3e9f1', borderRadius: 7, padding: '5px 9px', fontSize: 12, background: '#fbfcfe', color: '#26313e', outline: 'none' },
+  rpFoot: { display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', marginTop: 18, paddingTop: 12, borderTop: '1px solid #eef2f7' },
+  rpHint: { fontSize: 11.5, color: '#8492a5', marginLeft: 'auto' },
+  rpReset: { border: '1px solid #e3e9f1', background: '#fff', color: '#8492a5', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  rpCancel: { border: '1px solid #d7dfea', background: '#fff', color: '#5c6b7c', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+  rpGo: { border: 'none', background: '#2b6fe3', color: '#fff', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 800, cursor: 'pointer' },
   placeholder: { background: '#fff', border: '1px dashed #d7dfea', borderRadius: 12, padding: '38px 20px', textAlign: 'center', color: '#5c6b7c', fontSize: 14, lineHeight: 1.7, marginBottom: 12 },
   moreBtn: { display: 'block', margin: '0 auto 10px', border: '1px solid #d7dfea', background: '#fff', color: '#1d4fa8', borderRadius: 9, padding: '8px 22px', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   error: { background: '#fdeaea', border: '1px solid #f5c6c6', color: '#b33', borderRadius: 10, padding: '9px 13px', fontSize: 13, marginBottom: 12 },
