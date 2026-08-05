@@ -2682,6 +2682,84 @@ ${JSON.stringify(cards.slice(0, 15), null, 1)}`;
   }
 });
 
+// 입결 리포트 심층 분석 — 카드별 "유리한 점·불리한 점·리스크"와 6장 전체 전략을 서술로 뽑는다.
+// judge가 한 줄 판정이라면 이쪽은 상담 자리에서 학부모에게 읽히는 근거 문단이다.
+// 숫자는 클라이언트가 원본 입결에서 계산해 [자동 산출 지표]로 넘기고, AI는 그 지표를 해석만 한다.
+app.post('/api/ipgyeol/report-analysis', requireAuth, async (req, res) => {
+  const { studentProfile, cards, context } = req.body || {};
+  if (!Array.isArray(cards) || !cards.length) return res.status(400).json({ success: false, message: '분석할 카드가 없습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  const systemPrompt = `당신은 대한민국 수시 배치 전문 입시 컨설턴트입니다.
+학부모 상담용 리포트에 들어갈 "왜 유리하고, 왜 불리하며, 어디가 리스크인지"를 후보별로 씁니다.
+
+[반드시 지킬 것]
+- 각 카드의 [자동산출지표](유리/불리/리스크)는 리포트에 이미 그대로 인쇄된다. 같은 말을 다시 쓰지 않는다.
+  당신이 쓸 것은 그 지표만으로는 알 수 없는 것이다 — 생기부·모의고사와의 연결, 지원 자격 요건,
+  수능최저 충족 시나리오, 대비 방법, 카드끼리의 상대 비교, 이 학생에게 특히 걸리는 지점.
+- 숫자는 [자동 산출 지표]와 카드 데이터에 있는 값만 인용한다. 없는 수치를 지어내지 않는다.
+- "좋습니다/괜찮습니다" 같은 뭉뚱그린 말 금지. 항상 근거 수치(70%컷·경쟁률·충원·모집인원·추이)를 문장 안에 넣는다.
+- 유리·불리를 한쪽만 쓰지 않는다. 안정 카드에도 불리한 점이 있고, 위험 카드에도 유리한 점이 있다.
+- 리스크는 "그래서 무엇을 확인/대비해야 하는지"까지 쓴다(예: 수능최저 충족, 소수 모집의 변동성, 자료 시차).
+- 학생부종합은 내신 외에 생기부 발췌에 드러난 전공적합성·학업역량을 근거로 삼는다. 자료가 없으면 "생기부 자료가 없어 판단 유보"라고 명시한다.
+- 연도별 학생부 총점 척도가 달라 환산점수의 연도 간 비교는 하지 않는다.
+- 각 문장은 60자 내외, 존댓말 개조식(~습니다/~입니다).
+
+[출력 — 반드시 JSON 객체만. 코드펜스·설명 금지]
+{
+ "overall": {
+   "headline": "학생 현재 위치 한 줄 요약(40자 이내)",
+   "summary": "내신·생기부 기준 현재 위치와 후보군 전반의 성격 3~5문장",
+   "strategy": "안정·적정·소신 구성 등 6장 운용 제안 3~5문장",
+   "risks": ["전체 후보군에 공통으로 걸리는 리스크 2~4개"]
+ },
+ "cards": [{
+   "key": "<카드 key 그대로>",
+   "headline": "이 카드의 성격 한 줄(30자 이내)",
+   "pros": ["유리한 점 2~3개(근거 수치 포함)"],
+   "cons": ["불리한 점 1~3개(근거 수치 포함)"],
+   "risks": ["리스크와 확인 사항 1~3개"],
+   "watch": "지원 전 반드시 확인할 것 한 문장"
+ }]
+}`;
+
+  const userMsg = `[학생 정보]
+${JSON.stringify({ name: studentProfile?.name, school: studentProfile?.school, grade: studentProfile?.grade, major: studentProfile?.major, 내신: studentProfile?.gpa, 목표대학: studentProfile?.targetUniv }, null, 1)}
+
+[생기부 분석 발췌]
+${String(studentProfile?.analysisExcerpt || '(분석 자료 없음 — 내신과 입결 데이터만으로 분석)').slice(0, 9000)}
+
+[상담 맥락]
+${String(context || '(없음)').slice(0, 1500)}
+
+[지원 후보 카드 + 자동 산출 지표 — key를 그대로 돌려줄 것]
+${JSON.stringify(cards.slice(0, 12), null, 1)}`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 8000 });
+    const m = String(reply).match(/\{[\s\S]*\}/);
+    if (!m) throw Object.assign(new Error('AI 응답에서 분석 JSON을 찾지 못했습니다'), { userFacing: true });
+    const parsed = JSON.parse(m[0]);
+    const analysis = {
+      overall: parsed.overall || null,
+      cards: Array.isArray(parsed.cards) ? parsed.cards.filter((c) => c && c.key) : [],
+    };
+    sendDone({ success: true, analysis });
+  } catch (err) {
+    console.error('[ipgyeol/report-analysis] 오류:', err.message);
+    sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
+  }
+});
+
 // 입결 콘솔 AI 검색 — 자연어 질문 → 필터 JSON(AI) → 전 대학 결정적 검색(코드) → 요약(AI)
 // 숫자는 전부 코드가 원본 입결에서 뽑는다. AI는 "무엇을 찾을지"와 "어떻게 읽을지"만 담당한다.
 app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {

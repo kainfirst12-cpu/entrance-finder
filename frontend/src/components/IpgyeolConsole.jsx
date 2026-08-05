@@ -28,6 +28,8 @@ const DEFAULT_REPORT = {
   showPlacements: true,
   showSearch: true,
   showCards: true,
+  showWhy: true,       // 카드마다 유리한 점·불리한 점·리스크(자동 산출)
+  showAnalysis: true,  // AI 심층 분석(생성했을 때만)
   note: DEFAULT_NOTE,
 };
 
@@ -179,6 +181,87 @@ function Sparkline({ series }) {
       ))}
     </svg>
   );
+}
+
+// ── 카드 한 장의 "왜 유리한가 / 왜 불리한가 / 어디가 리스크인가" ──
+// AI 없이 원본 입결만으로 계산한다. 상담 자리에서 근거를 물었을 때 숫자로 답할 수 있어야 하고,
+// AI 키가 없거나 호출이 실패해도 리포트에는 근거가 남아 있어야 하기 때문이다.
+function cardSignals(card, grade, baseYear) {
+  const e = card.entry;
+  const pros = [], cons = [], risks = [];
+  const ys = Object.keys(e.years).filter((y) => y <= baseYear).sort();
+  const cut = latestWithDelta(e, 'grade70', baseYear);
+  const rate = latestWithDelta(e, 'rate', baseYear);
+  const fill = latestWithDelta(e, 'fill', baseYear);
+  const rec = latestWithDelta(e, 'recruit', baseYear);
+  const g = grade.toFixed(2);
+
+  // ① 내신과 합격선의 거리 — 판정의 뼈대
+  if (cut.v != null) {
+    const diff = Math.round((cut.v - grade) * 100) / 100;
+    const dz = Math.abs(diff).toFixed(2);
+    if (diff >= 0.35) pros.push(`내신 ${g}이 ${cut.y}년 70%컷 ${cut.v.toFixed(2)}보다 ${dz}등급 앞섭니다 — 합격선 위 여유가 뚜렷합니다.`);
+    else if (diff >= -0.05) pros.push(`내신 ${g}이 70%컷 ${cut.v.toFixed(2)}과 ${dz}등급 차이 — 합격선 언저리의 경쟁권입니다.`);
+    else if (diff >= -0.4) cons.push(`내신이 ${cut.y}년 70%컷 ${cut.v.toFixed(2)}보다 ${dz}등급 부족합니다 — 상향 지원 구간입니다.`);
+    else cons.push(`내신이 70%컷 ${cut.v.toFixed(2)}보다 ${dz}등급 부족합니다 — 통상적인 지원선 밖입니다.`);
+  } else {
+    risks.push('70%컷이 공개되지 않은 전형입니다 — 경쟁률·충원 흐름만으로 판단해야 합니다.');
+  }
+
+  // ② 합격선 추이 — 올해 판정이 한 단계 밀릴지의 예고
+  const series = ys.map((y) => ({ y, v: e.years[y].grade70 })).filter((p) => p.v != null);
+  if (series.length >= 2) {
+    const a = series[0], b = series[series.length - 1];
+    const d = Math.round((b.v - a.v) * 100) / 100;
+    if (d >= 0.1) pros.push(`합격선이 ${a.y}년 ${a.v.toFixed(2)} → ${b.y}년 ${b.v.toFixed(2)}로 ${d.toFixed(2)}등급 내려왔습니다(완화 추세).`);
+    else if (d <= -0.1) cons.push(`합격선이 ${a.y}년 ${a.v.toFixed(2)} → ${b.y}년 ${b.v.toFixed(2)}로 ${Math.abs(d).toFixed(2)}등급 올라왔습니다(상승 추세) — 올해도 오르면 판정이 한 단계 밀립니다.`);
+    else pros.push(`합격선이 ${a.y}~${b.y}년 ${Math.abs(d).toFixed(2)}등급 안에서 움직여 예측 가능성이 높습니다.`);
+  } else if (series.length === 1) {
+    risks.push(`70%컷 자료가 ${series[0].y}년 한 해뿐입니다 — 추세를 볼 수 없어 판정의 근거가 얇습니다.`);
+  }
+
+  // ③ 경쟁률·충원 — 서류상 경쟁률과 실제 합격선은 다르다
+  if (rate.v != null && rate.d != null) {
+    if (rate.d <= -0.5) pros.push(`경쟁률이 직전 대비 ${Math.abs(rate.d).toFixed(2)} 낮아진 ${rate.v}:1입니다.`);
+    else if (rate.d >= 0.5) cons.push(`경쟁률이 직전 대비 ${rate.d.toFixed(2)} 오른 ${rate.v}:1 — 지원자가 몰리는 흐름입니다.`);
+  }
+  if (fill.v != null && rec.v) {
+    const pct = Math.round((fill.v / rec.v) * 100);
+    if (pct >= 50) pros.push(`충원 ${fill.v}명으로 모집 ${rec.v}명의 ${pct}%가 추가합격 — 실질 합격선은 70%컷보다 아래로 내려갑니다.`);
+    else if (pct <= 10) cons.push(`충원이 ${fill.v}명(모집 대비 ${pct}%)에 그칩니다 — 최초 합격선이 사실상 마지노선입니다.`);
+  }
+
+  // ④ 모집 규모 — 늘면 문이 넓어지고, 적으면 컷이 흔들린다
+  if (rec.d != null && rec.v != null) {
+    if (rec.d >= 3) pros.push(`모집인원이 직전 대비 ${rec.d}명 늘어 ${rec.v}명입니다 — 선발 폭이 넓어졌습니다.`);
+    else if (rec.d <= -3) cons.push(`모집인원이 ${Math.abs(rec.d)}명 줄어 ${rec.v}명입니다 — 합격선 상승 요인입니다.`);
+  }
+  if (rec.v != null && rec.v <= 5) risks.push(`모집 ${rec.v}명의 소수 선발입니다 — 지원자 몇 명 차이로 합격선이 크게 흔들립니다.`);
+
+  // ⑤ 자료의 시차 — 몇 년 전 숫자로 올해를 판단하고 있는지 밝힌다
+  if (cut.y && String(cut.y) !== String(baseYear)) {
+    risks.push(`가장 최근 공개 자료가 ${cut.y}년입니다 — ${baseYear} 기준 판단에 ${Number(baseYear) - Number(cut.y)}년의 시차가 있습니다.`);
+  }
+
+  // ⑥ 수능최저 — 내신이 되고도 떨어지는 자리
+  if (card.sunung?.text) {
+    risks.push(`수능최저가 적용되는 전형입니다 — 충족 여부가 실질 관문입니다(${card.sunung.text.replace(/\s+/g, ' ').slice(0, 60)}…).`);
+  } else {
+    cons.push('안내문에서 수능최저 조건이 확인되지 않습니다 — 최저 탈락 위험은 낮지만 그만큼 내신 경쟁이 치열합니다.');
+  }
+
+  // ⑦ 같은 학과 종합전형과의 문턱 차이
+  const sib = card.jonghapSiblings?.[0];
+  if (sib && cut.v != null) {
+    const sc = latestWithDelta(sib, 'grade70', baseYear);
+    if (sc.v != null) {
+      const gap = Math.round((sc.v - cut.v) * 100) / 100;
+      if (gap >= 0.15) pros.push(`같은 학과 종합전형 70%컷은 ${sc.v.toFixed(2)}로 교과보다 ${gap.toFixed(2)}등급 낮은 내신도 합격했습니다 — 생기부가 강하면 종합 병행이 유리합니다.`);
+      else if (gap <= -0.15) cons.push(`같은 학과 종합전형 70%컷 ${sc.v.toFixed(2)}가 교과보다 ${Math.abs(gap).toFixed(2)}등급 높습니다 — 종합으로 돌리면 문턱이 더 높습니다.`);
+    }
+  }
+
+  return { pros, cons, risks };
 }
 
 // 저장용 스냅샷: 카드 핵심 수치를 기록 시점 그대로 보존
@@ -389,7 +472,8 @@ function RepItem({ k, name, sub, off, memo, onToggle, onMemo }) {
 
 // 입결 리포트 편집창 — 인쇄 전에 제목·총평·포함 항목·항목별 코멘트를 직접 손본다.
 // 상담 자리에서 내미는 종이라 매번 뺄 항목과 덧붙일 말이 다르다. 그래서 고정된 양식으로 뽑지 않는다.
-function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSearch, cards, student, grade, baseYear, onClose, onPrint }) {
+function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSearch, cards, student, grade, baseYear,
+  analysis, analyzing, analysisMsg, onAnalyze, onClose, onPrint }) {
   const setF = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.value }));
   const setC = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.checked }));
   const onMemo = (k, v) => setMemo((m) => ({ ...m, [k]: v }));
@@ -430,6 +514,32 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
         <textarea style={S.rpArea} rows={5} value={rep.comment} onChange={setF('comment')}
           placeholder="예) 현재 내신 1.36 기준으로 지방 의약계열 교과전형은 적정~소신 구간입니다. 6장 중 2장은 안정 카드로 채우기를 권합니다." />
 
+        <div style={S.rpSec}>분석 깊이 <span style={S.ctrlHint}>(리포트에 "왜 유리한지·왜 불리한지·어디가 리스크인지"를 넣습니다)</span></div>
+        <label style={S.rpChk}><input type="checkbox" checked={rep.showWhy} onChange={setC('showWhy')} />
+          카드별 판단 근거 자동 산출 <span style={S.ctrlHint}>(내신 여유·합격선 추이·경쟁률·충원율·모집 변화·자료 시차·수능최저 — AI 없이 입결 원본에서 계산)</span></label>
+        <div style={S.rpAnalyBox}>
+          <div style={S.rpAnalyRow}>
+            <button style={{ ...S.rpAnaly, ...(analyzing ? S.rpAnalyBusy : {}) }} onClick={onAnalyze} disabled={analyzing}>
+              {analyzing ? '🤖 심층 분석 중…' : analysis ? '🤖 심층 분석 다시 생성' : '🤖 AI 심층 분석 생성'}
+            </button>
+            <label style={{ ...S.rpChk, opacity: analysis ? 1 : 0.45 }}>
+              <input type="checkbox" checked={rep.showAnalysis} onChange={setC('showAnalysis')} disabled={!analysis} />
+              리포트에 포함
+            </label>
+            <span style={S.rpAnalyMsg}>{analysisMsg || '생기부·내신과 카드 지표를 함께 읽어 카드별 유리·불리·리스크와 6장 전체 전략을 문장으로 씁니다.'}</span>
+          </div>
+          {analysis?.overall && (
+            <div style={S.rpAnalyPrev}>
+              <b>{analysis.overall.headline || '종합 분석'}</b>
+              <div>{analysis.overall.summary}</div>
+              {analysis.overall.strategy && <div style={{ marginTop: 5 }}><b>지원 전략</b> {analysis.overall.strategy}</div>}
+              {(analysis.overall.risks || []).length > 0 && (
+                <div style={{ marginTop: 5 }}><b>전체 리스크</b> {analysis.overall.risks.join(' · ')}</div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div style={S.rpSec}>포함할 내용</div>
         <div style={S.rpToggles}>
           <label style={S.rpChk}><input type="checkbox" checked={rep.showPlacements} onChange={setC('showPlacements')} />
@@ -437,7 +547,7 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
           <label style={S.rpChk}><input type="checkbox" checked={rep.showSearch} onChange={setC('showSearch')} disabled={!aiSearch} />
             AI 검색 후보 검토 <span style={S.ctrlHint}>({countOn(srKeys)}/{srKeys.length}건)</span></label>
           <label style={S.rpChk}><input type="checkbox" checked={rep.showCards} onChange={setC('showCards')} />
-            전형 카드 상세 <span style={S.ctrlHint}>({countOn(cdKeys)}/{cdKeys.length}건)</span></label>
+            전형 카드별 분석 <span style={S.ctrlHint}>({countOn(cdKeys)}/{cdKeys.length}건)</span></label>
         </div>
 
         {rep.showPlacements && placements.length > 0 && (
@@ -551,6 +661,11 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [repMemo, setRepMemo] = useState({}); // 항목별 코멘트
   useEffect(() => { try { localStorage.setItem(REPORT_KEY, JSON.stringify(rep)); } catch {} }, [rep]);
 
+  // 리포트 심층 분석 (AI) — 카드별 유리·불리·리스크 + 6장 전체 전략
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisMsg, setAnalysisMsg] = useState('');
+
   // AI 검색
   const [aiQ, setAiQ] = useState('');
   const [aiSearching, setAiSearching] = useState(false);
@@ -650,6 +765,52 @@ export default function IpgyeolConsole({ onAuthError }) {
       setAiJudgments((prev) => ({ ...prev, ...map }));
     } catch (e) { setError('AI 판정 오류: ' + e.message); }
     finally { setAiJudging(false); }
+  }
+
+  // ── 리포트 심층 분석 — 카드별 유리·불리·리스크를 서술로 ──
+  // 숫자 해석(cardSignals)은 코드가 먼저 끝내고, AI에는 그 지표와 생기부를 함께 넘겨 "왜"를 쓰게 한다.
+  // 그래야 AI가 없는 숫자를 지어내지 않고, 실패해도 자동 지표 해설은 리포트에 남는다.
+  async function runReportAnalysis(list) {
+    const target = (list || []).slice(0, 12);
+    if (!target.length) { setAnalysisMsg('분석할 카드가 없습니다. 배치 저장이나 대학 선택을 먼저 해주세요.'); return; }
+    const creds = aiCreds();
+    if (!creds.apiKey) { setAnalysisMsg('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
+    const pool = dossier?.records?.length ? dossier.records : (student?.records || []);
+    const analysisRec = pool.find((r) => r.type === '생기부 분석' && r.content)
+      || pool.find((r) => r.type === '컨설턴트 브리핑' && r.content) || pool.find((r) => r.content);
+    setAnalyzing(true); setAnalysisMsg('분석 중… 카드 수에 따라 30초~1분 걸립니다.');
+    try {
+      const d = await postForResult(`${API_BASE}/api/ipgyeol/report-analysis`, {
+        method: 'POST',
+        headers: aiHeaders(creds),
+        body: JSON.stringify({
+          studentProfile: student ? {
+            name: student.name, school: student.school, grade: student.grade, major: student.major,
+            targetUniv: student.target_univ || '', gpa: grade, analysisExcerpt: analysisRec?.content || '',
+          } : { gpa: grade },
+          context: rep.comment || '',
+          cards: target.map((c) => {
+            const snap = buildSnapshot(c.entry, baseYear);
+            const sig = cardSignals(c, grade, baseYear);
+            const v = verdict(snap.cut70, grade);
+            return {
+              key: c.key, univ: c.univ.name, region: c.univ.region, dept: c.entry.dept,
+              track: c.entry.track, typeName: c.entry.typeName,
+              학생내신: grade, 배치판정: v ? v.label : null,
+              cut70: snap.cut70, cutYear: snap.cutYear, 연도별70컷: snap.series,
+              경쟁률: snap.rate, 충원: snap.fill, 모집: snap.recruit, 득점률: snap.pct70,
+              수능최저: c.sunung?.text?.slice(0, 300) || null,
+              자동산출지표: sig,
+            };
+          }),
+        }),
+      });
+      if (!d.success) throw new Error(d.message || '분석 실패');
+      setAnalysis(d.analysis);
+      setAnalysisMsg(`분석 완료 — 카드 ${d.analysis.cards?.length || 0}건 + 종합 전략`);
+    } catch (e) {
+      setAnalysisMsg('분석 오류: ' + e.message);
+    } finally { setAnalyzing(false); }
   }
 
   // ── AI 검색: 자연어 질문 → 전 대학 입결 통합 검색 ──
@@ -800,6 +961,52 @@ export default function IpgyeolConsole({ onAuthError }) {
 
     // 카드가 리포트의 본체다 — 고정 카드 + 학생 배치 카드 + 지금 보고 있는 대학의 카드.
     // 연도별 추이까지 넣어야 "왜 이 판정인지"가 종이 위에서 읽힌다.
+
+    // 판단 근거 — 자동 산출 지표(항상)와 AI 심층 분석(생성했을 때)을 한 덩어리로 합친다.
+    // 상담에서 읽는 사람에게 필요한 건 출처별 구분이 아니라 "유리/불리/리스크"의 한 묶음이다.
+    const aiCardMap = {};
+    if (rep.showAnalysis) (analysis?.cards || []).forEach((a) => { aiCardMap[a.key] = a; });
+    const ul = (arr) => arr.map((t) => `<li>${esc(t)}</li>`).join('');
+    // AI가 자동 지표와 같은 말을 되풀이하면 종이 위에서 같은 문장이 두 번 읽힌다.
+    // 프롬프트로 막고도 겹치는 문장은 여기서 걸러낸다(글자 2-gram 겹침 비율).
+    const gram = (s) => {
+      const n = String(s).replace(/[^가-힣0-9a-zA-Z]/g, '');
+      const out = new Set();
+      for (let i = 0; i < n.length - 1; i++) out.add(n.slice(i, i + 2));
+      return out;
+    };
+    const overlaps = (s, list) => list.some((t) => {
+      const A = gram(s), B = gram(t);
+      if (!A.size || !B.size) return false;
+      let hit = 0; A.forEach((x) => { if (B.has(x)) hit++; });
+      return hit / Math.min(A.size, B.size) >= 0.5;
+    });
+    function whyBlock(c) {
+      const sig = rep.showWhy ? cardSignals(c, grade, baseYear) : { pros: [], cons: [], risks: [] };
+      const a = aiCardMap[c.key];
+      const fresh = (arr, base) => (arr || []).filter((t) => t && !overlaps(t, base));
+      const pros = [...sig.pros, ...fresh(a?.pros, sig.pros)];
+      const cons = [...sig.cons, ...fresh(a?.cons, sig.cons)];
+      const risks = [...sig.risks, ...fresh(a?.risks, sig.risks)];
+      if (!pros.length && !cons.length && !risks.length) return '';
+      return `<div class="why">
+        ${a?.headline ? `<div class="why-head">${esc(a.headline)}</div>` : ''}
+        <div class="why-cols">
+          ${pros.length ? `<div class="why-col pro"><b>유리한 점</b><ul>${ul(pros)}</ul></div>` : ''}
+          ${cons.length ? `<div class="why-col con"><b>불리한 점</b><ul>${ul(cons)}</ul></div>` : ''}
+          ${risks.length ? `<div class="why-col risk"><b>리스크 · 확인 사항</b><ul>${ul(risks)}</ul></div>` : ''}
+        </div>
+        ${a?.watch ? `<div class="why-watch"><b>지원 전 확인</b> ${esc(a.watch)}</div>` : ''}
+      </div>`;
+    }
+
+    const ov = rep.showAnalysis ? analysis?.overall : null;
+    const overallBlock = ov ? `<h2>종합 분석 — 현재 위치와 지원 전략</h2>
+${ov.headline ? `<div class="ov-head">${esc(ov.headline)}</div>` : ''}
+${ov.summary ? `<div class="summary">${esc(ov.summary)}</div>` : ''}
+${ov.strategy ? `<div class="ov-sec"><b>지원 전략</b><div>${esc(ov.strategy)}</div></div>` : ''}
+${(ov.risks || []).length ? `<div class="ov-sec risk"><b>전체 리스크</b><ul>${ul(ov.risks)}</ul></div>` : ''}` : '';
+
     const yearsWin = [];
     for (let y = Number(baseYear) - 3; y <= Number(baseYear); y++) yearsWin.push(String(y));
 
@@ -835,6 +1042,7 @@ export default function IpgyeolConsole({ onAuthError }) {
           <span><b>환산(70%)</b> ${sc.v ?? '—'}</span>
           <span><b>득점률</b> ${pc.v != null ? `${pc.v}%` : '—'}</span>
         </div>
+        ${whyBlock(c)}
         ${ai?.reason ? `<div class="ai">판정 근거: ${esc(ai.reason)}</div>` : ''}
         ${memoOf(`cd-${c.key}`) ? `<div class="memo">${nl(memoOf(`cd-${c.key}`))}</div>` : ''}
         ${c.sunung?.text ? `<div class="low"><b>수능최저</b> ${esc(c.sunung.text)}</div>` : ''}
@@ -877,12 +1085,30 @@ table.mini{margin:4px 0 6px}table.mini th,table.mini td{padding:3px 6px;font-siz
 .ai{margin-top:6px;background:#f4effc;border:1px solid #e5dcf7;border-radius:7px;padding:4px 8px;font-size:11px;color:#5b3fa8}
 .low{margin-top:5px;background:#fbf6df;border:1px solid #f0e6b8;border-radius:7px;padding:4px 8px;font-size:10.5px;color:#5c5322;line-height:1.5}
 .memo{margin-top:5px;background:#eef7f1;border-left:3px solid #1a7f4e;border-radius:0 6px 6px 0;padding:4px 8px;font-size:11px;color:#1f5c3d;line-height:1.55}
+.why{margin-top:7px;border-top:1px dashed #dbe3ee;padding-top:7px}
+.why-head{font-size:12px;font-weight:800;color:#1c2733;margin-bottom:5px}
+.why-cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+.why-col{border-radius:8px;padding:6px 9px;font-size:11px;line-height:1.55}
+.why-col b{display:block;font-size:10.5px;font-weight:800;margin-bottom:3px;letter-spacing:-0.2px}
+.why-col ul{margin:0;padding-left:14px}
+.why-col li{margin-bottom:2px}
+.why-col.pro{background:#eef8f2;color:#17593a}.why-col.pro b{color:#1a7f4e}
+.why-col.con{background:#fdf4ec;color:#7a4a1b}.why-col.con b{color:#b7791f}
+.why-col.risk{background:#fdeef0;color:#7d2a2a}.why-col.risk b{color:#d64545}
+.why-watch{margin-top:6px;background:#eef2f9;border:1px solid #dbe3ee;border-radius:7px;padding:4px 9px;font-size:11px;color:#26313e}
+.why-watch b{color:#1d4fa8}
+.ov-head{font-size:15px;font-weight:800;color:#1d4fa8;margin-bottom:6px}
+.ov-sec{margin-top:8px;font-size:12.5px;line-height:1.75}
+.ov-sec>b{display:block;font-size:11.5px;font-weight:800;color:#1d4fa8;margin-bottom:3px}
+.ov-sec ul{margin:0;padding-left:16px}
+.ov-sec.risk>b{color:#d64545}
 .bar{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#1c2733;color:#e8eef6;padding:9px 16px;font-size:12.5px}
 .bar button{border:1px solid #4a5a6d;background:#2b3947;color:#e8eef6;border-radius:7px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
 .bar button.on{background:#2b6fe3;border-color:#2b6fe3;color:#fff}
 .bar .spacer{flex:1}
 .editing .page{outline:2px dashed #2b6fe3;outline-offset:-6px}
-@media print{.page{padding:0}h2{break-after:avoid}tr{break-inside:avoid}.cards{grid-template-columns:1fr 1fr}.no-print{display:none!important}.editing .page{outline:none}}
+.cards.wide{grid-template-columns:1fr}
+@media print{.page{padding:0}h2{break-after:avoid}tr{break-inside:avoid}.cards{grid-template-columns:1fr 1fr}.cards.wide{grid-template-columns:1fr}.no-print{display:none!important}.editing .page{outline:none}}
 </style></head><body>
 <div class="bar no-print">
   <span>리포트가 준비되었습니다. 문구를 고치려면 <b>✏ 직접 수정</b>을 켜고 글자를 클릭해 바로 고치세요.</span>
@@ -904,6 +1130,8 @@ ${rep.lead ? `<div class="lead">${esc(rep.lead)}</div>` : ''}
 ${rep.comment?.trim() ? `<h2>컨설턴트 총평</h2>
 <div class="summary">${esc(rep.comment.trim())}</div>` : ''}
 
+${overallBlock}
+
 ${rep.showPlacements ? `<h2>저장된 배치 기록 (${repPlacements.length}건)</h2>
 ${repPlacements.length ? `<table>
 <thead><tr><th>판정</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>저장내신</th><th>비고</th></tr></thead>
@@ -919,8 +1147,8 @@ ${srcRows ? `<table>
 <thead><tr><th>#</th><th>대학 · 학과 · 전형</th><th>70%컷</th><th>경쟁률</th><th>모집</th><th>충원</th><th>판정</th></tr></thead>
 <tbody>${srcRows}</tbody></table>` : ''}` : ''}
 
-${cardBlocks ? `<h2>전형 카드 상세 (${repCardList.length}건)</h2>
-<div class="cards">${cardBlocks}</div>` : ''}
+${cardBlocks ? `<h2>전형 카드별 분석 (${repCardList.length}건)</h2>
+<div class="cards${rep.showWhy || Object.keys(aiCardMap).length ? ' wide' : ''}">${cardBlocks}</div>` : ''}
 
 ${rep.note?.trim() ? `<div class="note">${nl(rep.note.trim())}</div>` : ''}
 </div>
@@ -1402,6 +1630,8 @@ function toggleEdit(){
           <ReportModal rep={rep} setRep={setRep} off={repOff} setOff={setRepOff} memo={repMemo} setMemo={setRepMemo}
             placements={placements} aiSearch={aiSearch} cards={reportCards} student={student}
             grade={grade} baseYear={baseYear}
+            analysis={analysis} analyzing={analyzing} analysisMsg={analysisMsg}
+            onAnalyze={() => runReportAnalysis(reportCards.filter((c) => !repOff[`cd-${c.key}`]))}
             onClose={() => setReportOpen(false)}
             onPrint={() => { setReportOpen(false); buildIpgyeolReport(); }} />
         )}
@@ -1549,6 +1779,12 @@ const S = {
   rpItemDim: { color: '#b3bdc9', textDecoration: 'line-through' },
   rpItemSub: { fontSize: 11.5, color: '#8492a5' },
   rpMemo: { width: '100%', marginTop: 4, border: '1px solid #e3e9f1', borderRadius: 7, padding: '5px 9px', fontSize: 12, background: '#fbfcfe', color: '#26313e', outline: 'none' },
+  rpAnalyBox: { background: '#faf8ff', border: '1px solid #e6dcfa', borderRadius: 10, padding: '10px 12px', marginTop: 8 },
+  rpAnalyRow: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
+  rpAnaly: { border: 'none', background: '#6b46c1', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' },
+  rpAnalyBusy: { background: '#b9a8e6', cursor: 'default' },
+  rpAnalyMsg: { fontSize: 11.5, color: '#8492a5', flex: 1, minWidth: 200, lineHeight: 1.5 },
+  rpAnalyPrev: { marginTop: 9, fontSize: 12, lineHeight: 1.7, color: '#3d4a5c', background: '#fff', border: '1px solid #ece5fb', borderRadius: 8, padding: '9px 11px', maxHeight: 200, overflowY: 'auto' },
   rpFoot: { display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', marginTop: 18, paddingTop: 12, borderTop: '1px solid #eef2f7' },
   rpHint: { fontSize: 11.5, color: '#8492a5', marginLeft: 'auto' },
   rpReset: { border: '1px solid #e3e9f1', background: '#fff', color: '#8492a5', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
