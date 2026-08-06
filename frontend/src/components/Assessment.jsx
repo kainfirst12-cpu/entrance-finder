@@ -78,7 +78,10 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   const [boardStudent, setBoardStudent] = useState(null); // 보드에서 선택한 학생 (배정 대상)
 
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState('');
+  const [result, setResult] = useState('');          // create: 결과물 / review: 첨삭 리포트
+  const [finalDoc, setFinalDoc] = useState('');      // review에서 첨삭을 반영해 만든 완성본
+  const [tab, setTab] = useState('report');          // report | final
+  const [resultMode, setResultMode] = useState('create'); // 결과가 만들어진 시점의 모드
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -153,7 +156,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
     const apiKey = getActiveKey?.();
     if (!apiKey) { setError('선택한 AI의 API 키가 설정에 없습니다.'); return; }
 
-    setLoading(true); setError(''); setResult('');
+    setLoading(true); setError(''); setResult(''); setFinalDoc(''); setTab('report'); setVerifyResult('');
     try {
       const data = await postForResult(`${API_BASE}/api/assessment/generate`, {
         method: 'POST',
@@ -171,6 +174,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
       });
       if (data.success) {
         setResult(data.reply || '');
+        setResultMode(mode);
         const recTitle = `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`;
         // 보드에서 학생을 선택했으면 그 학생 기록으로 정확히 배정
         if (boardStudent && token()) {
@@ -206,40 +210,63 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
     });
   };
 
+  // 화면에서 지금 보고 있는 문서 — 검증·수정·배정·다운로드는 모두 이것을 대상으로 한다
+  const activeDoc = tab === 'final' ? finalDoc : result;
+  const setActiveDoc = (v) => (tab === 'final' ? setFinalDoc(v) : setResult(v));
+
   const verify = async () => {
     setVerifying(true); setError(''); setVerifyResult('');
     try {
-      const d = await callMode({ mode: 'verify', subject, grade, kind, current: result });
+      const d = await callMode({ mode: 'verify', subject, grade, kind, current: activeDoc });
       if (d?.success) setVerifyResult(d.reply || ''); else if (d) setError(d.message || '검증 실패');
     } catch (e) { setError('검증 실패: ' + e.message); }
     finally { setVerifying(false); }
   };
 
+  // 첨삭 리포트를 보고 있을 때의 '수정 요청' = 첨삭 + 요청을 반영한 완성본 만들기(완성본 탭으로 이동).
+  // 완성본/작성 결과물을 보고 있을 때는 그 문서를 요청대로 다듬는다.
+  const finalizing = resultMode === 'review' && tab === 'report';
+
   const revise = async () => {
-    if (!reviseInput.trim()) return;
+    if (!reviseInput.trim() && !finalizing) return;
     setRevising(true); setError('');
     try {
-      const d = await callMode({ mode: 'revise', subject, grade, kind, current: result, instruction: reviseInput });
-      if (d?.success) { setResult(d.reply || result); setReviseInput(''); setVerifyResult(''); }
+      const d = finalizing
+        ? await callMode({
+            mode: 'finalize', subject, grade, kind, topic, requirements, rubric, submissionText,
+            current: result, instruction: reviseInput,
+            images: images.map(i => ({ mimeType: i.mimeType, base64: i.base64 })), // 제출물이 캡처뿐인 경우 대비
+          })
+        : await callMode({ mode: 'revise', subject, grade, kind, current: activeDoc, instruction: reviseInput });
+      if (d?.success) {
+        if (finalizing) {
+          if (!d.reply?.trim()) { setError('완성본이 비어 있습니다. 다시 시도해 주세요.'); return; }
+          setFinalDoc(d.reply); setTab('final');
+        }
+        else setActiveDoc(d.reply || activeDoc);
+        setReviseInput(''); setVerifyResult('');
+      }
       else if (d) setError(d.message || '수정 실패');
     } catch (e) { setError('수정 실패: ' + e.message); }
     finally { setRevising(false); }
   };
 
+  const recordTitle = () => `${subject}${kind ? ' ' + kind : ''}${resultMode === 'review' ? (tab === 'final' ? ' (완성본)' : ' (첨삭)') : ''}`;
+
   const docTitle = () => {
-    const m = result.match(/^#\s+(.+)$/m);
+    const m = activeDoc.match(/^#\s+(.+)$/m);
     if (m) return m[1].trim();
-    return `${subject || '수행평가'}${kind ? '_' + kind : ''}`;
+    return `${subject || '수행평가'}${kind ? '_' + kind : ''}${resultMode === 'review' && tab === 'final' ? '_완성본' : ''}`;
   };
 
   const downloadDocx = async () => {
-    if (!result.trim()) return;
+    if (!activeDoc.trim()) return;
     setDownloading(true);
     try {
       const res = await fetch(`${API_BASE}/api/assessment/docx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token() ? { Authorization: `Bearer ${token()}` } : {}) },
-        body: JSON.stringify({ title: docTitle(), markdown: result }),
+        body: JSON.stringify({ title: docTitle(), markdown: activeDoc }),
       });
       if (!res.ok) { setError('문서 생성 실패'); return; }
       const blob = await res.blob();
@@ -254,14 +281,14 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
 
   const assignStudent = async () => {
     if (!token()) { alert('로그인이 필요합니다.'); return; }
-    const recTitle = `${subject}${kind ? ' ' + kind : ''}${mode === 'review' ? ' (첨삭)' : ''}`;
+    const recTitle = recordTitle();
     try {
       let d, label;
       if (boardStudent) {
         // 보드에서 선택한 학생에게 정확히 배정
         const r = await fetch(`${API_BASE}/api/board/students/${boardStudent.id}/records`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-          body: JSON.stringify({ type: '수행평가', title: recTitle, content: result }),
+          body: JSON.stringify({ type: '수행평가', title: recTitle, content: activeDoc }),
         });
         d = await r.json(); label = boardStudent.name;
       } else {
@@ -269,7 +296,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
         if (!nm) { nm = (window.prompt('어느 학생에게 배정할까요? 학생 이름:') || '').trim(); if (!nm) return; setStudentName(nm); }
         const r = await fetch(`${API_BASE}/api/board/upsert`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
-          body: JSON.stringify({ name: nm, grade, record: { type: '수행평가', title: recTitle, content: result } }),
+          body: JSON.stringify({ name: nm, grade, record: { type: '수행평가', title: recTitle, content: activeDoc } }),
         });
         d = await r.json(); label = nm;
       }
@@ -279,7 +306,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   };
 
   const copyAll = async () => {
-    await navigator.clipboard.writeText(result);
+    await navigator.clipboard.writeText(activeDoc);
     setCopied(true); setTimeout(() => setCopied(false), 1800);
   };
 
@@ -384,16 +411,29 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
       {result && (
         <div style={S.card}>
           <div style={S.resultHead}>
-            <span style={S.resultTitle}>결과 <span style={S.opt}>아래에서 자유롭게 수정한 뒤 Word로 받으세요</span></span>
+            <span style={S.resultTitle}>
+              결과 <span style={S.opt}>
+                {tab === 'final' ? '완성본입니다 — 그대로 배정·Word 저장하거나 아래에서 더 다듬으세요'
+                  : '아래에서 자유롭게 수정한 뒤 Word로 받으세요'}
+              </span>
+            </span>
             <div style={{ display: 'flex', gap: 8 }}>
               <button style={S.assignBtn} onClick={assignStudent}>📋 학생에게 배정</button>
               <button style={S.docxBtn} onClick={downloadDocx} disabled={downloading}>{downloading ? '생성 중...' : '📄 Word(.docx) 다운로드'}</button>
               <button style={S.ghostBtn} onClick={copyAll}>{copied ? '복사됨!' : '복사'}</button>
             </div>
           </div>
-          <textarea style={S.resultEdit} rows={14} value={result} onChange={e => setResult(e.target.value)} />
+
+          {resultMode === 'review' && finalDoc && (
+            <div style={S.tabRow}>
+              <button style={{ ...S.tabBtn, ...(tab === 'report' ? S.tabActive : {}) }} onClick={() => { setTab('report'); setVerifyResult(''); }}>🔍 첨삭 리포트</button>
+              <button style={{ ...S.tabBtn, ...(tab === 'final' ? S.tabActive : {}) }} onClick={() => { setTab('final'); setVerifyResult(''); }}>📄 완성본</button>
+            </div>
+          )}
+
+          <textarea style={S.resultEdit} rows={14} value={activeDoc} onChange={e => setActiveDoc(e.target.value)} />
           <div style={S.previewLabel}>미리보기</div>
-          <div style={S.preview} dangerouslySetInnerHTML={{ __html: mdPreview(result) }} />
+          <div style={S.preview} dangerouslySetInnerHTML={{ __html: mdPreview(activeDoc) }} />
 
           {/* AI 검증 + 수정 요청 */}
           <div style={S.aiToolRow}>
@@ -409,9 +449,16 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
           <div style={S.reviseRow}>
             <input style={S.input} value={reviseInput} onChange={e => setReviseInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && revise()} disabled={revising}
-              placeholder="AI에게 수정 요청 (예: 결론을 더 강하게, 표 추가, 분량 줄이기)" />
-            <button style={S.reviseBtn} onClick={revise} disabled={revising || !reviseInput.trim()}>{revising ? '수정 중...' : '✏️ 수정 요청'}</button>
+              placeholder={finalizing
+                ? '첨삭을 반영해 완성본을 만듭니다 — 추가 요청이 있으면 적어주세요 (비워도 됩니다)'
+                : 'AI에게 수정 요청 (예: 결론을 더 강하게, 표 추가, 분량 줄이기)'} />
+            <button style={S.reviseBtn} onClick={revise} disabled={revising || (!finalizing && !reviseInput.trim())}>
+              {revising ? (finalizing ? '완성본 작성 중...' : '수정 중...') : (finalizing ? '✨ 반영해서 완성본 만들기' : '✏️ 수정 요청')}
+            </button>
           </div>
+          {finalizing && (
+            <div style={S.verifyHint}>완성본은 학생 원본 글에 위 첨삭 내용을 실제로 반영해 다시 쓴 제출용 결과물입니다. 만들고 나면 위에서 '완성본' 탭으로 전환되고, 그 상태로 배정·Word 저장이 됩니다.</div>
+          )}
         </div>
       )}
     </div>
@@ -444,6 +491,9 @@ const STYLES = {
   assignBtn: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
   docxBtn: { background: '#34d399', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 600, cursor: 'pointer', fontSize: 13.5 },
   ghostBtn: { background: '#131c26', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', fontSize: 13.5 },
+  tabRow: { display: 'flex', gap: 8, marginBottom: 10 },
+  tabBtn: { padding: '7px 14px', borderRadius: 8, border: '1px solid #d8d5cc', background: '#131c26', color: '#9db0bd', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+  tabActive: { borderColor: '#14b8a6', color: '#14b8a6', background: 'rgba(45,212,191,0.15)' },
   resultEdit: { width: '100%', padding: '12px 14px', borderRadius: 9, border: '1px solid #d8d5cc', background: '#1c2937', color: '#e8eef3', fontSize: 13.5, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' },
   previewLabel: { fontSize: 12, color: '#6b7d8a', fontWeight: 600, margin: '16px 0 6px' },
   preview: { border: '1px solid #e8e6df', borderRadius: 9, padding: '16px 18px', background: '#16212e', fontSize: 14, lineHeight: 1.6, color: '#e8eef3' },

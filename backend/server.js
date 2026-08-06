@@ -907,6 +907,22 @@ app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
 - 결과물 전체를 빠짐없이 출력(잘리지 않게).`;
     userMsg = `[수정 요청]\n${instruction || '전반적으로 더 완성도 높게 다듬어 주세요.'}\n\n[현재 결과물]\n${current}`;
     maxTokens = 16000;
+  } else if (mode === 'finalize') {
+    // 첨삭 리포트(current) + 학생 원본 → 제출 가능한 '완성본'. 리포트를 다듬는 revise와 다르다.
+    if (!submissionText?.trim() && !current?.trim() && imgList.length === 0) {
+      return res.status(400).json({ success: false, message: '완성본을 만들 학생 제출물이 없습니다' });
+    }
+    systemPrompt = `당신은 학생의 수행평가 제출물을 첨삭 결과에 따라 고쳐 완성본을 만드는 전문 교사입니다.
+학생 글의 주제·구성·목소리를 살린 채 지적된 문제를 실제로 고쳐 **제출 가능한 완성본 전체**를 출력합니다.
+
+[원칙]
+- 첨삭의 '개선이 필요한 점'과 '개선 예시'를 본문에 실제로 반영. 사용자의 수정 요청이 있으면 그것을 최우선으로 반영.
+- 학생이 처음부터 그렇게 쓴 것처럼 자연스럽게. 첨삭·수정·반영 같은 메타 표현, 평가 코멘트, Before/After 표기 금지.
+- 학년 수준에 맞는 문체·어휘 유지. 원문에 없는 수치·출처를 지어내지 말 것(원문의 자료는 그대로 살릴 것).
+- 분량은 원문과 비슷하게(요청이 있으면 그에 맞춤). 마크다운(# 제목, ##, 표 |, **굵게**, 목록). 이모지 금지.
+- 완성본 전체를 빠짐없이 출력(잘리지 않게). 완성본 외의 설명은 붙이지 말 것.`;
+    userMsg = `${head}\n[수행평가 주제/과제]\n${topic || '미입력'}\n\n[요구사항(분량·형식 등)]\n${requirements || '제한 없음'}${rubric ? `\n\n[평가 기준/루브릭]\n${rubric}` : ''}\n\n[학생 원본 제출물]\n${submissionText || '(텍스트 없음 — 첨부 이미지에서 읽어 재구성)'}\n\n[첨삭·평가 결과]\n${current || '(없음)'}\n\n[사용자 수정 요청]\n${instruction || '첨삭에서 지적된 개선점을 모두 반영해 완성본을 작성해 주세요.'}${imgNote}\n\n위를 반영한 완성본 전체를 출력해 주세요.`;
+    maxTokens = 16000;
   } else if (mode === 'review') {
     if (!submissionText?.trim() && imgList.length === 0) return res.status(400).json({ success: false, message: '평가할 학생 제출물(텍스트 또는 이미지)이 없습니다' });
     systemPrompt = `당신은 대한민국 학교 수행평가 채점·첨삭 전문 교사입니다.
@@ -946,7 +962,8 @@ ${grade || ''} 학생 수준에 맞춰 완성도 높은 수행평가 결과물�
   try {
     const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens, images: imgList });
     if (req.user?.role === 'user' && req.user?.userId) {
-      logEvent({ userId: req.user.userId, type: 'assessment', detail: `${mode === 'review' ? '첨삭' : '작성'} / ${subject || ''} ${kind || ''}`, ip: getIp(req) });
+      const label = mode === 'review' ? '첨삭' : mode === 'finalize' ? '완성본' : '작성';
+      logEvent({ userId: req.user.userId, type: 'assessment', detail: `${label} / ${subject || ''} ${kind || ''}`, ip: getIp(req) });
       if (req.user.jti) touchSession(req.user.jti);
     }
     sendDone({ success: true, reply });
