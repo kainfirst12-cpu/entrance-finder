@@ -29,15 +29,15 @@ async function postForResult(url, opts) {
 }
 
 const MODEL_CONFIG = {
-  claude:        { icon: '🔵', label: 'Claude Sonnet 4.6', color: '#7c6af7', group: 'claude' },
-  'claude-opus': { icon: '🔷', label: 'Claude Opus 4.8',   color: '#5b21b6', group: 'claude' },
-  gemini:        { icon: '🟢', label: 'Gemini 3.5 Flash',    color: '#4caf50', group: 'gemini' },
+  claude:        { icon: '🔵', label: 'Claude Sonnet 5',   color: '#7c6af7', group: 'claude' },
+  'claude-opus': { icon: '🔷', label: 'Claude Opus 5',     color: '#5b21b6', group: 'claude' },
+  gemini:        { icon: '🟢', label: 'Gemini 3.7 Flash',    color: '#4caf50', group: 'gemini' },
   'gemini-pro':  { icon: '🟩', label: 'Gemini 3.1 Pro',    color: '#166534', group: 'gemini' },
-  gpt:           { icon: '🟡', label: 'GPT-5.5',           color: '#f0a500', group: 'gpt' },
-  'gpt-mini':    { icon: '🟠', label: 'GPT-5.4 Mini',      color: '#ea580c', group: 'gpt' },
-  'gpt-4.1':     { icon: '🟤', label: 'GPT-5.4',           color: '#78350f', group: 'gpt' },
+  gpt:           { icon: '🟡', label: 'GPT-5.6 Sol',       color: '#f0a500', group: 'gpt' },
+  'gpt-mini':    { icon: '🟠', label: 'GPT-5.6 Terra',     color: '#ea580c', group: 'gpt' },
+  'gpt-4.1':     { icon: '🟤', label: 'GPT-5.5',           color: '#78350f', group: 'gpt' },
   'o3':          { icon: '⚪', label: 'GPT-5.5 Pro',       color: '#374151', group: 'gpt' },
-  'o4-mini':     { icon: '🔘', label: 'GPT-5.4 Nano',      color: '#6b7280', group: 'gpt' },
+  'o4-mini':     { icon: '🔘', label: 'GPT-5.6 Luna',      color: '#6b7280', group: 'gpt' },
 };
 
 const SECTION_MAP = [

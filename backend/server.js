@@ -718,17 +718,19 @@ async function getCachedKnowledgeBase(studentMajor) {
   return data;
 }
 
-// ── 모델 ID 매핑 (2026-05 기준 최신) ────────────────────
+// ── 모델 ID 매핑 (2026-08 기준 최신) ────────────────────
+// GPT-5.6부터 숫자는 세대, Sol(플래그십)/Terra(균형)/Luna(저비용)는 티어 이름.
+// pro 티어는 5.6에 아직 없어 gpt-5.5-pro 유지(Responses API 전용).
 const MODEL_IDS = {
-  claude: 'claude-sonnet-4-6',
-  'claude-opus': 'claude-opus-4-8',
-  gemini: 'gemini-3.5-flash',
+  claude: 'claude-sonnet-5',
+  'claude-opus': 'claude-opus-5',
+  gemini: 'gemini-3.7-flash',
   'gemini-pro': 'gemini-3.1-pro-preview',
-  gpt: 'gpt-5.5',
-  'gpt-mini': 'gpt-5.4-mini',
-  'gpt-4.1': 'gpt-5.4',
+  gpt: 'gpt-5.6-sol',
+  'gpt-mini': 'gpt-5.6-terra',
+  'gpt-4.1': 'gpt-5.5',
   'o3': 'gpt-5.5-pro',
-  'o4-mini': 'gpt-5.4-nano',
+  'o4-mini': 'gpt-5.6-luna',
 };
 function getModelId(group, submodel) {
   return MODEL_IDS[submodel] || MODEL_IDS[group] || MODEL_IDS.claude;
@@ -2015,7 +2017,8 @@ ${kb.합격자사례 || '(자료 없음)'}${studentSection}${analysisSection}${f
       ];
 
       // web_search 도구 활성화 (tool use loop)
-      const webSearchTool = { type: 'web_search_20250305', name: 'web_search', max_uses: 5 };
+      // Sonnet 5 / Opus 5는 동적 필터링이 붙은 최신 web_search 변형을 지원한다.
+      const webSearchTool = { type: 'web_search_20260209', name: 'web_search', max_uses: 5 };
       let currentMessages = messages;
       let response;
       for (let i = 0; i < 10; i++) {

@@ -14,12 +14,12 @@ const SECTION_MAP = [
 ];
 
 const MODEL_CFG = {
-  claude:       { icon: '●', label: 'Claude Sonnet 4.6', color: '#7c6af7', group: 'claude' },
-  'claude-opus':{ icon: '◆', label: 'Claude Opus 4.8',   color: '#5b21b6', group: 'claude' },
-  gemini:       { icon: '●', label: 'Gemini 3.5 Flash',    color: '#4caf50', group: 'gemini' },
+  claude:       { icon: '●', label: 'Claude Sonnet 5',   color: '#7c6af7', group: 'claude' },
+  'claude-opus':{ icon: '◆', label: 'Claude Opus 5',     color: '#5b21b6', group: 'claude' },
+  gemini:       { icon: '●', label: 'Gemini 3.7 Flash',    color: '#4caf50', group: 'gemini' },
   'gemini-pro': { icon: '■', label: 'Gemini 3.1 Pro',    color: '#166534', group: 'gemini' },
-  gpt:          { icon: '●', label: 'GPT-5.5',           color: '#f0a500', group: 'gpt' },
-  'gpt-mini':   { icon: '●', label: 'GPT-5.4 Mini',      color: '#ea580c', group: 'gpt' },
+  gpt:          { icon: '●', label: 'GPT-5.6 Sol',       color: '#f0a500', group: 'gpt' },
+  'gpt-mini':   { icon: '●', label: 'GPT-5.6 Terra',     color: '#ea580c', group: 'gpt' },
 };
 
 // 에이전트가 부른 도구 이름을 사람 말로
@@ -209,7 +209,7 @@ export default function ChatInterface({ getActiveKey, selectedModel, analysisDat
     }
   }, [analysisData]);
 
-  const modelLabels = { claude: 'Claude Sonnet 4.6', 'claude-opus': 'Claude Opus 4.8', gemini: 'Gemini 3.5 Flash', 'gemini-pro': 'Gemini 3.1 Pro', gpt: 'GPT-5.5', 'gpt-mini': 'GPT-5.4 Mini' };
+  const modelLabels = { claude: 'Claude Sonnet 5', 'claude-opus': 'Claude Opus 5', gemini: 'Gemini 3.7 Flash', 'gemini-pro': 'Gemini 3.1 Pro', gpt: 'GPT-5.6 Sol', 'gpt-mini': 'GPT-5.6 Terra' };
 
   // ── 학생 자료 불러오기 ────────────────────────────
   // 기본 선택: 생기부 분석·컨설턴트 브리핑·최근 상담 — 상담에서 가장 자주 근거가 되는 기록들

@@ -2,13 +2,14 @@ import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
 import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt } from './reportUtils.js';
 
-// 2026-05 기준 최신 GPT 모델 매핑 (frontend 키는 호환을 위해 유지)
+// 2026-08 기준 최신 GPT 모델 매핑 (frontend 키는 호환을 위해 유지)
+// GPT-5.6부터 Sol(플래그십)/Terra(균형)/Luna(저비용) 티어 체계. pro는 5.6에 없어 5.5-pro 유지.
 const GPT_MODELS = {
-  'gpt': 'gpt-5.5',
-  'gpt-mini': 'gpt-5.4-mini',
-  'gpt-4.1': 'gpt-5.4',
+  'gpt': 'gpt-5.6-sol',
+  'gpt-mini': 'gpt-5.6-terra',
+  'gpt-4.1': 'gpt-5.5',
   'o3': 'gpt-5.5-pro',
-  'o4-mini': 'gpt-5.4-nano',
+  'o4-mini': 'gpt-5.6-luna',
 };
 
 async function extractPdfTexts(pdfDocuments) {
@@ -239,7 +240,7 @@ async function runPool(items, limit, worker) {
 export async function testGPTConnection(apiKey) {
   const openai = new OpenAI({ apiKey });
   const response = await openai.chat.completions.create({
-    model: 'gpt-5.4-mini',
+    model: 'gpt-5.6-luna',
     max_completion_tokens: 20,
     messages: [{ role: 'user', content: '안녕하세요. "연결성공"이라고만 답하세요.' }],
   });
