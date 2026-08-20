@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import pdfParse from 'pdf-parse';
-import { stripBoldMarkers, studentContextBlock, buildPlanMonths } from './reportUtils.js';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt } from './reportUtils.js';
 
 // 2026-05 기준 최신. preview 모델 우선, 안정 모델로 폴백
 const GEMINI_MODELS = {
@@ -214,33 +214,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 | 평가 영역 | 현재 수준 | 목표 수준 | 갭 분석 | 실행 방안 |
 |-----------|----------|----------|--------|----------|` },
     { key: 'strategy', label: '수시 지원 전략 (6장 카드)', step: 5,
-      prompt: `[4단계: 지원 전략 수립] 학생: 내신 ${studentData.gpa} / 목표 ${studentData.targetUniv} / ${studentData.major}
-수시 6장 지원 전략을 수립하라.
-[출력 형식 — 절대 준수: 반드시 마크다운 표(| |)로만 출력하라. 카드 형태, 블록쿼트(>), 들여쓰기 나열 금지.]
-
-전형 유형 추천:
-| 전형 유형 | 추천도 | 근거 |
-|----------|--------|------|
-| 학생부종합 | XX% | ... |
-| 학생부교과 | XX% | ... |
-| 논술 | XX% | ... |
-| 정시 | XX% | ... |
-
-수시 지원 카드 6장:
-| 구분 | 대학 | 학과 | 전형 | 합격컷 | 현재 갭 | 합격 가능성 | 핵심 전략 |
-|------|------|------|------|--------|--------|-----------|----------|
-| 상향 1 | ... | ... | ... | ... | ... | XX% | ... |
-| 상향 2 | ... | ... | ... | ... | ... | XX% | ... |
-| 적정 1 | ... | ... | ... | ... | ... | XX% | ... |
-| 적정 2 | ... | ... | ... | ... | ... | XX% | ... |
-| 안정 1 | ... | ... | ... | ... | ... | XX% | ... |
-| 안정 2 | ... | ... | ... | ... | ... | XX% | ... |
-
-각 대학별 합격 조건과 핵심 전략을 간결히 서술.
-
-핵심 리스크 분석:
-| 리스크 | 심각도 | 대응 방안 |
-|--------|--------|----------|` },
+      prompt: strategyStepPrompt(studentData) },
     { key: 'roadmap', label: '핵심 리스크 및 대응 방안', step: 6,
       prompt: `[5단계: 핵심 리스크 및 대응 방안] 학생: ${studentData.name} / ${studentData.grade}학년
 핵심 리스크 3가지를 분석하고 대응 방안을 제시하라. 5.1~5.4 소제목 구조, 리스크별 상세/우려사항/대응방안/면접대응 포함. 자소서는 일반 대학에서는 폐지됨 — 일반 대학 관련해서는 언급 금지(과기원·POSTECH 등은 예외).` },

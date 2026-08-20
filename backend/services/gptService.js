@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
-import { stripBoldMarkers, studentContextBlock, buildPlanMonths } from './reportUtils.js';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt } from './reportUtils.js';
 
 // 2026-05 기준 최신 GPT 모델 매핑 (frontend 키는 호환을 위해 유지)
 const GPT_MODELS = {
@@ -183,24 +183,7 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
     { key: 'career', label: '진로 역량 및 전공 적합성', step: 4,
       prompt: `${pdfNote}[3단계: 진로 역량 및 전공 적합성] 희망전공: ${studentData.major} / 목표대학: ${studentData.targetUniv}\n첨부 PDF에서 진로 관련 내용을 읽고 전공 적합성과 진로 역량을 분석하라.\n소제목 3.1~3.3 구조로 작성` },
     { key: 'strategy', label: '수시 지원 전략 (6장 카드)', step: 5,
-      prompt: `[4단계: 지원 전략 수립] 학생: 내신 ${studentData.gpa} / 목표 ${studentData.targetUniv} / ${studentData.major}
-수시 6장 지원 전략을 수립하라.
-[출력 형식 — 절대 준수: 반드시 마크다운 표(| |)로만 출력하라. 카드 형태, 블록쿼트(>), 들여쓰기 나열 금지.]
-
-전형 유형 추천:
-| 전형 유형 | 추천도 | 근거 |
-|----------|--------|------|
-
-수시 지원 카드 6장:
-| 구분 | 대학 | 학과 | 전형 | 합격컷 | 현재 갭 | 합격 가능성 | 핵심 전략 |
-|------|------|------|------|--------|--------|-----------|----------|
-| 상향 1~2, 적정 1~2, 안정 1~2 |
-
-각 대학별 합격 조건과 핵심 전략을 간결히 서술.
-
-핵심 리스크 분석:
-| 리스크 | 심각도 | 대응 방안 |
-|--------|--------|----------|` },
+      prompt: strategyStepPrompt(studentData) },
     { key: 'roadmap', label: '핵심 리스크 및 대응 방안', step: 6,
       prompt: `[5단계: 핵심 리스크 및 대응 방안] 학생: ${studentData.name} / ${studentData.grade}학년\n핵심 리스크 3가지를 분석하고 대응 방안을 제시하라. 5.1~5.4 소제목 구조, 리스크별 상세/우려사항/대응방안/면접대응 포함. 자소서는 일반 대학에서는 폐지됨 — 일반 대학 관련해서는 언급 금지(과기원·POSTECH 등은 예외).` },
     { key: 'recordFeedback', label: '실행 계획', step: 7,

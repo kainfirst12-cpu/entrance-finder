@@ -24,6 +24,7 @@ import {
 } from './services/roadmapStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
+import { placementJudgeRules } from './services/reportUtils.js';
 import { generateAnalysisPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -1366,10 +1367,12 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
 ## 보완점·리스크
 (약점, 빠진 활동, 최저 리스크 등)
 ## 지원 카드 재검토
-(저장된 배치를 다시 봅니다. 세 가지를 반드시 짚으십시오.
+(저장된 배치를 다시 봅니다. 네 가지를 반드시 짚으십시오.
  · 저장 당시 내신과 현재 대표 내신이 다르면 판정이 어떻게 바뀌는지
  · 안정·적정·소신·위험의 분포가 한쪽으로 쏠려 있지는 않은지
+ · 진짜 안전판(수능최저 없음+컷 여유+등록 현실성)이 몇 장인지 — 1장 이하이면 하한선이 얇다고 경고
  · 생기부 기록의 강점이 그 학과·전형과 실제로 맞는지
+ 수능최저가 걸린 카드는 "충족되면 보너스" 위상으로 보고, 소수모집(5명 이하)·모집인원 급감 카드는 보수적으로 재평가하십시오.
  배치가 없으면 '저장된 배치 없음 — 입결 콘솔에서 후보를 먼저 담아야 합니다'라고 쓰십시오.)
 ## 로드맵 진행 점검
 (끝낸 항목과 밀린 항목을 보고, 지금 밀린 것 중 무엇이 위 지원 카드에 직접 영향을 주는지.
@@ -2669,6 +2672,8 @@ app.post('/api/ipgyeol/judge', requireAuth, async (req, res) => {
 - 종합전형: 내신뿐 아니라 생기부 분석에 나타난 비교과·전공적합성·학업역량의 강약을 반드시 반영
 - 수능최저가 있으면 충족 가능성도 고려(분석 내용에 모의고사 정보가 있으면 활용)
 
+${placementJudgeRules()}
+
 [출력 — 반드시 JSON 배열만. 다른 텍스트·코드펜스 금지]
 [{"key":"<카드 key 그대로>","verdict":"안정|적정|소신|위험","reason":"판정 근거 한 문장(40자 이내)"}]`;
 
@@ -2724,6 +2729,11 @@ app.post('/api/ipgyeol/report-analysis', requireAuth, async (req, res) => {
 - 학생부종합은 내신 외에 생기부 발췌에 드러난 전공적합성·학업역량을 근거로 삼는다. 자료가 없으면 "생기부 자료가 없어 판단 유보"라고 명시한다.
 - 연도별 학생부 총점 척도가 달라 환산점수의 연도 간 비교는 하지 않는다.
 - 각 문장은 60자 내외, 존댓말 개조식(~습니다/~입니다).
+
+${placementJudgeRules()}
+- overall.strategy에는 반드시 6장 균형 진단을 담는다: 진짜 안전판(최저 없음+컷 여유+등록 현실성)이 몇 장인지,
+  최저 걸린 카드가 몇 장인지 세어 말하고, 안전판이 1장 이하면 보강 방향(최저 없는 교과·서류형 종합)을 제시한다.
+- 수능최저 카드의 risks에는 충족이 의존하는 과목 조합과 미달 이력 여부(모의고사 정보가 있으면)를 쓴다.
 
 [출력 — 반드시 JSON 객체만. 코드펜스·설명 금지]
 {
@@ -3030,6 +3040,8 @@ ${recs || '(기록 없음)'}`;
 - 입결 자료는 2021~2026 대학어디가 공식 발표분입니다. 올해 신설된 전형은 입결이 존재하지 않습니다.
   신설 전형을 물으면 입결로는 답할 수 없다고 밝히고, 전형방법 쪽으로 돌려 답하십시오.
 - 배치 판정(안정·적정·소신·위험)은 70%컷과 내신 차이만 본 참고값입니다. 반영교과·최저·모집인원 변화는 별도입니다.
+
+${placementJudgeRules()}
 
 [답변 형식]
 - 마크다운, 이모지 금지, 합니다체.
