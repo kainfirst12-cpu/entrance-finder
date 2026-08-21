@@ -149,15 +149,7 @@ function generateAnalysisPDF(analysisData, studentData) {
         });
       });
 
-      // ── 푸터 ──
-      const totalPages = doc.bufferedPageRange().count;
-      for (let i = 0; i < totalPages; i++) {
-        doc.switchToPage(i);
-        doc.moveTo(ML, 822).lineTo(PW - MR, 822).strokeColor(C.BORDER).lineWidth(0.4).stroke();
-        doc.fontSize(7).fillColor(C.GRAY).text('입시-Finder  |  패스파인더 에듀', ML, 826);
-        doc.fontSize(7).fillColor(C.GRAY).text(`${i + 1} / ${totalPages}`, PW - MR - 30, 826);
-      }
-
+      _drawFooters(doc, ML, PW, MR);
       doc.end();
     } catch (err) { reject(err); }
   });
@@ -327,4 +319,219 @@ function _gradeLabel(score, max) {
   return '하 (전략적 접근 필요)';
 }
 
-export { generateAnalysisPDF };
+// ══════════════════════════════════════════════════════
+// 생기부 로드맵 PDF — 커버 + 진행 현황 + 섹션별 체크리스트 + 로드맵 전문
+// rm: getRoadmap() 결과 (student_name/school/grade/major 조인 포함, items 배열)
+// ══════════════════════════════════════════════════════
+
+const RM_SECTION_ORDER = ['과목별 설계', '타임라인', '남은 작업', '기타'];
+const PAGE_BOTTOM = 790; // 푸터(822) 위 여백
+
+const _rmDate = (v) => { try { return v ? new Date(v).toLocaleDateString('ko-KR') : ''; } catch { return ''; } };
+
+// 페이지 하단(마진 안쪽)에 텍스트를 쓰면 pdfkit이 자동으로 새 페이지를 만들어 빈 장이 생긴다.
+// 푸터를 쓰는 동안만 하단 마진을 0으로 내리고 lineBreak를 끈다.
+function _drawFooters(doc, ml, pw, mr) {
+  const totalPages = doc.bufferedPageRange().count;
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(i);
+    const ob = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+    doc.moveTo(ml, 822).lineTo(pw - mr, 822).strokeColor(C.BORDER).lineWidth(0.4).stroke();
+    doc.fontSize(7).fillColor(C.GRAY).text('입시-Finder  |  패스파인더 에듀', ml, 826, { lineBreak: false });
+    doc.fontSize(7).fillColor(C.GRAY).text(`${i + 1} / ${totalPages}`, pw - mr - 30, 826, { lineBreak: false });
+    doc.page.margins.bottom = ob;
+  }
+}
+
+function _rmEnsure(doc, y, need) {
+  if (y + need > PAGE_BOTTOM) { doc.addPage(); return 20; }
+  return y;
+}
+
+// 마크다운 인라인 정리 — pdfkit엔 굵게/기울임 변형 폰트가 없어 기호만 걷어낸다
+const _rmInline = (s) => String(s || '')
+  .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1')
+  .replace(/`([^`]+)`/g, '$1').replace(/__([^_]+)__/g, '$1');
+
+function _rmCheckbox(doc, x, y, done) {
+  if (done) {
+    doc.roundedRect(x, y, 11, 11, 2.5).fill(C.GREEN);
+    doc.moveTo(x + 2.5, y + 5.5).lineTo(x + 4.5, y + 8).lineTo(x + 8.5, y + 3)
+      .strokeColor(C.WHITE).lineWidth(1.4).stroke();
+  } else {
+    doc.roundedRect(x, y, 11, 11, 2.5).strokeColor(C.GRAY).lineWidth(1).stroke();
+  }
+}
+
+// 로드맵 본문(마크다운) → 제목/불릿/표 행을 단순 조판으로 흘려 그린다
+function _rmDrawMarkdown(doc, md, ml, y, bw) {
+  const lines = String(md || '').split('\n');
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    const trimmed = line.trim();
+    if (!trimmed) { y += 4; continue; }
+    if (/^-{3,}$/.test(trimmed)) {
+      y = _rmEnsure(doc, y, 10);
+      doc.moveTo(ml, y + 3).lineTo(ml + bw, y + 3).strokeColor(C.BORDER).lineWidth(0.5).stroke();
+      y += 10; continue;
+    }
+    const h = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const level = h[1].length;
+      const size = level === 1 ? 13 : level === 2 ? 11 : 9.5;
+      const text = _rmInline(h[2]);
+      const th = doc.fontSize(size).heightOfString(text, { width: bw });
+      y = _rmEnsure(doc, y, th + 14);
+      y += level <= 2 ? 8 : 5;
+      doc.fontSize(size).fillColor(level === 1 ? C.NAVY : C.BLUE).text(text, ml, y, { width: bw });
+      y += th + 4;
+      if (level <= 2) { doc.moveTo(ml, y).lineTo(ml + bw, y).strokeColor(level === 1 ? C.ACCENT : C.BORDER).lineWidth(0.6).stroke(); y += 5; }
+      continue;
+    }
+    if (/^\|/.test(trimmed)) {
+      if (/^\|[\s:|-]+\|$/.test(trimmed)) continue; // |---|---| 구분선
+      const cells = trimmed.replace(/^\||\|$/g, '').split('|').map(c => _rmInline(c.trim()));
+      const text = cells.filter(Boolean).join('   |   ');
+      const th = doc.fontSize(7.5).heightOfString(text, { width: bw - 8 });
+      y = _rmEnsure(doc, y, th + 4);
+      doc.fontSize(7.5).fillColor('#374151').text(text, ml + 8, y, { width: bw - 8 });
+      y += th + 3; continue;
+    }
+    const bullet = trimmed.match(/^[-*•]\s+(.*)$/) || trimmed.match(/^(\d+\.)\s+(.*)$/);
+    if (bullet) {
+      const marker = bullet.length === 3 ? bullet[1] : '·';
+      const text = _rmInline(bullet[bullet.length - 1]);
+      const th = doc.fontSize(8.5).heightOfString(text, { width: bw - 16 });
+      y = _rmEnsure(doc, y, th + 4);
+      doc.fontSize(8.5).fillColor(C.BLACK).text(marker, ml + 4, y);
+      doc.fontSize(8.5).fillColor(C.BLACK).text(text, ml + 16, y, { width: bw - 16 });
+      y += th + 3; continue;
+    }
+    const text = _rmInline(trimmed);
+    const th = doc.fontSize(8.5).heightOfString(text, { width: bw });
+    y = _rmEnsure(doc, y, th + 4);
+    doc.fontSize(8.5).fillColor(C.BLACK).text(text, ml, y, { width: bw });
+    y += th + 4;
+  }
+  return y;
+}
+
+function generateRoadmapPDF(rm) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 20, bottom: 20, left: 20, right: 20 }, bufferPages: true });
+      const fontPath = findKoreanFont();
+      if (fontPath) { doc.registerFont('Korean', fontPath); doc.font('Korean'); }
+      const chunks = [];
+      doc.on('data', c => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const PW = doc.page.width;
+      const ML = 20, MR = 20, BODY_W = PW - ML - MR;
+      const items = rm.items || [];
+      const doneCount = items.filter(i => i.done).length;
+      const progress = items.length ? Math.round((doneCount / items.length) * 100) : 0;
+
+      // ── 커버 헤더 ──
+      doc.rect(0, 0, PW, 168).fill(C.NAVY);
+      doc.rect(0, 0, 8, 168).fill(C.BLUE);
+      doc.fontSize(8).fillColor(C.ACCENT).text('입시-Finder  |  생기부 로드맵', ML + 8, 18);
+      doc.fontSize(18).fillColor(C.WHITE).text(rm.title || '생기부 로드맵', ML + 8, 38, { width: BODY_W - 16 });
+      const chips = [
+        `학생: ${rm.student_name || '-'}`,
+        `학교: ${rm.student_school || '-'}`,
+        `학년: ${rm.student_grade || '-'}`,
+        `희망 진로: ${rm.student_major || '-'}`,
+      ];
+      let chipX = ML + 8;
+      chips.forEach(chip => {
+        const tw = doc.fontSize(7).widthOfString(chip) + 14;
+        doc.roundedRect(chipX, 96, tw, 18, 3).fill('#1e3a6e');
+        doc.fontSize(7).fillColor(C.WHITE).text(chip, chipX + 7, 102);
+        chipX += tw + 6;
+      });
+      const dateStr = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+      doc.fontSize(7).fillColor('#93c5fd').text(`출력일: ${dateStr}${rm.created_at ? `   ·   작성일: ${_rmDate(rm.created_at)}` : ''}`, ML + 8, 126);
+      // 진행률 바
+      const barW = BODY_W - 120;
+      doc.roundedRect(ML + 8, 140, barW, 9, 4).fill('#1e3a6e');
+      if (progress > 0) doc.roundedRect(ML + 8, 140, Math.max(barW * progress / 100, 9), 9, 4).fill(progress === 100 ? C.GREEN : C.ACCENT);
+      doc.fontSize(8).fillColor(C.WHITE).text(`달성 ${doneCount}/${items.length} · ${progress}%`, ML + 8 + barW + 8, 140);
+
+      let y = 180;
+
+      // ── 요지 ──
+      if (rm.summary) {
+        const sh = doc.fontSize(8.5).heightOfString(rm.summary, { width: BODY_W - 24 }) + 16;
+        y = _rmEnsure(doc, y, sh + 4);
+        doc.roundedRect(ML, y, BODY_W, sh, 3).fill('#f8fafc');
+        doc.rect(ML, y, 3, sh).fill(C.BLUE);
+        doc.fontSize(8.5).fillColor('#374151').text(rm.summary, ML + 12, y + 8, { width: BODY_W - 24 });
+        y += sh + 10;
+      }
+
+      // ── 섹션별 체크리스트 ──
+      const bySection = {};
+      for (const it of items) (bySection[it.section || '기타'] ||= []).push(it);
+      const sections = Object.keys(bySection).sort(
+        (a, b) => (RM_SECTION_ORDER.indexOf(a) + 1 || 99) - (RM_SECTION_ORDER.indexOf(b) + 1 || 99));
+
+      sections.forEach((sec, idx) => {
+        y = _rmEnsure(doc, y, 80);
+        if (idx > 0) y += 6;
+        const secItems = bySection[sec];
+        const secDone = secItems.filter(i => i.done).length;
+        y = _drawSectionHeader(doc, `${secDone}/${secItems.length}`, sec, y, ML, BODY_W);
+        y += 4;
+
+        for (const it of secItems) {
+          const meta = [it.subject, it.period, it.priority].filter(Boolean).join(' · ');
+          const titleH = doc.fontSize(9).heightOfString(it.title || '', { width: BODY_W - 26 });
+          const detailH = it.detail ? doc.fontSize(7.5).heightOfString(it.detail, { width: BODY_W - 26 }) + 3 : 0;
+          const noteH = it.note ? doc.fontSize(7.5).heightOfString(`학생 메모: ${it.note}`, { width: BODY_W - 26 }) + 3 : 0;
+          const metaH = meta || it.done ? 11 : 0;
+          const blockH = titleH + metaH + detailH + noteH + 10;
+          y = _rmEnsure(doc, y, blockH);
+
+          _rmCheckbox(doc, ML + 2, y + 1, !!it.done);
+          doc.fontSize(9).fillColor(it.done ? C.GRAY : C.BLACK).text(it.title || '', ML + 26, y, { width: BODY_W - 26, strike: !!it.done });
+          let yy = y + titleH + 2;
+          if (meta || it.done) {
+            const parts = [];
+            if (meta) parts.push(meta);
+            if (it.done && it.done_at) parts.push(`✓ ${_rmDate(it.done_at)} 달성`);
+            else if (it.done) parts.push('달성');
+            doc.fontSize(7).fillColor(it.done ? C.GREEN : C.BLUE).text(parts.join('    '), ML + 26, yy);
+            yy += 11;
+          }
+          if (it.detail) {
+            doc.fontSize(7.5).fillColor('#4b5563').text(it.detail, ML + 26, yy, { width: BODY_W - 26 });
+            yy += detailH;
+          }
+          if (it.note) {
+            doc.fontSize(7.5).fillColor('#92400e').text(`학생 메모: ${it.note}`, ML + 26, yy, { width: BODY_W - 26 });
+            yy += noteH;
+          }
+          y = yy + 6;
+          doc.moveTo(ML + 26, y - 3).lineTo(ML + BODY_W, y - 3).strokeColor(C.LGRAY).lineWidth(0.4).stroke();
+        }
+        y += 4;
+      });
+
+      // ── 로드맵 전문 ──
+      if (rm.body) {
+        doc.addPage(); y = 20;
+        y = _drawSectionHeader(doc, '전문', '로드맵 전문 (컨설팅 보고서)', y, ML, BODY_W);
+        y += 6;
+        y = _rmDrawMarkdown(doc, rm.body, ML, y, BODY_W);
+      }
+
+      _drawFooters(doc, ML, PW, MR);
+      doc.end();
+    } catch (err) { reject(err); }
+  });
+}
+
+export { generateAnalysisPDF, generateRoadmapPDF };

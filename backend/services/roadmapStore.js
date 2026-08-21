@@ -20,6 +20,18 @@ export async function listRoadmaps(studentId) {
   return maps.map(m => ({ ...m, items: byMap[m.id] || [] }));
 }
 
+// 로드맵 하나 (항목 + PDF 출력용 학생 기본 정보 포함)
+export async function getRoadmap(id) {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT r.*, s.name AS student_name, s.school AS student_school, s.grade AS student_grade, s.major AS student_major
+       FROM ef_roadmaps r JOIN ef_students s ON s.id = r.student_id WHERE r.id = $1`, [id]);
+  if (!rows[0]) return null;
+  const { rows: items } = await pool.query(
+    `SELECT * FROM ef_roadmap_items WHERE roadmap_id = $1 ORDER BY position, id`, [id]);
+  return { ...rows[0], items };
+}
+
 export async function createRoadmap(studentId, { title, summary, body, sourceName, items = [] } = {}) {
   const pool = getPool();
   const client = await pool.connect();

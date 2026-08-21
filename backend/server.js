@@ -17,7 +17,7 @@ import {
 import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
 import {
-  listRoadmaps, createRoadmap, updateRoadmap, deleteRoadmap,
+  listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
   addItem as addRoadmapItem, updateItem as updateRoadmapItem, deleteItem as deleteRoadmapItem,
   getRoadmapOwner, getItemOwner as getRoadmapItemOwner,
   getRoadmapStudentId, getItemStudentId as getRoadmapItemStudentId,
@@ -25,7 +25,7 @@ import {
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { placementJudgeRules } from './services/reportUtils.js';
-import { generateAnalysisPDF } from './services/pdfService.js';
+import { generateAnalysisPDF, generateRoadmapPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
@@ -1730,6 +1730,23 @@ app.delete('/api/roadmap/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 // 선생님: 항목 추가 / 수정(체크 포함) / 삭제
+// 로드맵 PDF 다운로드 — 프리미엄(관리자) 전용. 일반 학원 계정은 403.
+app.get('/api/roadmap/:id/pdf', requireAdmin, async (req, res) => {
+  try {
+    const rm = await getRoadmap(Number(req.params.id));
+    if (!rm) return res.status(404).json({ success: false, message: '로드맵을 찾을 수 없습니다' });
+    const pdf = await generateRoadmapPDF(rm);
+    const filename = encodeURIComponent(`${rm.student_name || '학생'}_생기부_로드맵.pdf`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.setHeader('Content-Length', pdf.length);
+    res.end(pdf);
+  } catch (e) {
+    console.error('[roadmap/pdf] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 app.post('/api/roadmap/:id/items', requireAuth, async (req, res) => {
   try {
     const owner = await getRoadmapOwner(Number(req.params.id));

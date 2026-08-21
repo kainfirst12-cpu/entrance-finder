@@ -767,6 +767,28 @@ function RoadmapSection({ student, onError, onChanged }) {
     finally { setBusy(''); if (rmFileRef.current) rmFileRef.current.value = ''; }
   };
 
+  // 로드맵 PDF 다운로드 — 서버가 requireAdmin으로 막으므로 관리자 계정만 성공한다
+  const isAdmin = localStorage.getItem('ef_role') === 'admin';
+  const downloadPdf = async (rm) => {
+    setMsg('PDF를 만드는 중…');
+    try {
+      const res = await fetch(`${API_BASE}/api/roadmap/${rm.id}/pdf`, { headers: { Authorization: `Bearer ${token()}` } });
+      if (!res.ok) {
+        let m = 'PDF 생성 실패';
+        try { m = (await res.json()).message || m; } catch {}
+        throw new Error(m);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(rm.title || '생기부 로드맵').replace(/[\\/:*?"<>|]/g, ' ').trim()}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      setMsg('✓ PDF를 내려받았습니다.');
+    } catch (e) { setMsg('⚠ ' + e.message); }
+  };
+
   // 이미 올려둔 첨부 파일을 내려받아 로드맵 재료로 다시 사용
   const loadFromAttachments = async () => {
     const picked = attachables.filter(f => sel.has(f.id));
@@ -949,6 +971,7 @@ function RoadmapSection({ student, onError, onChanged }) {
         onDeleteItem={(item) => act(() => call(`/api/roadmap/items/${item.id}`, { method: 'DELETE' }))}
         onAddItem={(rm, f) => act(() => call(`/api/roadmap/${rm.id}/items`, { method: 'POST', body: JSON.stringify(f) }))}
         onDeleteRoadmap={(rm) => act(() => call(`/api/roadmap/${rm.id}`, { method: 'DELETE' }))}
+        onDownloadPdf={isAdmin ? downloadPdf : undefined}
       />
 
       {viewBody && (

@@ -145,7 +145,7 @@ function AddItemForm({ section, t, onAdd }) {
   );
 }
 
-export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody }) {
+export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf }) {
   const t = dark ? THEME.dark : THEME.light;
   const [openSummary, setOpenSummary] = useState({});
   const [openBody, setOpenBody] = useState({});
@@ -165,6 +165,9 @@ export default function RoadmapView({ roadmaps = [], dark = false, editable = tr
           <div key={rm.id} style={{ border: `1px solid ${t.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 14, background: t.card }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
               <b style={{ fontSize: 15, color: t.head }}>🗺 {rm.title}</b>
+              {onDownloadPdf && (
+                <button onClick={() => onDownloadPdf(rm)} style={linkBtn(t)} title="로드맵을 PDF 파일로 저장 (프리미엄)">⬇ PDF 저장</button>
+              )}
               {onDeleteRoadmap && (
                 <button onClick={() => { if (confirm(`'${rm.title}' 로드맵을 삭제할까요? 체크 기록도 함께 사라집니다.`)) onDeleteRoadmap(rm); }}
                   style={{ ...linkBtn(t), color: t.danger }}>로드맵 삭제</button>
