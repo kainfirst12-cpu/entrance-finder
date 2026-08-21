@@ -767,14 +767,15 @@ function RoadmapSection({ student, onError, onChanged }) {
     finally { setBusy(''); if (rmFileRef.current) rmFileRef.current.value = ''; }
   };
 
-  // 로드맵 PDF 다운로드 — 서버가 requireAdmin으로 막으므로 관리자 계정만 성공한다
+  // 로드맵 PDF/워드 다운로드 — 서버가 requireAdmin으로 막으므로 관리자 계정만 성공한다
   const isAdmin = localStorage.getItem('ef_role') === 'admin';
-  const downloadPdf = async (rm) => {
-    setMsg('PDF를 만드는 중…');
+  const downloadDoc = async (rm, fmt) => {
+    const label = fmt === 'docx' ? '워드 파일' : 'PDF';
+    setMsg(`${label}을 만드는 중…`);
     try {
-      const res = await fetch(`${API_BASE}/api/roadmap/${rm.id}/pdf`, { headers: { Authorization: `Bearer ${token()}` } });
+      const res = await fetch(`${API_BASE}/api/roadmap/${rm.id}/${fmt}`, { headers: { Authorization: `Bearer ${token()}` } });
       if (!res.ok) {
-        let m = 'PDF 생성 실패';
+        let m = `${label} 생성 실패`;
         try { m = (await res.json()).message || m; } catch {}
         throw new Error(m);
       }
@@ -782,10 +783,10 @@ function RoadmapSection({ student, onError, onChanged }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${(rm.title || '생기부 로드맵').replace(/[\\/:*?"<>|]/g, ' ').trim()}.pdf`;
+      a.download = `${(rm.title || '생기부 로드맵').replace(/[\\/:*?"<>|]/g, ' ').trim()}.${fmt}`;
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
-      setMsg('✓ PDF를 내려받았습니다.');
+      setMsg(`✓ ${label}을 내려받았습니다.`);
     } catch (e) { setMsg('⚠ ' + e.message); }
   };
 
@@ -971,7 +972,8 @@ function RoadmapSection({ student, onError, onChanged }) {
         onDeleteItem={(item) => act(() => call(`/api/roadmap/items/${item.id}`, { method: 'DELETE' }))}
         onAddItem={(rm, f) => act(() => call(`/api/roadmap/${rm.id}/items`, { method: 'POST', body: JSON.stringify(f) }))}
         onDeleteRoadmap={(rm) => act(() => call(`/api/roadmap/${rm.id}`, { method: 'DELETE' }))}
-        onDownloadPdf={isAdmin ? downloadPdf : undefined}
+        onDownloadPdf={isAdmin ? (rm) => downloadDoc(rm, 'pdf') : undefined}
+        onDownloadDocx={isAdmin ? (rm) => downloadDoc(rm, 'docx') : undefined}
       />
 
       {viewBody && (

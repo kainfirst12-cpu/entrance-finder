@@ -1730,6 +1730,24 @@ app.delete('/api/roadmap/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 // 선생님: 항목 추가 / 수정(체크 포함) / 삭제
+// 로드맵 워드(.docx) 다운로드 — 프리미엄(관리자) 전용. 일반 학원 계정은 403.
+app.get('/api/roadmap/:id/docx', requireAdmin, async (req, res) => {
+  try {
+    const rm = await getRoadmap(Number(req.params.id));
+    if (!rm) return res.status(404).json({ success: false, message: '로드맵을 찾을 수 없습니다' });
+    const { generateRoadmapDocx } = await import('./services/roadmapDocx.js');
+    const buf = await generateRoadmapDocx(rm);
+    const filename = encodeURIComponent(`${rm.student_name || '학생'}_생기부_로드맵.docx`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.setHeader('Content-Length', buf.length);
+    res.end(buf);
+  } catch (e) {
+    console.error('[roadmap/docx] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // 로드맵 PDF 다운로드 — 프리미엄(관리자) 전용. 일반 학원 계정은 403.
 app.get('/api/roadmap/:id/pdf', requireAdmin, async (req, res) => {
   try {

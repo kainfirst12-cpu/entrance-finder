@@ -364,54 +364,111 @@ function _rmCheckbox(doc, x, y, done) {
   }
 }
 
-// 로드맵 본문(마크다운) → 제목/불릿/표 행을 단순 조판으로 흘려 그린다
+// 로드맵 본문(마크다운) → 블록 구조로 파싱 (PDF·DOCX 공용)
+// 블록: {type:'h',level,text} | {type:'p',text} | {type:'li',marker,text} | {type:'table',rows} | {type:'hr'} | {type:'gap'}
+export function parseRoadmapMarkdown(md) {
+  const blocks = [];
+  let table = null;
+  const flushTable = () => { if (table && table.length) blocks.push({ type: 'table', rows: table }); table = null; };
+  for (const raw of String(md || '').split('\n')) {
+    const trimmed = raw.trim();
+    if (/^\|/.test(trimmed)) {
+      if (/^\|[\s:|-]+\|$/.test(trimmed)) continue; // |---|---| 구분선
+      const cells = trimmed.replace(/^\||\|$/g, '').split('|').map(c => _rmInline(c.trim()));
+      (table ||= []).push(cells);
+      continue;
+    }
+    flushTable();
+    if (!trimmed) { blocks.push({ type: 'gap' }); continue; }
+    if (/^-{3,}$/.test(trimmed)) { blocks.push({ type: 'hr' }); continue; }
+    const h = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { blocks.push({ type: 'h', level: h[1].length, text: _rmInline(h[2]) }); continue; }
+    const bullet = trimmed.match(/^[-*•]\s+(.*)$/);
+    if (bullet) { blocks.push({ type: 'li', marker: '·', text: _rmInline(bullet[1]) }); continue; }
+    const num = trimmed.match(/^(\d+\.)\s+(.*)$/);
+    if (num) { blocks.push({ type: 'li', marker: num[1], text: _rmInline(num[2]) }); continue; }
+    blocks.push({ type: 'p', text: _rmInline(trimmed) });
+  }
+  flushTable();
+  return blocks;
+}
+
+// 마크다운 표 → 실제 표 (열 너비 비례 배분, 헤더 배경, 셀 줄바꿈, 페이지 넘김 시 헤더 반복)
+function _rmDrawTable(doc, rows, ml, y, bw) {
+  if (!rows.length) return y;
+  const cols = Math.max(...rows.map(r => r.length));
+  const norm = rows.map(r => Array.from({ length: cols }, (_, i) => r[i] || ''));
+  const FS = 7.5, PADX = 5, PADY = 3.5;
+
+  doc.fontSize(FS);
+  const natural = Array.from({ length: cols }, (_, i) =>
+    Math.min(Math.max(...norm.map(r => doc.widthOfString(r[i] || ' ')), 18) + PADX * 2, bw * 0.6));
+  const natSum = natural.reduce((a, b) => a + b, 0);
+  const colW = natural.map(w => Math.max(30, (w / natSum) * bw));
+  const wSum = colW.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < cols; i++) colW[i] = colW[i] * bw / wSum;
+
+  const rowH = (r) => {
+    doc.fontSize(FS);
+    return Math.max(...r.map((c, i) => doc.heightOfString(c || ' ', { width: colW[i] - PADX * 2 }))) + PADY * 2;
+  };
+  const drawRow = (r, yy, header) => {
+    const h = rowH(r);
+    if (header) doc.rect(ml, yy, bw, h).fill(C.LIGHT);
+    let x = ml;
+    doc.fontSize(FS);
+    r.forEach((c, i) => {
+      doc.fillColor(header ? C.NAVY : '#374151').text(c || '', x + PADX, yy + PADY, { width: colW[i] - PADX * 2 });
+      x += colW[i];
+    });
+    doc.lineWidth(0.4).strokeColor(C.BORDER);
+    x = ml;
+    for (let i = 0; i <= cols; i++) { doc.moveTo(x, yy).lineTo(x, yy + h).stroke(); x += colW[i] || 0; }
+    doc.moveTo(ml, yy).lineTo(ml + bw, yy).stroke();
+    doc.moveTo(ml, yy + h).lineTo(ml + bw, yy + h).stroke();
+    return yy + h;
+  };
+
+  const [head, ...body] = norm;
+  y = _rmEnsure(doc, y, rowH(head) + (body.length ? rowH(body[0]) : 0) + 4);
+  y = drawRow(head, y, true);
+  for (const r of body) {
+    if (y + rowH(r) > PAGE_BOTTOM) { doc.addPage(); y = 20; y = drawRow(head, y, true); }
+    y = drawRow(r, y, false);
+  }
+  return y + 6;
+}
+
+// 로드맵 본문(마크다운) 조판
 function _rmDrawMarkdown(doc, md, ml, y, bw) {
-  const lines = String(md || '').split('\n');
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    const trimmed = line.trim();
-    if (!trimmed) { y += 4; continue; }
-    if (/^-{3,}$/.test(trimmed)) {
+  for (const b of parseRoadmapMarkdown(md)) {
+    if (b.type === 'gap') { y += 4; continue; }
+    if (b.type === 'hr') {
       y = _rmEnsure(doc, y, 10);
       doc.moveTo(ml, y + 3).lineTo(ml + bw, y + 3).strokeColor(C.BORDER).lineWidth(0.5).stroke();
       y += 10; continue;
     }
-    const h = trimmed.match(/^(#{1,6})\s+(.*)$/);
-    if (h) {
-      const level = h[1].length;
-      const size = level === 1 ? 13 : level === 2 ? 11 : 9.5;
-      const text = _rmInline(h[2]);
-      const th = doc.fontSize(size).heightOfString(text, { width: bw });
+    if (b.type === 'h') {
+      const size = b.level === 1 ? 13 : b.level === 2 ? 11 : 9.5;
+      const th = doc.fontSize(size).heightOfString(b.text, { width: bw });
       y = _rmEnsure(doc, y, th + 14);
-      y += level <= 2 ? 8 : 5;
-      doc.fontSize(size).fillColor(level === 1 ? C.NAVY : C.BLUE).text(text, ml, y, { width: bw });
+      y += b.level <= 2 ? 8 : 5;
+      doc.fontSize(size).fillColor(b.level === 1 ? C.NAVY : C.BLUE).text(b.text, ml, y, { width: bw });
       y += th + 4;
-      if (level <= 2) { doc.moveTo(ml, y).lineTo(ml + bw, y).strokeColor(level === 1 ? C.ACCENT : C.BORDER).lineWidth(0.6).stroke(); y += 5; }
+      if (b.level <= 2) { doc.moveTo(ml, y).lineTo(ml + bw, y).strokeColor(b.level === 1 ? C.ACCENT : C.BORDER).lineWidth(0.6).stroke(); y += 5; }
       continue;
     }
-    if (/^\|/.test(trimmed)) {
-      if (/^\|[\s:|-]+\|$/.test(trimmed)) continue; // |---|---| 구분선
-      const cells = trimmed.replace(/^\||\|$/g, '').split('|').map(c => _rmInline(c.trim()));
-      const text = cells.filter(Boolean).join('   |   ');
-      const th = doc.fontSize(7.5).heightOfString(text, { width: bw - 8 });
+    if (b.type === 'table') { y = _rmDrawTable(doc, b.rows, ml, y, bw); continue; }
+    if (b.type === 'li') {
+      const th = doc.fontSize(8.5).heightOfString(b.text, { width: bw - 16 });
       y = _rmEnsure(doc, y, th + 4);
-      doc.fontSize(7.5).fillColor('#374151').text(text, ml + 8, y, { width: bw - 8 });
+      doc.fontSize(8.5).fillColor(C.BLACK).text(b.marker, ml + 4, y);
+      doc.fontSize(8.5).fillColor(C.BLACK).text(b.text, ml + 16, y, { width: bw - 16 });
       y += th + 3; continue;
     }
-    const bullet = trimmed.match(/^[-*•]\s+(.*)$/) || trimmed.match(/^(\d+\.)\s+(.*)$/);
-    if (bullet) {
-      const marker = bullet.length === 3 ? bullet[1] : '·';
-      const text = _rmInline(bullet[bullet.length - 1]);
-      const th = doc.fontSize(8.5).heightOfString(text, { width: bw - 16 });
-      y = _rmEnsure(doc, y, th + 4);
-      doc.fontSize(8.5).fillColor(C.BLACK).text(marker, ml + 4, y);
-      doc.fontSize(8.5).fillColor(C.BLACK).text(text, ml + 16, y, { width: bw - 16 });
-      y += th + 3; continue;
-    }
-    const text = _rmInline(trimmed);
-    const th = doc.fontSize(8.5).heightOfString(text, { width: bw });
+    const th = doc.fontSize(8.5).heightOfString(b.text, { width: bw });
     y = _rmEnsure(doc, y, th + 4);
-    doc.fontSize(8.5).fillColor(C.BLACK).text(text, ml, y, { width: bw });
+    doc.fontSize(8.5).fillColor(C.BLACK).text(b.text, ml, y, { width: bw });
     y += th + 4;
   }
   return y;
