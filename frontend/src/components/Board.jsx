@@ -599,7 +599,7 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
         <textarea style={{ ...S.textarea, marginTop: 6 }} rows={rContent ? 6 : 2} value={rContent} onChange={e => setRContent(e.target.value)}
           placeholder="기록 내용/메모를 직접 붙여넣어도 됩니다 (선택)" />
 
-        <RoadmapSection student={student} onError={onError} />
+        <RoadmapSection student={student} onError={onError} onChanged={onChanged} />
 
         <div style={S.sectionTitle}>첨부 파일 (생기부 PDF, 수행평가 결과물 등)</div>
         <div style={S.gradeList}>
@@ -671,7 +671,7 @@ function Field({ label, v, on }) {
 // ── 생기부 로드맵 ──────────────────────────────────────
 // ① 수행평가·탐구보고서 원자료를 통째로 넣으면 AI가 로드맵 보고서를 쓰고
 // ② 그것을 학생이 체크할 실행 항목으로 쪼개 저장한다. 이미 만든 로드맵 문서를 올려 항목만 뽑을 수도 있다.
-function RoadmapSection({ student, onError }) {
+function RoadmapSection({ student, onError, onChanged }) {
   const S = STYLES;
   const [roadmaps, setRoadmaps] = useState([]);
   const [mode, setMode] = useState('generate'); // generate | analyze
@@ -682,7 +682,12 @@ function RoadmapSection({ student, onError }) {
   const [msg, setMsg] = useState('');
   const [draft, setDraft] = useState(null);
   const [viewBody, setViewBody] = useState(null);
+  const [sel, setSel] = useState(() => new Set()); // 첨부 파일 재사용 선택
   const rmFileRef = useRef(null);
+
+  // 학생 첨부 파일 중 텍스트 추출이 되는 형식 — 로드맵을 다시 만들 때 재사용한다
+  const attachables = (student.files || []).filter(f => /\.(pdf|docx|hwpx?|txt|md)$/i.test(f.name || ''));
+  const rmFmtSize = (b) => b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(b / 1024))}KB`;
 
   const load = useCallback(async () => {
     try {
@@ -705,15 +710,15 @@ function RoadmapSection({ student, onError }) {
     catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); }
   };
 
-  // 파일 → 텍스트 추출 (SSE — 스캔 PDF는 서버가 AI로 OCR하므로 오래 걸릴 수 있다)
-  const onFiles = async (fileList) => {
-    const list = Array.from(fileList || []);
-    if (!list.length) return;
-    setBusy('extract'); setMsg('파일에서 글자를 읽는 중… (스캔본이면 AI 판독이라 몇 분 걸립니다)');
-    try {
+  // 파일 묶음 → 텍스트 추출 (SSE — 스캔 PDF는 서버가 AI로 OCR하므로 오래 걸릴 수 있다)
+  // 서버 extract가 요청당 10개 제한이라 10개씩 나눠 부른다
+  const extractChunks = async (fileObjs) => {
+    const { model, group, apiKey } = aiCreds();
+    let all = '';
+    const notices = [];
+    for (let i = 0; i < fileObjs.length; i += 10) {
       const fd = new FormData();
-      list.forEach(f => fd.append('files', f));
-      const { model, group, apiKey } = aiCreds();
+      fileObjs.slice(i, i + 10).forEach(f => fd.append('files', f));
       const d = await postForResult(`${API_BASE}/api/assessment/extract`, {
         method: 'POST',
         headers: {
@@ -723,12 +728,68 @@ function RoadmapSection({ student, onError }) {
         body: fd,
       });
       if (!d.success) throw new Error(d.message || '추출 실패');
-      if (!d.text?.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 설정에 AI 키를 등록해 주세요)');
-      setText(prev => (prev ? prev + '\n\n' : '') + d.text);
+      if (d.text?.trim()) all += (all ? '\n\n' : '') + d.text;
+      if (d.notices?.length) notices.push(...d.notices);
+    }
+    return { text: all, notices };
+  };
+
+  // 로드맵 원자료를 학생 첨부 파일로도 보관 — 다음에 로드맵을 다시 만들 때 아래 목록에서 골라 재사용
+  const keepAsAttachments = async (list) => {
+    const existing = student.files || [];
+    const fresh = list.filter(f => f.size <= 15 * 1024 * 1024 && !existing.some(e => e.name === f.name && Number(e.size) === f.size));
+    if (!fresh.length) return;
+    try {
+      for (let i = 0; i < fresh.length; i += 10) {
+        const fd = new FormData();
+        fresh.slice(i, i + 10).forEach(f => fd.append('files', f));
+        fd.append('kind', '로드맵자료');
+        await fetch(`${API_BASE}/api/board/students/${student.id}/files`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
+        });
+      }
+      await onChanged?.();
+    } catch { /* 보관 실패는 로드맵 생성 흐름을 막지 않는다 */ }
+  };
+
+  const onFiles = async (fileList) => {
+    const list = Array.from(fileList || []);
+    if (!list.length) return;
+    setBusy('extract'); setMsg('파일에서 글자를 읽는 중… (스캔본이면 AI 판독이라 몇 분 걸립니다)');
+    try {
+      const { text: got, notices } = await extractChunks(list);
+      if (!got.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 설정에 AI 키를 등록해 주세요)');
+      setText(prev => (prev ? prev + '\n\n' : '') + got);
       setFiles(prev => [...prev, ...list.map(f => f.name)]);
-      setMsg(d.notices?.length ? '⚠ ' + d.notices.join(' / ') : '');
+      setMsg(notices.length ? '⚠ ' + notices.join(' / ') : '');
+      await keepAsAttachments(list);
     } catch (e) { setMsg('⚠ 추출 오류: ' + e.message); }
     finally { setBusy(''); if (rmFileRef.current) rmFileRef.current.value = ''; }
+  };
+
+  // 이미 올려둔 첨부 파일을 내려받아 로드맵 재료로 다시 사용
+  const loadFromAttachments = async () => {
+    const picked = attachables.filter(f => sel.has(f.id));
+    if (!picked.length) { setMsg('⚠ 불러올 첨부 파일을 먼저 선택해 주세요.'); return; }
+    setBusy('extract'); setMsg(`첨부 파일 ${picked.length}개에서 글자를 읽는 중… (스캔본이면 AI 판독이라 몇 분 걸립니다)`);
+    try {
+      const fileObjs = [];
+      for (const f of picked) {
+        const res = await fetch(`${API_BASE}/api/board/files/${f.id}`, { headers: { Authorization: `Bearer ${token()}` } });
+        if (!res.ok) throw new Error(`${f.name}: 파일을 내려받지 못했습니다`);
+        const blob = await res.blob();
+        fileObjs.push(new File([blob], f.name, { type: f.mime || blob.type || 'application/octet-stream' }));
+      }
+      const { text: got, notices } = await extractChunks(fileObjs);
+      if (!got.trim()) throw new Error('텍스트를 추출하지 못했습니다 (스캔본이면 설정에 AI 키를 등록해 주세요)');
+      setText(prev => (prev ? prev + '\n\n' : '') + got);
+      setFiles(prev => [...prev, ...picked.map(f => f.name)]);
+      setSel(new Set());
+      setMsg(notices.length
+        ? '⚠ ' + notices.join(' / ')
+        : `✓ 첨부 파일 ${picked.length}개를 불러왔습니다. 이제 [🤖 로드맵 만들기]를 누르면 이 자료로 새 로드맵을 만듭니다.`);
+    } catch (e) { setMsg('⚠ ' + e.message); }
+    finally { setBusy(''); }
   };
 
   // AI 실행 (생성 또는 항목화)
@@ -760,13 +821,20 @@ function RoadmapSection({ student, onError }) {
   const saveDraft = async () => {
     if (busy === 'save') return; // 두 번 눌러 같은 로드맵이 두 개 생기는 것을 막는다
     const dup = roadmaps.find(r => r.title.trim() === (draft.title || '').trim());
-    if (dup && !confirm(`같은 제목의 로드맵이 이미 있습니다 (항목 ${(dup.items || []).length}개).\n따로 하나 더 만들까요?\n\n[취소]를 누르면 저장하지 않습니다.`)) return;
+    // 같은 제목이 있으면 교체(기존 삭제)인지 추가 저장인지 고른다 — 저장 자체를 그만두려면 초안의 [취소]를 누르면 된다
+    const replaceId = dup && confirm(
+      `같은 제목의 로드맵이 이미 있습니다 (항목 ${(dup.items || []).length}개).\n\n` +
+      `[확인] 기존 로드맵을 삭제하고 새 로드맵으로 교체 (기존 체크 기록은 사라집니다)\n` +
+      `[취소] 기존은 그대로 두고 새 로드맵을 하나 더 저장`) ? dup.id : null;
     setBusy('save');
     try {
       await act(async () => {
         await call(`/api/board/students/${student.id}/roadmaps`, { method: 'POST', body: JSON.stringify(draft) });
+        if (replaceId) await call(`/api/roadmap/${replaceId}`, { method: 'DELETE' });
         setDraft(null); setText(''); setFiles([]); setNextSubjects('');
-        setMsg('✓ 저장되었습니다. 학생이 열람 코드로 들어오면 바로 체크할 수 있습니다.');
+        setMsg(replaceId
+          ? '✓ 기존 로드맵을 새 로드맵으로 교체했습니다. 학생이 열람 코드로 들어오면 바로 체크할 수 있습니다.'
+          : '✓ 저장되었습니다. 학생이 열람 코드로 들어오면 바로 체크할 수 있습니다.');
       });
     } finally { setBusy(''); }
   };
@@ -788,6 +856,33 @@ function RoadmapSection({ student, onError }) {
             ? '이 학생의 수행평가·탐구보고서·자기평가서를 전부 올리면, AI가 활동 정리 → 진단 → 다음 학기 과목별 설계 → 타임라인까지 로드맵을 쓰고 체크 항목으로 쪼갭니다.'
             : '이미 만들어 둔 로드맵 문서(PDF·DOCX·한글)를 올리면 내용은 그대로 두고 실행 항목만 뽑아 체크리스트로 만듭니다.'}
         </div>
+
+        {attachables.length > 0 && (
+          <div style={{ border: '1px solid #2a3a48', borderRadius: 9, padding: '9px 11px', marginBottom: 9, background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              <b style={{ fontSize: 12.5, color: '#9db0bd' }}>📂 이미 올려둔 첨부 파일로 다시 만들기</b>
+              <label style={{ fontSize: 12, color: '#2dd4bf', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <input type="checkbox"
+                  checked={attachables.length > 0 && attachables.every(f => sel.has(f.id))}
+                  onChange={e => setSel(e.target.checked ? new Set(attachables.map(f => f.id)) : new Set())} />
+                전체선택
+              </label>
+            </div>
+            <div style={{ maxHeight: 150, overflowY: 'auto' }}>
+              {attachables.map(f => (
+                <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: '#cdd9e2', padding: '2.5px 0', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={sel.has(f.id)}
+                    onChange={e => setSel(prev => { const n = new Set(prev); if (e.target.checked) n.add(f.id); else n.delete(f.id); return n; })} />
+                  <span style={{ flex: 1, wordBreak: 'break-all' }}>{f.name}</span>
+                  <span style={{ color: '#6b7d8a', fontSize: 11.5, whiteSpace: 'nowrap' }}>{rmFmtSize(f.size || 0)}</span>
+                </label>
+              ))}
+            </div>
+            <button style={{ ...S.addSmall, marginTop: 6, opacity: (busy || !sel.size) ? 0.6 : 1 }} onClick={loadFromAttachments} disabled={!!busy || !sel.size}>
+              {busy === 'extract' ? '읽는 중…' : `선택한 파일 ${sel.size}개 불러오기`}
+            </button>
+          </div>
+        )}
 
         <div style={S.addRow}>
           <button style={S.addSmall} onClick={() => rmFileRef.current?.click()} disabled={!!busy}>
