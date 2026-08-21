@@ -1530,6 +1530,16 @@ app.delete('/api/student-view/:code/files/:fileId', async (req, res) => {
 // ══════════════════════════════════════════════════════
 
 // 원자료(수행평가·탐구보고서 전수) → 로드맵 보고서 본문 작성
+// 로드맵 공통 문체 규칙 — 생성·항목화·풀어쓰기 프롬프트에 모두 주입.
+// 이게 없으면 컨설턴트식 압축 문체("보정 후 상관 약화 확인")로 나와 학생도 원장도 읽기 어렵다.
+const ROADMAP_EASY_STYLE = `[문체 규칙 — 모든 문장에 적용]
+- 읽는 사람은 고등학교 1학년 학생과 학부모다. 한 번 읽고 바로 이해되는 쉬운 문장으로 쓴다.
+- 명사를 압축해 나열하지 않는다. "보정 후 상관 약화 확인"(×) → "보정을 한 뒤에도 상관관계가 남아 있는지 확인한다"(○)처럼 주어와 서술어가 있는 완전한 문장으로 풀어 쓴다.
+- 전문용어와 약어(예: R², 대리지표, 관찰 편향, 수능최저)는 처음 나올 때 괄호로 한 줄 풀이를 붙인다. 예: "R²(그래프의 점들이 추세선에 얼마나 가깝게 모여 있는지 나타내는 값, 1에 가까울수록 관계가 뚜렷함)".
+- 표의 칸도 낱말 조각이 아니라 뜻이 통하는 구나 문장으로 쓴다. ★·— 같은 기호로 뜻을 대신하지 않는다.
+- 한 문단에는 생각 하나만 담는다. 세 줄을 넘는 문장은 두 문장으로 나눈다.
+- 뜻을 쉽게 풀되 내용의 깊이는 낮추지 않는다 — 수치·자료명·근거 인용은 그대로 유지한다.`;
+
 const ROADMAP_WRITE_SYSTEM = `당신은 패스파인더 입시팀의 생기부 로드맵 작성자입니다.
 학생 한 명의 산출물(수행평가·탐구보고서·자기평가서 등)을 전수로 읽고,
 다음 학기 각 과목에서 무엇을 어떻게 이어갈지를 설계한 로드맵 보고서를 씁니다.
@@ -1545,6 +1555,8 @@ const ROADMAP_WRITE_SYSTEM = `당신은 패스파인더 입시팀의 생기부 �
 5. 억지 융합을 넣지 않는다. 상대 과목이 자료 조달·번역만 맡으면 융합이 아니다. 예체능처럼 협동·성실 축을 담당할 과목은 의도적으로 비우고, 비운 이유를 쓴다.
 6. 우선순위를 매긴다. 전 과목에 심화탐구를 넣으면 전부 얕아진다 — 한 학기 3~4개가 한계다.
 7. 자료에 없는 사실을 지어내지 않는다. 확인이 필요한 것은 'Ⅶ. 남은 작업'에 올린다.
+
+${ROADMAP_EASY_STYLE}
 
 [출력 — 마크다운. 이모지 금지. 표는 마크다운 표(| |)]
 ## 이 로드맵의 한 줄 요지
@@ -1681,7 +1693,10 @@ async function aiRoadmapItems({ aiModel, submodel, apiKey }, text, filename) {
   ]
 }
 
+${ROADMAP_EASY_STYLE}
+
 [원칙]
+- title과 detail은 학생이 혼자 읽고 바로 따라 할 수 있게 쓴다. detail에는 "무엇을, 어디서(사이트·자료명), 어떻게" 순서로 풀어 쓴다.
 - 항목은 반드시 "했다 / 안 했다"로 체크 가능한 단위로 쪼갠다. 진단·평가·칭찬 같은 서술은 항목으로 만들지 말고 summary에만 반영한다.
 - 문서의 과목별 설계(각 과목의 직전 학기 연계·교과 융합·진로 연계 주제), 월별 실행 타임라인, 남은 작업 표를 빠짐없이 옮긴다.
 - 같은 일이 여러 장에 반복되면 하나로 합치되, 과목별 설계와 타임라인처럼 관점이 다르면 각각 남긴다.
@@ -1730,6 +1745,90 @@ app.delete('/api/roadmap/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 // 선생님: 항목 추가 / 수정(체크 포함) / 삭제
+// 로드맵 쉽게 풀어쓰기 — 내용·구조·체크 기록은 그대로 두고 문장만 학생 눈높이로 다시 쓴다
+app.post('/api/roadmap/:id/simplify', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+  try {
+    const owner = await getRoadmapOwner(id);
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+  } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+  const rm = await getRoadmap(id).catch(() => null);
+  if (!rm) return res.status(404).json({ success: false, message: '로드맵을 찾을 수 없습니다' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+  try {
+    // 1단계 — 전문(마크다운) 풀어쓰기
+    let newBody = rm.body || '';
+    if (newBody.trim()) {
+      send({ stage: 'body', message: '로드맵 전문을 쉬운 문장으로 다시 쓰는 중… (몇 분 걸릴 수 있습니다)' });
+      const bodySystem = `당신은 입시 컨설팅 보고서를 학생과 학부모가 읽기 쉽게 다듬는 편집자입니다.
+아래에 주어지는 "생기부 로드맵" 마크다운 문서를 다시 씁니다.
+
+[지켜야 할 것]
+- 내용·결론·수치·자료명·원문 인용("...")·우선순위는 하나도 바꾸지 않는다. 문장만 쉽게 풀어 쓴다.
+- 마크다운 구조를 유지한다: 제목(#·##)의 개수와 순서, 표의 행·열 수를 그대로 둔다. 표 칸 안의 압축된 낱말 조각은 뜻이 통하는 문장으로 풀어 쓴다.
+- 새 내용을 추가하거나 기존 내용을 빼지 않는다.
+
+${ROADMAP_EASY_STYLE}
+
+[출력 — 다시 쓴 마크다운 문서 전체만. 설명·머리말 금지]`;
+      const rewritten = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: bodySystem, userMsg: String(rm.body).slice(0, 80000), maxTokens: 16000 });
+      if (!rewritten?.trim()) throw new Error('전문을 다시 쓰지 못했습니다');
+      newBody = rewritten.trim();
+    }
+
+    // 2단계 — 요지 + 항목 설명 풀어쓰기 (id 기준으로 되돌려 받아 그대로 반영)
+    send({ stage: 'items', message: '요지와 체크 항목 설명을 쉬운 문장으로 다시 쓰는 중…' });
+    const itemsInput = (rm.items || []).map(it => ({ id: it.id, title: it.title, detail: it.detail || '' }));
+    const itemsSystem = `당신은 입시 컨설팅 문서를 학생 눈높이로 다듬는 편집자입니다.
+로드맵의 요지(summary)와 체크 항목들(title/detail)을 쉬운 문장으로 다시 씁니다.
+
+[지켜야 할 것]
+- 각 항목이 시키는 일 자체(무엇을 하는가)와 수치·자료명·사이트명은 바꾸지 않는다.
+- title은 "~하기"로 끝나는 한 문장, 40자 이내. detail은 학생이 혼자 읽고 따라 할 수 있게 "무엇을, 어디서, 어떻게" 순서로 2~4문장.
+- id는 입력 그대로 돌려준다. 항목을 빼거나 추가하지 않는다.
+
+${ROADMAP_EASY_STYLE}
+
+[출력 — 반드시 JSON 객체 하나만. 코드펜스·설명 금지]
+{"summary": "다시 쓴 요지", "items": [{"id": 1, "title": "...", "detail": "..."}]}`;
+    const reply = await callAIModel({
+      aiModel, submodel, apiKey, systemPrompt: itemsSystem,
+      userMsg: JSON.stringify({ summary: rm.summary || '', items: itemsInput }).slice(0, 60000),
+      maxTokens: 16000,
+    });
+    const m = String(reply).match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('AI 응답에서 JSON을 찾지 못했습니다');
+    const parsed = JSON.parse(m[0]);
+
+    // 저장 — 체크(done)·학생 메모(note)는 건드리지 않는다
+    await updateRoadmap(id, { body: newBody, summary: parsed.summary || rm.summary });
+    const byId = new Map((rm.items || []).map(it => [it.id, it]));
+    for (const it of (Array.isArray(parsed.items) ? parsed.items : [])) {
+      const orig = byId.get(Number(it.id));
+      if (!orig) continue;
+      const patch = {};
+      if (it.title?.trim()) patch.title = String(it.title).trim();
+      if (it.detail?.trim()) patch.detail = String(it.detail).trim();
+      if (Object.keys(patch).length) await updateRoadmapItem(orig.id, patch);
+    }
+    sendDone({ success: true });
+  } catch (err) {
+    console.error('[roadmap/simplify] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
 // 로드맵 워드(.docx) 다운로드 — 프리미엄(관리자) 전용. 일반 학원 계정은 403.
 app.get('/api/roadmap/:id/docx', requireAdmin, async (req, res) => {
   try {

@@ -145,7 +145,7 @@ function AddItemForm({ section, t, onAdd }) {
   );
 }
 
-export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf, onDownloadDocx }) {
+export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf, onDownloadDocx, onSimplify }) {
   const t = dark ? THEME.dark : THEME.light;
   const [openSummary, setOpenSummary] = useState({});
   const [openBody, setOpenBody] = useState({});
@@ -170,6 +170,9 @@ export default function RoadmapView({ roadmaps = [], dark = false, editable = tr
               )}
               {onDownloadDocx && (
                 <button onClick={() => onDownloadDocx(rm)} style={linkBtn(t)} title="로드맵을 워드(.docx) 파일로 저장 (프리미엄)">⬇ 워드</button>
+              )}
+              {onSimplify && (
+                <button onClick={() => onSimplify(rm)} style={linkBtn(t)} title="내용·체크 기록은 그대로 두고 문장만 학생 눈높이로 다시 씁니다">✨ 쉽게 풀어쓰기</button>
               )}
               {onDeleteRoadmap && (
                 <button onClick={() => { if (confirm(`'${rm.title}' 로드맵을 삭제할까요? 체크 기록도 함께 사라집니다.`)) onDeleteRoadmap(rm); }}

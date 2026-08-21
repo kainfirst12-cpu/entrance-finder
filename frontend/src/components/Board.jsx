@@ -790,6 +790,24 @@ function RoadmapSection({ student, onError, onChanged }) {
     } catch (e) { setMsg('⚠ ' + e.message); }
   };
 
+  // 이미 저장된 로드맵의 문장을 학생 눈높이로 다시 쓰기 (체크 기록·내용은 유지)
+  const simplify = async (rm) => {
+    if (!confirm(`'${rm.title}'의 전문·요지·항목 설명을 쉬운 문장으로 다시 씁니다.\n할 일 내용과 체크 기록은 그대로 두고 문장만 바뀝니다.\n자료 양에 따라 몇 분 걸릴 수 있습니다.`)) return;
+    const { model, group, apiKey } = aiCreds();
+    if (!apiKey) { setMsg('⚠ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
+    setBusy('simplify'); setMsg('쉬운 문장으로 다시 쓰는 중… (창을 닫지 마세요)');
+    try {
+      const d = await postForResult(`${API_BASE}/api/roadmap/${rm.id}/simplify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model, Authorization: `Bearer ${token()}` },
+      }, (stage) => setMsg(stage));
+      if (!d.success) throw new Error(d.message || '처리 실패');
+      await load();
+      setMsg('✓ 쉬운 문장으로 다시 썼습니다. PDF·워드도 새 문장으로 나옵니다.');
+    } catch (e) { setMsg('⚠ ' + e.message); }
+    finally { setBusy(''); }
+  };
+
   // 이미 올려둔 첨부 파일을 내려받아 로드맵 재료로 다시 사용
   const loadFromAttachments = async () => {
     const picked = attachables.filter(f => sel.has(f.id));
@@ -974,6 +992,7 @@ function RoadmapSection({ student, onError, onChanged }) {
         onDeleteRoadmap={(rm) => act(() => call(`/api/roadmap/${rm.id}`, { method: 'DELETE' }))}
         onDownloadPdf={isAdmin ? (rm) => downloadDoc(rm, 'pdf') : undefined}
         onDownloadDocx={isAdmin ? (rm) => downloadDoc(rm, 'docx') : undefined}
+        onSimplify={simplify}
       />
 
       {viewBody && (
