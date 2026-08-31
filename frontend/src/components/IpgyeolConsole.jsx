@@ -730,6 +730,43 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [dossier, setDossier] = useState(null);
   const [dossierOpen, setDossierOpen] = useState(false);
   const [openRecId, setOpenRecId] = useState(null);
+  // 기록 고치기 — AI가 만들어 둔 검색·분석 기록의 제목·본문을 이 자리에서 바로 손본다.
+  // (여기서만 읽고 고치러 보드로 건너가면, 카드를 보며 판단하던 흐름이 끊긴다)
+  const [editRec, setEditRec] = useState(null);   // { id, title, content }
+  const [recBusy, setRecBusy] = useState(false);
+
+  async function saveRecord() {
+    if (!editRec) return;
+    setRecBusy(true);
+    try {
+      const j = await api(`/api/board/records/${editRec.id}`, {
+        method: 'PUT', body: { title: editRec.title, content: editRec.content },
+      });
+      if (!j.success) { alert(j.error || j.message || '저장하지 못했습니다'); return; }
+      setDossier((d) => (!d ? d : {
+        ...d,
+        records: d.records.map((r) => (r.id === editRec.id
+          ? { ...r, title: editRec.title, content: editRec.content } : r)),
+      }));
+      setEditRec(null);
+    } catch (e) {
+      if (e.auth) onAuthError?.(); else alert(e.message || '저장하지 못했습니다');
+    } finally { setRecBusy(false); }
+  }
+
+  async function removeRecord(r) {
+    if (!confirm(`'${r.title || '(제목 없음)'}' 기록을 삭제할까요?\n\n되돌릴 수 없습니다.`)) return;
+    setRecBusy(true);
+    try {
+      const j = await api(`/api/board/records/${r.id}`, { method: 'DELETE' });
+      if (j.success === false) { alert(j.error || j.message || '삭제하지 못했습니다'); return; }
+      setDossier((d) => (!d ? d : { ...d, records: d.records.filter((x) => x.id !== r.id) }));
+      if (openRecId === r.id) setOpenRecId(null);
+      if (editRec?.id === r.id) setEditRec(null);
+    } catch (e) {
+      if (e.auth) onAuthError?.(); else alert(e.message || '삭제하지 못했습니다');
+    } finally { setRecBusy(false); }
+  }
 
   // 배치 저장 카드 — 학생에게 배치되면 고정(📌)하지 않아도 카드가 뜬다
   const [univCache, setUnivCache] = useState({}); // unvCd → detail
@@ -1717,7 +1754,34 @@ function toggleEdit(){
                       <span style={S.recDate}>{String(r.created_at).slice(0, 10)}</span>
                       <span style={S.recToggle}>{openRecId === r.id ? '▲' : '▼'}</span>
                     </button>
-                    {openRecId === r.id && <div style={S.recBody}>{r.content || '(본문 없음)'}</div>}
+                    {openRecId === r.id && (editRec?.id === r.id ? (
+                      <div style={S.recEditBox}>
+                        <input style={S.recEditTitle} value={editRec.title}
+                          onChange={(e) => setEditRec({ ...editRec, title: e.target.value })}
+                          placeholder="제목" />
+                        <textarea style={S.recEditBody} value={editRec.content} rows={12}
+                          onChange={(e) => setEditRec({ ...editRec, content: e.target.value })}
+                          placeholder="본문" />
+                        <div style={S.recBtnRow}>
+                          <button style={S.recSaveBtn} onClick={saveRecord} disabled={recBusy}>
+                            {recBusy ? '저장 중…' : '저장'}
+                          </button>
+                          <button style={S.recCancelBtn} onClick={() => setEditRec(null)} disabled={recBusy}>취소</button>
+                          <span style={S.recHint}>고친 내용은 학생 기록에 그대로 저장되고, AI 판정·리포트도 이 글을 읽습니다</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={S.recBody}>
+                        {r.content || '(본문 없음)'}
+                        <div style={S.recBtnRow}>
+                          <button style={S.recEditBtn}
+                            onClick={() => setEditRec({ id: r.id, title: r.title || '', content: r.content || '' })}>
+                            ✏ 고치기
+                          </button>
+                          <button style={S.recDelBtn} onClick={() => removeRecord(r)} disabled={recBusy}>🗑 삭제</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </>
@@ -1948,6 +2012,16 @@ const S = {
   badge: { textAlign: 'center', fontSize: 10, fontWeight: 700, lineHeight: 1.25, borderWidth: 1, borderStyle: 'solid', borderRadius: 8, padding: '3px 8px' },
   pinBtn: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, padding: 0 },
   cutRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  // 기록 고치기 — 콘솔 안에서 바로 손보는 자리
+  recEditBox: { padding: '8px 10px', background: '#131a24', borderTop: '1px solid #223047' },
+  recEditTitle: { width: '100%', padding: '6px 8px', marginBottom: 6, borderRadius: 6, border: '1px solid #2b3a52', background: '#0e141d', color: '#e6edf6', fontSize: 12.5 },
+  recEditBody: { width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid #2b3a52', background: '#0e141d', color: '#cdd8e6', fontSize: 12, lineHeight: 1.6, fontFamily: 'inherit', resize: 'vertical' },
+  recBtnRow: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 7, flexWrap: 'wrap' },
+  recSaveBtn: { padding: '5px 12px', borderRadius: 6, border: 'none', background: '#3b6fd4', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' },
+  recCancelBtn: { padding: '5px 10px', borderRadius: 6, border: '1px solid #2b3a52', background: 'transparent', color: '#8fa3bd', fontSize: 12, cursor: 'pointer' },
+  recEditBtn: { padding: '4px 10px', borderRadius: 6, border: '1px solid #2b3a52', background: 'transparent', color: '#8fb4ea', fontSize: 11.5, cursor: 'pointer' },
+  recDelBtn: { padding: '4px 10px', borderRadius: 6, border: '1px solid #4a2b2b', background: 'transparent', color: '#d98a8a', fontSize: 11.5, cursor: 'pointer' },
+  recHint: { fontSize: 10.5, color: '#6b7c92' },
   // 지원 시 유의사항 — 숫자 위에 놓아 먼저 읽히게 한다(숫자를 어떻게 읽을지 정해 주는 말이라서)
   skypassBox: { marginTop: 8, padding: '7px 9px', borderRadius: 8, background: '#2a2118', border: '1px solid #5a4426' },
   skypassHead: { fontSize: 10.5, fontWeight: 700, color: '#d9a441', marginBottom: 4 },
