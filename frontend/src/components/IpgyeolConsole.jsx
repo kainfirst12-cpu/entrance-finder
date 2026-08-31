@@ -118,6 +118,17 @@ function extractGradeFromRecords(s) {
   return null;
 }
 
+// ── 지원 시 유의사항(SKYPASS) — 서버가 대학·전형·학과로 이미 매칭해 보낸다 ──
+// scaleWarning: 그 대학 입결 등급이 '자체 환산'이라 학생의 일반 등급과 같은 자가 아니라는 뜻.
+// 이 카드에서는 아래 verdict(배치 판정)가 성립하지 않는다 — 숨기지 말고 그렇다고 말해야 한다.
+function skypassFor(detail, entry) {
+  const sk = detail?.skypass;
+  if (!sk) return null;
+  const notes = sk.byEntry?.[`${entry.track}|${entry.typeName}|${entry.dept}`] || [];
+  if (!sk.scaleWarning && !notes.length) return null;
+  return { scaleWarning: !!sk.scaleWarning, univNotes: sk.univNotes || [], notes };
+}
+
 const VCOLORS = {
   '안정': { color: '#1a7f4e', bg: '#e6f6ee', border: '#bfe8d2' },
   '적정': { color: '#1d6fd6', bg: '#e8f1fc', border: '#c3dcf7' },
@@ -269,6 +280,18 @@ function cardSignals(card, grade, baseYear, cutPct = 70) {
     }
   }
 
+  // ⑧ 지원 시 유의사항 — 숫자만 보고는 알 수 없는 것들. 다른 신호보다 먼저 읽혀야 하므로 맨 앞에 둔다.
+  const sk = card.skypass;
+  if (sk?.scaleWarning) {
+    risks.unshift(`이 대학 입결 등급은 **대학 자체 환산등급**입니다 — 내 일반 등급(${g})과 같은 자로 잰 값이 아니라, 위 배치 판정을 그대로 믿으면 안 됩니다.`);
+  }
+  for (const n of (sk?.notes || [])) {
+    const t = n.note.replace(/\s*\/\s*/g, ' · ');
+    if (n.tags?.includes('notRecommended')) risks.unshift(`지원 시 유의: ${t}`);
+    else if (n.tags?.includes('volatility') || n.tags?.includes('minimum')) risks.push(`지원 시 유의: ${t}`);
+    else cons.push(`지원 시 유의: ${t}`);
+  }
+
   return { pros, cons, risks };
 }
 
@@ -329,7 +352,17 @@ function Card({ card, grade, baseYear, cutPct, onPin, pinned, student, onSave, s
           <div style={S.cardType}>{entry.track}({entry.typeName.replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '') || entry.typeName})</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          {v && <span style={{ ...S.badge, color: v.color, background: v.bg, borderColor: v.border }}>배치<br /><b style={{ fontSize: 13 }}>{v.label}</b></span>}
+          {v && (
+            <span style={{ ...S.badge, color: v.color, background: v.bg, borderColor: v.border, ...(card.skypass?.scaleWarning ? { opacity: 0.55 } : {}) }}
+              title={card.skypass?.scaleWarning ? '이 대학은 자체 환산등급이라 이 판정을 그대로 믿으면 안 됩니다' : undefined}>
+              배치<br /><b style={{ fontSize: 13 }}>{v.label}</b>
+            </span>
+          )}
+          {card.skypass?.scaleWarning && (
+            <span style={S.scaleWarnBadge} title={card.skypass.univNotes.map((n) => n.note).join(' / ')}>
+              ⚠ 환산등급<br /><b style={{ fontSize: 10 }}>직접 비교 불가</b>
+            </span>
+          )}
           {ai && (
             <span style={{ ...S.badge, color: vcolor(ai.verdict).color, background: vcolor(ai.verdict).bg, borderColor: vcolor(ai.verdict).border }}
               title={ai.reason || 'AI 종합 판정 (생기부 분석 기반)'}>
@@ -339,6 +372,21 @@ function Card({ card, grade, baseYear, cutPct, onPin, pinned, student, onSave, s
           <button style={S.pinBtn} title={pinned ? '고정 해제' : '카드 고정(다른 대학과 비교)'} onClick={() => onPin(card)}>{pinned ? '📌' : '📍'}</button>
         </div>
       </div>
+
+      {card.skypass && (card.skypass.scaleWarning || card.skypass.notes.length > 0) && (
+        <div style={S.skypassBox}>
+          <div style={S.skypassHead}>📌 지원 시 유의사항</div>
+          {card.skypass.scaleWarning && card.skypass.univNotes.map((n, i) => (
+            <div key={`u${i}`} style={S.skypassWarn}>{n.note}</div>
+          ))}
+          {card.skypass.notes.map((n, i) => (
+            <div key={i} style={S.skypassItem}>
+              {n.scope === 'type' && <span style={S.skypassScope}>전형 전체</span>}
+              {n.note}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={S.cutRow}>
         <span style={S.cutLabel}>{entry.track} 최종등급 {cutPct}%컷 추이</span>
@@ -1383,6 +1431,7 @@ function toggleEdit(){
         key: `${detail.unvCd}|${e.dept}|${e.track}|${e.typeName}`,
         univ: { unvCd: detail.unvCd, name: detail.name, region: detail.region },
         entry: e, sunung: sunungFor(detail, track), jonghapSiblings: sibs,
+        skypass: skypassFor(detail, e),
       });
     }
     out.sort((a, b) => a.entry.dept.localeCompare(b.entry.dept, 'ko'));
@@ -1404,6 +1453,7 @@ function toggleEdit(){
       key: `${d.unvCd}|${e.dept}|${e.track}|${e.typeName}`,
       univ: { unvCd: d.unvCd, name: d.name, region: d.region },
       entry: e, sunung: sunungFor(d, p.track), jonghapSiblings: sibs,
+      skypass: skypassFor(d, e),
     };
   }
 
@@ -1898,6 +1948,13 @@ const S = {
   badge: { textAlign: 'center', fontSize: 10, fontWeight: 700, lineHeight: 1.25, borderWidth: 1, borderStyle: 'solid', borderRadius: 8, padding: '3px 8px' },
   pinBtn: { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 15, padding: 0 },
   cutRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 4 },
+  // 지원 시 유의사항 — 숫자 위에 놓아 먼저 읽히게 한다(숫자를 어떻게 읽을지 정해 주는 말이라서)
+  skypassBox: { marginTop: 8, padding: '7px 9px', borderRadius: 8, background: '#2a2118', border: '1px solid #5a4426' },
+  skypassHead: { fontSize: 10.5, fontWeight: 700, color: '#d9a441', marginBottom: 4 },
+  skypassWarn: { fontSize: 11.5, lineHeight: 1.5, color: '#f0c674', fontWeight: 600, marginBottom: 3 },
+  skypassItem: { fontSize: 11.5, lineHeight: 1.5, color: '#cbb894', marginBottom: 2 },
+  skypassScope: { fontSize: 9.5, color: '#8a7a5c', border: '1px solid #5a4426', borderRadius: 4, padding: '0 4px', marginRight: 5 },
+  scaleWarnBadge: { textAlign: 'center', fontSize: 10, fontWeight: 700, lineHeight: 1.25, border: '1px solid #5a4426', borderRadius: 8, padding: '3px 8px', color: '#f0c674', background: '#2a2118' },
   cutLabel: { fontSize: 11, color: '#8492a5', fontWeight: 600 },
   cutValue: { fontSize: 15.5, fontWeight: 800, color: '#1d4fa8' },
   cutYear: { fontSize: 11, color: '#8492a5', fontWeight: 600 },

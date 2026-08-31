@@ -15,6 +15,7 @@ import {
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
 import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
+import { attachSkypassNotes, hasScaleWarning, skypassLoaded } from './services/skypassNotes.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
 import {
   listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
@@ -2784,7 +2785,10 @@ app.get('/api/ipgyeol/:unvCd', requireAuth, (req, res) => {
   if (!/^[0-9]+$/.test(unvCd)) return res.status(400).json({ success: false, error: '잘못된 대학 코드' });
   try {
     const data = JSON.parse(readFileSync(join(ADIGA_DIR, 'ipgyeol', `${unvCd}.json`), 'utf8'));
-    res.json({ success: true, ...data });
+    // 지원 시 유의사항(SKYPASS)을 카드에 붙여 보낸다 — 특히 '이 대학 등급은 자체 환산'
+    // 경고가 있으면 화면이 판정을 액면 그대로 읽지 않게 해야 한다.
+    const skypass = attachSkypassNotes(unvCd, data.entries || []);
+    res.json({ success: true, ...data, ...(skypass ? { skypass } : {}) });
   } catch (err) {
     res.status(404).json({ success: false, error: '해당 대학의 입결 자료가 없습니다.' });
   }
