@@ -562,7 +562,7 @@ function RepItem({ k, name, sub, off, memo, onToggle, onMemo }) {
 // 상담 자리에서 내미는 종이라 매번 뺄 항목과 덧붙일 말이 다르다. 그래서 고정된 양식으로 뽑지 않는다.
 function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSearch, cards, student, grade, baseYear,
   analysis, analyzing, analysisMsg, onAnalyze, assigningReport, assignedReport, onAssign, onClose, onPrint,
-  verifyText, verifyContext }) {
+  verifyText, verifyContext, records = [], recOn, onToggleRec }) {
   const setF = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.value }));
   const setC = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.checked }));
   const onMemo = (k, v) => setMemo((m) => ({ ...m, [k]: v }));
@@ -638,6 +638,21 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
           <label style={S.rpChk}><input type="checkbox" checked={rep.showCards} onChange={setC('showCards')} />
             전형 카드별 분석 <span style={S.ctrlHint}>({countOn(cdKeys)}/{cdKeys.length}건)</span></label>
         </div>
+
+        {records.length > 0 && (
+          <>
+            <div style={S.rpSec}>학생 기록 첨부
+              <span style={S.ctrlHint}> (교차 검증·반영까지 끝낸 글을 리포트 본문에 그대로 싣습니다)</span></div>
+            {records.map((r) => (
+              <label key={r.id} style={S.rpRecRow}>
+                <input type="checkbox" checked={recOn.has(r.id)} onChange={() => onToggleRec(r.id)} />
+                <span style={S.recType}>{r.type || '기록'}</span>
+                <span style={S.rpRecTitle}>{r.title || '(제목 없음)'}</span>
+                <span style={S.ctrlHint}>{String(r.created_at).slice(0, 10)} · {(r.content || '').length.toLocaleString()}자</span>
+              </label>
+            ))}
+          </>
+        )}
 
         {rep.showPlacements && placements.length > 0 && (
           <>
@@ -829,6 +844,9 @@ export default function IpgyeolConsole({ onAuthError }) {
 
   // 리포트 편집
   const [reportOpen, setReportOpen] = useState(false);
+  // 리포트에 통째로 실을 학생 기록(교차 검증까지 끝낸 입결 분석 글 등).
+  // 기록은 6만 자짜리도 있어서 '고르지 않으면 안 들어간다'로 둔다 — 기본 포함은 사고가 난다.
+  const [repRecOn, setRepRecOn] = useState(() => new Set());
   const [rep, setRep] = useState(() => {
     try { return { ...DEFAULT_REPORT, ...JSON.parse(localStorage.getItem(REPORT_KEY) || '{}') }; }
     catch { return { ...DEFAULT_REPORT }; }
@@ -1090,6 +1108,9 @@ export default function IpgyeolConsole({ onAuthError }) {
   // ── 리포트를 학생 기록으로 ──
   // 인쇄물은 상담이 끝나면 사라진다. 같은 내용을 글로 남겨야 다음 상담·브리핑·AI가 근거로 읽는다.
   // 인쇄본과 같은 취사선택(뺀 항목·코멘트·분석 포함 여부)을 그대로 따른다.
+  // 리포트에 통째로 실을 기록. 고른 것만 들어간다.
+  const attachedRecords = (dossier?.records || []).filter((r) => repRecOn.has(r.id) && String(r.content || '').trim());
+
   function reportToText() {
     const on = (k) => !repOff[k];
     const memoOf = (k) => (repMemo[k] || '').trim();
@@ -1157,6 +1178,10 @@ export default function IpgyeolConsole({ onAuthError }) {
       });
     }
 
+    for (const r of attachedRecords) {
+      L.push('', `[첨부 기록 — ${r.type || '기록'}] ${r.title || '(제목 없음)'}`, String(r.content || '').trim());
+    }
+
     if (rep.note?.trim()) L.push('', rep.note.trim());
     return L.join('\n');
   }
@@ -1202,6 +1227,19 @@ export default function IpgyeolConsole({ onAuthError }) {
     const repPlacements = rep.showPlacements ? placements.filter((p) => on(`pl-${p.id}`)) : [];
     const repSearch = rep.showSearch ? (aiSearch?.results || []).filter((c, i) => on(`sr-${i}-${c.key}`)) : [];
     const repCardList = rep.showCards ? reportCards.filter((c) => on(`cd-${c.key}`)) : [];
+
+    // 첨부한 학생 기록 — 줄바꿈을 살리고, [머리말]·**굵게**·번호 목록 정도만 모양을 낸다.
+    // 원문을 함부로 재구성하면 검증까지 끝낸 글이 인쇄물에서 달라진다.
+    const recBody = (t) => esc(String(t || '').trim())
+      .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+      .split('\n')
+      .map((ln) => (/^\s*\[[^\]]+\]/.test(ln)
+        ? `<div class="rec-key">${ln}</div>`
+        : `<div>${ln || '&nbsp;'}</div>`))
+      .join('');
+    const recBlocks = attachedRecords.map((r) => `<h2>${esc(r.title || '기록')}</h2>
+<div class="sub" style="margin-bottom:6px">${esc(r.type || '기록')} · ${esc(String(r.created_at).slice(0, 10))}</div>
+<div class="rec">${recBody(r.content)}</div>`).join('');
 
     const plRows = [...repPlacements].sort((a, b) => VOR.indexOf(a.verdict) - VOR.indexOf(b.verdict)).map((p) => {
       const s = p.snapshot || {};
@@ -1350,6 +1388,9 @@ td.num{text-align:right;white-space:nowrap}
 .warn{color:#d64545;font-weight:700;font-size:11px}
 .chip{display:inline-block;background:#eef2f7;border:1px solid #dbe3ee;border-radius:6px;padding:1px 7px;margin:0 4px 4px 0;font-size:11px;color:#3d4a5c}
 .summary{background:#f7f9fc;border:1px solid #e3e9f1;border-radius:10px;padding:12px 14px;white-space:pre-wrap;font-size:12.5px;margin-bottom:8px}
+.rec{border:1px solid #e3e9f1;border-radius:10px;padding:13px 16px;font-size:12.5px;line-height:1.75;color:#2c3846;margin-bottom:10px}
+.rec-key{margin-top:7px;font-weight:700;color:#1d4fa8}
+.rec div:first-child{margin-top:0}
 .empty{color:#8492a5;padding:10px 2px}
 .note{margin-top:24px;padding-top:12px;border-top:1px solid #e3e9f1;color:#8492a5;font-size:10.5px;line-height:1.6}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -1409,6 +1450,8 @@ ${rep.lead ? `<div class="lead">${esc(rep.lead)}</div>` : ''}
 
 ${rep.comment?.trim() ? `<h2>컨설턴트 총평</h2>
 <div class="summary">${esc(rep.comment.trim())}</div>` : ''}
+
+${recBlocks}
 
 ${overallBlock}
 
@@ -1526,6 +1569,52 @@ function toggleEdit(){
       const fresh = await api(`/api/board/students/${student.id}/context`);
       if (fresh.success) setDossier(fresh);
     } catch { /* 보고서 갱신 실패가 배치를 되돌리지는 않는다 */ }
+  }
+
+  // 기록 한 편을 그대로 실어 리포트를 연다 — 검증·반영까지 끝낸 글을 인쇄물로 만드는 길.
+  function openReportWithRecord(rec) {
+    setRepRecOn(new Set(rec ? [rec.id] : []));
+    setReportOpen(true);
+  }
+
+  // 검색 후보를 통째로 배치 기록으로 — 이래야 리포트의 배치 표·카드 분석이 채워진다.
+  // 숫자는 글에서 되읽지 않고 지금 화면의 어디가 원본 값을 그대로 쓴다(AI가 손댄 수치가 섞이면 안 된다).
+  const [bulkSaving, setBulkSaving] = useState(false);
+  async function saveSearchAsPlacements() {
+    if (!student || !aiSearch?.results?.length) return;
+    const n = aiSearch.results.length;
+    if (!confirm(`검색 후보 ${n}건을 ${student.name} 학생의 배치 기록으로 저장할까요?\n\n같은 대학·학과·전형이 이미 있으면 최신 값으로 바뀝니다.`)) return;
+    setBulkSaving(true);
+    try {
+      let list = placements;
+      let saved = 0;
+      for (const card of aiSearch.results) {
+        const snap = buildSnapshot(card.entry, baseYear, cutPct);
+        const ai = aiJudgments[card.key];
+        if (ai) { snap.aiVerdict = ai.verdict; snap.aiReason = ai.reason; }
+        const v = verdict(snap.cutSel ?? snap.cut70, grade);
+        const dup = list.find((p) => p.unv_cd === card.univ.unvCd && p.dept === card.entry.dept
+          && p.track === card.entry.track && p.type_name === card.entry.typeName);
+        if (dup) {
+          await api(`/api/board/placements/${dup.id}`, { method: 'DELETE' });
+          list = list.filter((p) => p.id !== dup.id);
+        }
+        const j = await api(`/api/board/students/${student.id}/placements`, { method: 'POST', body: {
+          unvCd: card.univ.unvCd, univName: card.univ.name, region: card.univ.region,
+          dept: card.entry.dept, track: card.entry.track, typeName: card.entry.typeName,
+          baseYear, grade, verdict: v ? v.label : '', snapshot: snap,
+        } });
+        if (!j.success) throw new Error(j.message || '저장 실패');
+        list = [j.placement, ...list];
+        saved += 1;
+      }
+      setPlacements(list);
+      pendingReportRef.current = true;
+      setError('');
+      setAnalysisMsg(`✓ 후보 ${saved}건을 배치 기록으로 저장했습니다. 리포트의 배치 표·카드 분석에 그대로 들어갑니다.`);
+    } catch (e) {
+      if (e.auth) onAuthError?.(); else setError(`배치 저장 실패: ${e.message}`);
+    } finally { setBulkSaving(false); }
   }
 
   async function savePlacement(card) {
@@ -1838,6 +1927,12 @@ function toggleEdit(){
                   {assigning ? '배정 중…' : assigned ? `✓ ${student.name} 기록에 저장됨` : `📋 ${student.name} 학생에 배정`}
                 </button>
               )}
+              {student && aiSearch.results.length > 0 && (
+                <button style={S.aiBtn} onClick={saveSearchAsPlacements} disabled={bulkSaving}
+                  title="후보를 모두 배치 기록으로 저장합니다. 리포트의 배치 표·전형 카드 분석이 이 기록으로 채워집니다.">
+                  {bulkSaving ? '🎯 배치 저장 중…' : `🎯 후보 ${aiSearch.results.length}건 배치 기록으로`}
+                </button>
+              )}
               <button style={S.plDel} title="검색 결과 닫기" onClick={() => setAiSearch(null)}>✕</button>
             </div>
             {aiSearch.filter?.intent && <div style={S.aiIntent}>해석: {aiSearch.filter.intent}</div>}
@@ -1923,6 +2018,8 @@ function toggleEdit(){
                             onClick={() => setEditRec({ id: r.id, title: r.title || '', content: r.content || '' })}>
                             ✏ 고치기
                           </button>
+                          <button style={S.recEditBtn} title="이 글을 그대로 실어 인쇄용 리포트를 만듭니다"
+                            onClick={() => openReportWithRecord(r)}>📄 리포트로 만들기</button>
                           <button style={S.recDelBtn} onClick={() => removeRecord(r)} disabled={recBusy}>🗑 삭제</button>
                         </div>
                         {/* 이 글이 맞는지 다른 회사 모델들에게 물어본다 — 쓴 모델은 자기 글을 옹호한다 */}
@@ -2061,6 +2158,8 @@ function toggleEdit(){
             onAnalyze={() => runReportAnalysis(reportCards.filter((c) => !repOff[`cd-${c.key}`]))}
             assigningReport={assigningReport} assignedReport={assignedReport} onAssign={assignReportToStudent}
             verifyText={reportToText()} verifyContext={verifyContextFor()}
+            records={dossier?.records || []} recOn={repRecOn}
+            onToggleRec={(id) => setRepRecOn((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
             onClose={() => setReportOpen(false)}
             onPrint={() => { setReportOpen(false); buildIpgyeolReport(); }} />
         )}
@@ -2114,6 +2213,8 @@ const S = {
   dossierMeta: { fontSize: 12, color: '#5c6b7c', padding: '2px 0 8px' },
   dossierRoad: { fontSize: 12, color: '#3d4a5c', background: '#f7f9fc', border: '1px solid #eef2f7', borderRadius: 8, padding: '6px 9px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   roadChip: { fontSize: 11, color: '#5c6b7c', background: '#fff', border: '1px solid #e3e9f1', borderRadius: 6, padding: '1px 7px' },
+  rpRecRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 2px', borderBottom: '1px solid #f2f5f9', cursor: 'pointer' },
+  rpRecTitle: { flex: 1, fontSize: 12.5, color: '#26313e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   recRow: { borderBottom: '1px solid #f2f5f9' },
   recHead: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', padding: '7px 2px', cursor: 'pointer', textAlign: 'left' },
   recType: { fontSize: 10.5, fontWeight: 800, color: '#1d4fa8', background: '#e8f1fc', border: '1px solid #c3dcf7', borderRadius: 6, padding: '1px 7px', whiteSpace: 'nowrap' },
