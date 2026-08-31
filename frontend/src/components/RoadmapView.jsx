@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import VerifyPanel from './VerifyPanel';
 
 // 생기부 로드맵 체크리스트 — 학생 페이지(라이트)와 선생님 보드(다크) 공용.
 // 데이터는 부모가 들고 있고, 이 컴포넌트는 핸들러만 호출한다(호출 후 부모가 새로 고침).
@@ -145,7 +146,7 @@ function AddItemForm({ section, t, onAdd }) {
   );
 }
 
-export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf, onDownloadDocx, onSimplify }) {
+export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf, onDownloadDocx, onSimplify, verifyContext = null }) {
   const t = dark ? THEME.dark : THEME.light;
   const [openSummary, setOpenSummary] = useState({});
   const [openBody, setOpenBody] = useState({});
@@ -201,6 +202,12 @@ export default function RoadmapView({ roadmaps = [], dark = false, editable = tr
                   <div style={{ marginTop: 7, padding: '11px 13px', borderRadius: 10, background: t.soft, border: `1px solid ${t.border}`, fontSize: 13, lineHeight: 1.75, color: t.text, whiteSpace: 'pre-wrap' }}>
                     {rm.summary}
                   </div>
+                )}
+                {/* 교차 검증 — 선생님 화면에서만(verifyContext 를 준 쪽). 학생 셀프 페이지에는 키가 없다 */}
+                {verifyContext !== null && rm.body && (
+                  <VerifyPanel kind="roadmap" text={`${rm.title || ''}
+
+${rm.body}`} context={verifyContext} />
                 )}
                 {openBody[rm.id] && rm.body && (
                   renderMd

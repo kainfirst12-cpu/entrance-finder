@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import RoadmapView from './RoadmapView';
+import VerifyPanel from './VerifyPanel';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -154,6 +155,25 @@ function GradeGraph({ grades }) {
       ))}
     </svg>
   );
+}
+
+
+// 교차 검증에 함께 넘길 근거 자료. 글만 주면 모델은 트집만 잡는다 — 비출 것을 함께 준다.
+function recordVerifyContext(student) {
+  if (!student) return '';
+  const L = [];
+  L.push(`[학생] ${student.name || ''} · ${student.school || '학교 미입력'} · ${student.grade || '학년 미입력'}`
+    + ` · 희망 ${student.major || '미입력'} · 목표 ${student.target_univ || '미입력'}`);
+  if (student.gpa != null && student.gpa !== '') L.push(`[대표 내신] ${student.gpa}`);
+  if ((student.grades || []).length) {
+    L.push(`[학기 성적] ${student.grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}`);
+  }
+  const others = (student.records || []).filter((x) => x.content).slice(0, 4);
+  if (others.length) {
+    L.push('[같은 학생의 다른 기록 — 앞뒤가 맞는지 함께 보라]');
+    for (const o of others) L.push(`- (${o.type || '기록'}) ${o.title || ''}: ${String(o.content).slice(0, 700)}`);
+  }
+  return L.join('\n');
 }
 
 export default function Board({ onAuthError, onAnalyzeFile }) {
@@ -558,7 +578,16 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
                 <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
               </div>
               {expandedRec === r.id && r.content && (
-                <div style={S.recContent} dangerouslySetInnerHTML={{ __html: mdToHtml(r.content) }} />
+                <>
+                  <div style={S.recContent} dangerouslySetInnerHTML={{ __html: mdToHtml(r.content) }} />
+                  {/* 이 글이 맞는지 다른 회사 모델들에게 — 쓴 모델은 자기 글을 옹호한다 */}
+                  <VerifyPanel
+                    kind={/입결|배치|판정/.test(r.type || '') ? 'ipgyeol' : /로드맵/.test(r.type || '') ? 'roadmap' : /분석|생기부|세특|수행/.test(r.type || '') ? 'saenggibu' : 'record'}
+                    text={`${r.title || ''}
+
+${r.content || ''}`}
+                    context={recordVerifyContext(student)} />
+                </>
               )}
             </div>
           ))}
@@ -983,6 +1012,7 @@ function RoadmapSection({ student, onError, onChanged }) {
         <div style={{ color: '#6b7d8a', fontSize: 13, marginBottom: 10 }}>아직 로드맵이 없습니다.</div>
       )}
       <RoadmapView
+        verifyContext={recordVerifyContext(student)}
         roadmaps={roadmaps} dark renderMd={mdToHtml}
         onViewBody={(rm) => setViewBody({ title: rm.title, body: rm.body })}
         onToggle={(item) => act(() => call(`/api/roadmap/items/${item.id}`, { method: 'PATCH', body: JSON.stringify({ done: !item.done }) }))}
