@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { API_BASE } from '../apiBase';
+import VerifyPanel from './VerifyPanel';
 
 const token = () => localStorage.getItem('ef_token');
 async function api(path, opts = {}) {
@@ -752,6 +753,29 @@ export default function IpgyeolConsole({ onAuthError }) {
     } catch (e) {
       if (e.auth) onAuthError?.(); else alert(e.message || '저장하지 못했습니다');
     } finally { setRecBusy(false); }
+  }
+
+  // 검토자에게 함께 넘길 '근거 자료'. 이게 없으면 모델은 글만 보고 트집을 잡는다 —
+  // 무엇에 비추어 틀렸는지 말하게 하려면 원본을 같이 줘야 한다.
+  function verifyContextFor() {
+    const d = dossier;
+    const lines = [];
+    if (d?.student) {
+      const st = d.student;
+      lines.push(`[학생] ${st.name || ''} · ${st.school || '학교 미입력'} · ${st.grade || '학년 미입력'}`
+        + ` · 희망 ${st.major || '미입력'} · 목표 ${st.target_univ || '미입력'}`);
+    }
+    if (Number.isFinite(grade)) lines.push(`[현재 기준 내신] ${grade.toFixed(2)} (${gradeSource || '수동 입력'})`);
+    if (d?.grades?.length) lines.push(`[학기 성적] ${d.grades.map((g) => `${g.term} ${g.gpa ?? '-'}`).join(' · ')}`);
+    if (placements.length) {
+      lines.push('[저장된 배치]');
+      for (const pl of placements.slice(0, 12)) {
+        const sc = snapCut(pl.snapshot || {});
+        lines.push(`- ${pl.univ_name || ''} ${pl.dept} / ${pl.track}(${pl.type_name || '-'})`
+          + ` · ${sc.pct}%컷 ${sc.v ?? '-'}${sc.year ? `(${sc.year})` : ''} · 판정 ${pl.verdict || '-'}`);
+      }
+    }
+    return lines.join('\n');
   }
 
   async function removeRecord(r) {
@@ -1780,6 +1804,13 @@ function toggleEdit(){
                           </button>
                           <button style={S.recDelBtn} onClick={() => removeRecord(r)} disabled={recBusy}>🗑 삭제</button>
                         </div>
+                        {/* 이 글이 맞는지 다른 회사 모델들에게 물어본다 — 쓴 모델은 자기 글을 옹호한다 */}
+                        <VerifyPanel kind={/입결|배치|판정/.test(r.type || '') ? 'ipgyeol' : /로드맵/.test(r.type || '') ? 'roadmap' : /분석|생기부|세특/.test(r.type || '') ? 'saenggibu' : 'record'}
+                          text={`${r.title || ''}
+
+${r.content || ''}`}
+                          context={verifyContextFor(r)}
+                          onAuthError={onAuthError} />
                       </div>
                     ))}
                   </div>

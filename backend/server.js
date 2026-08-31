@@ -26,6 +26,7 @@ import {
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { placementJudgeRules } from './services/reportUtils.js';
+import { reviewOnce, buildConsensus, VERIFY_KINDS } from './services/crossVerify.js';
 import { generateAnalysisPDF, generateRoadmapPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -2791,6 +2792,31 @@ app.get('/api/ipgyeol/:unvCd', requireAuth, (req, res) => {
     res.json({ success: true, ...data, ...(skypass ? { skypass } : {}) });
   } catch (err) {
     res.status(404).json({ success: false, error: '해당 대학의 입결 자료가 없습니다.' });
+  }
+});
+
+// ── 교차 검증 — 이미 만들어진 글을 다른 회사 모델들에게 검토받는다 ──
+// ⚠ 위쪽에 있는 `/api/verify` 와 다른 자리다. 그쪽은 **생기부 분석 리포트 전용 + 모델 하나**로,
+//   AnalysisResult 화면과 /api/refine(검증 반영 재작성)이 그 형식에 묶여 있어 건드리지 않는다.
+//   이 라우트는 **어떤 글이든 · 여러 모델이 동시에** 보는 자리다(입결 판정·기록·로드맵 전부).
+// 같은 모델에게 "맞니?"라고 물으면 자기 글을 옹호한다. 그래서 검토자는 **글을 쓴 모델이 아닌**
+// 다른 키들로 부르고, 여럿이 같은 곳을 짚으면 그것부터 보여준다(services/crossVerify.js).
+// 키는 요청마다 받는다 — 서버가 원장 키를 들고 있지 않는 이 앱의 규칙 그대로.
+app.post('/api/cross-verify', requireAuth, async (req, res) => {
+  const { text, kind, context, reviewers } = req.body || {};
+  if (!String(text || '').trim()) return res.status(400).json({ success: false, error: '검토할 글이 없습니다' });
+  const list = (Array.isArray(reviewers) ? reviewers : []).filter((r) => r && r.group && r.apiKey).slice(0, 4);
+  if (!list.length) return res.status(400).json({ success: false, error: '검토할 AI 키가 없습니다. 설정에서 Claude·GPT·Gemini 키를 등록해 주세요.' });
+  const k = VERIFY_KINDS.includes(kind) ? kind : 'record';
+  try {
+    // 검토자끼리 서로의 답을 못 보게 따로 부른다 — 봤다면 그건 교차 검증이 아니다.
+    const reviews = await Promise.all(list.map((r) => reviewOnce(callAIModel, {
+      label: r.label || r.submodel || r.group, group: r.group, submodel: r.submodel, apiKey: r.apiKey,
+    }, { kind: k, text, context })));
+    res.json({ success: true, kind: k, reviews, consensus: buildConsensus(reviews) });
+  } catch (err) {
+    console.error('[/api/cross-verify] 오류:', err.message);
+    res.status(500).json({ success: false, error: err.message || '검증에 실패했습니다' });
   }
 });
 
