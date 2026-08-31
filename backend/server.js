@@ -821,14 +821,24 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
     ? [...images.map(img => ({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.base64 } })),
        { type: 'text', text: userMsg }]
     : userMsg;
+  const claudeModel = getModelId('claude', submodel || aiModel);
+  // Claude 5 계열은 사고(thinking)가 기본으로 켜져 있고, 그 토큰을 max_tokens 안에서 먼저 쓴다.
+  // 호출자가 준 값을 그대로 두면 사고만 하다 한도를 채워 본문이 빈 문자열로 돌아온다
+  // — 위 gemini/gpt pro 와 똑같은 증상이고, 교차 검증에서 Claude 만 매번 실패하던 원인이었다.
+  const cap = Math.min(maxTokens + 8000, 32000);
   const stream = client.messages.stream({
-    model: getModelId('claude', submodel || aiModel),
-    max_tokens: maxTokens,
+    model: claudeModel,
+    max_tokens: cap,
     system: systemPrompt,
     messages: [{ role: 'user', content: userContent }],
   });
   const final = await stream.finalMessage();
-  return final.content.map(b => (b.type === 'text' ? b.text : '')).join('');
+  const text = final.content.map(b => (b.type === 'text' ? b.text : '')).join('');
+  // 빈 문자열을 그대로 돌려주면 호출부마다 제각각의 모양으로 조용히 실패한다. 이유를 붙여 던진다.
+  if (!String(text).trim()) {
+    throw new Error(`${claudeModel}: 응답이 비어 있습니다(stop_reason=${final.stop_reason}). 사고 토큰이 출력 한도를 모두 소모했을 수 있습니다.`);
+  }
+  return text;
 }
 
 // ── AI 제공사 오류를 사람이 읽는 문장으로 ──────────────────
