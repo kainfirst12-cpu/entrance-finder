@@ -65,13 +65,52 @@ ${guide}
 문제가 없으면 issues 는 빈 배열로 두고 verdict 를 "신뢰가능"으로 하세요.`;
 }
 
-/** 모델이 코드펜스나 잡담을 붙여도 JSON 을 건져낸다. */
+/**
+ * 토큰 한도에 걸려 **중간에서 잘린 JSON** 을 살려낸다.
+ * 지적을 10건 넘게 쓰면 응답이 길어져 마지막 문장에서 끊기는데, 그 한 건 때문에
+ * 앞의 아홉 건까지 통째로 버리면 검토자 하나가 통째로 실패한 것처럼 보인다.
+ * 열린 문자열·괄호를 닫아 파싱한 뒤, 잘려서 반쪽인 마지막 지적만 버린다.
+ */
+function salvageTruncatedJson(t) {
+  const a = t.indexOf('{');
+  if (a < 0) return null;
+  const s = t.slice(a);
+  const stack = [];
+  let inStr = false, esc = false;
+  for (const ch of s) {
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  if (!stack.length && !inStr) return null;   // 잘린 게 아니면 여기 올 일이 없다
+  let fixed = s;
+  if (inStr) fixed += '"';
+  fixed = fixed.replace(/,\s*$/, '');
+  for (let i = stack.length - 1; i >= 0; i -= 1) fixed += stack[i] === '{' ? '}' : ']';
+  let obj;
+  try { obj = JSON.parse(fixed); } catch { return null; }
+  // 마지막 지적은 문장이 끊겨 있을 가능성이 높다 — 근거가 반쪽이면 보여주지 않는다
+  if (Array.isArray(obj.issues) && obj.issues.length) {
+    const last = obj.issues[obj.issues.length - 1];
+    if (!last?.problem || !last?.fix) obj.issues.pop();
+  }
+  obj.truncated = true;
+  return obj;
+}
+
+/** 모델이 코드펜스나 잡담을 붙여도, 답이 중간에 잘려도 JSON 을 건져낸다. */
 export function parseVerdictJson(raw) {
   const t = String(raw || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
   try { return JSON.parse(t); } catch { /* 아래에서 한 번 더 */ }
   const a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch { /* 포기 */ } }
-  return null;
+  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch { /* 아래에서 한 번 더 */ } }
+  return salvageTruncatedJson(t);
 }
 
 /** 지적끼리 '같은 곳을 말하는지' 비교하기 위한 키 — 인용문 앞부분을 뼈대만 남겨 맞춘다. */
@@ -130,10 +169,16 @@ export async function reviewOnce(call, { label, group, submodel, apiKey }, { kin
     ].filter(Boolean).join('\n\n');
     const raw = await call({
       aiModel: group, submodel, apiKey,
-      systemPrompt: systemPromptFor(kind), userMsg, maxTokens: 4000,
+      // 지적을 열 건 넘게 쓰면 4000 토큰으로는 한국어 응답이 문장 중간에서 끊긴다.
+      // 끊기면 JSON 이 깨져 검토자 하나가 통째로 실패한다 — callAIModel 기본값과 같은 8000 을 준다.
+      systemPrompt: systemPromptFor(kind), userMsg, maxTokens: 8000,
     });
     const result = parseVerdictJson(raw);
-    if (!result) return { label, ok: false, error: '검토 결과를 JSON 으로 읽지 못했습니다' };
+    // 실패를 '읽지 못했습니다' 한 줄로 덮으면 무엇이 왔는지 알 길이 없다. 응답 앞부분을 붙여 둔다.
+    if (!result) {
+      const head = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      return { label, ok: false, error: head ? `검토 결과를 JSON 으로 읽지 못했습니다 — 응답: ${head}…` : '검토자가 빈 응답을 보냈습니다' };
+    }
     return { label, ok: true, result: { verdict: result.verdict || null, summary: result.summary || '', issues: Array.isArray(result.issues) ? result.issues : [] } };
   } catch (err) {
     return { label, ok: false, error: err?.message || '검토 실패' };
