@@ -15,5 +15,8 @@ dist/
 !backend/data/adiga/ipgyeol-index.json
 !backend/data/adiga/ipgyeol/*.json
 
+# 2027 수시 대학별 지원 시 유의사항(SKYPASS) — 입결 판정 보정에 쓰이므로 배포에 포함
+!backend/data/skypass/*.json
+
 # 학생 분석 리포트(개인정보) — 커밋 금지
 *_분석결과.*
