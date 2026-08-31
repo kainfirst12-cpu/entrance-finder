@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import VerifyPanel from './VerifyPanel';
 
@@ -82,8 +82,14 @@ function gpaTokens(line) {
   return out;
 }
 
+// ⚠ 우리가 자동으로 쓴 '입결 배치 보고서'는 여기서 읽지 않는다.
+//   그 글에는 "현재 내신 2.30"이 적히는데, 그건 우리가 방금 쓴 값이다. 그걸 다시 근거로 삼으면
+//   원장이 슬라이더로 고친 값을 옛 보고서의 숫자가 되돌리고, 근거 표시도 '분석 본문에서 인식'이
+//   되어 어디서 온 값인지 알 수 없게 된다 — 자기가 쓴 글을 자기가 읽는 순환이라 끊는다.
+const isAutoReport = (r) => String(r?.title || '').startsWith('입결 배치 보고서');
+
 function extractGradeFromRecords(s) {
-  const all = (s.records || []).filter((r) => r.content);
+  const all = (s.records || []).filter((r) => r.content && !isAutoReport(r));
   const pool = all.filter((r) => ['생기부 분석', '컨설턴트 브리핑'].includes(r.type));
   const targets = pool.length ? pool : all; // 분석 기록이 없으면 어쩔 수 없이 전체
   for (const rec of targets) {
@@ -380,12 +386,16 @@ function Card({ card, grade, baseYear, cutPct, onPin, pinned, student, onSave, s
           {card.skypass.scaleWarning && card.skypass.univNotes.map((n, i) => (
             <div key={`u${i}`} style={S.skypassWarn}>{n.note}</div>
           ))}
-          {card.skypass.notes.map((n, i) => (
-            <div key={i} style={S.skypassItem}>
-              {n.scope === 'type' && <span style={S.skypassScope}>전형 전체</span>}
-              {n.note}
-            </div>
-          ))}
+          {/* 위에 이미 나온 문장은 빼고 — 대학 경고와 전형별 유의사항에 같은 말이 겹친다 */}
+          {card.skypass.notes
+            .filter((n) => !(card.skypass.scaleWarning && card.skypass.univNotes.some((u) => u.note === n.note)))
+            .filter((n, i, arr) => arr.findIndex((x) => x.note === n.note) === i)
+            .map((n, i) => (
+              <div key={i} style={S.skypassItem}>
+                {n.scope === 'type' && <span style={S.skypassScope}>전형 전체</span>}
+                {n.note}
+              </div>
+            ))}
         </div>
       )}
 
@@ -551,7 +561,8 @@ function RepItem({ k, name, sub, off, memo, onToggle, onMemo }) {
 // 입결 리포트 편집창 — 인쇄 전에 제목·총평·포함 항목·항목별 코멘트를 직접 손본다.
 // 상담 자리에서 내미는 종이라 매번 뺄 항목과 덧붙일 말이 다르다. 그래서 고정된 양식으로 뽑지 않는다.
 function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSearch, cards, student, grade, baseYear,
-  analysis, analyzing, analysisMsg, onAnalyze, assigningReport, assignedReport, onAssign, onClose, onPrint }) {
+  analysis, analyzing, analysisMsg, onAnalyze, assigningReport, assignedReport, onAssign, onClose, onPrint,
+  verifyText, verifyContext }) {
   const setF = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.value }));
   const setC = (k) => (e) => setRep((r) => ({ ...r, [k]: e.target.checked }));
   const onMemo = (k, v) => setMemo((m) => ({ ...m, [k]: v }));
@@ -664,6 +675,10 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
 
         <div style={S.rpSec}>하단 안내 문구</div>
         <textarea style={S.rpArea} rows={3} value={rep.note} onChange={setF('note')} />
+
+        {/* 인쇄해서 학부모에게 내밀기 전에 한 번 거른다 — 나간 뒤에는 고칠 수 없다 */}
+        <div style={S.rpSec}>내보내기 전 확인 <span style={S.ctrlHint}>(다른 회사 AI들이 이 리포트를 읽고 틀린 곳을 짚습니다)</span></div>
+        <VerifyPanel kind="ipgyeol" text={verifyText} context={verifyContext} />
 
         <div style={S.rpFoot}>
           <button style={S.rpReset} onClick={() => { setRep({ ...DEFAULT_REPORT }); setOff({}); setMemo({}); }}>기본값으로 되돌리기</button>
@@ -795,6 +810,10 @@ export default function IpgyeolConsole({ onAuthError }) {
   // 배치 저장 카드 — 학생에게 배치되면 고정(📌)하지 않아도 카드가 뜬다
   const [univCache, setUnivCache] = useState({}); // unvCd → detail
   const [placementCards, setPlacementCards] = useState([]);
+  // 배치가 바뀌면 보고서를 다시 쓴다는 표시. state 로 두면 카드 복원 이펙트와 같은 렌더에서
+  // 경합해 **방금 저장한 카드만 유의사항 없이** 기록되므로, 카드 복원이 끝나는 그 자리에서
+  // 직접 소비한다(ref).
+  const pendingReportRef = useRef(false);
   const [plCardsLoading, setPlCardsLoading] = useState(false);
 
   // 리포트 편집
@@ -1420,6 +1439,84 @@ function toggleEdit(){
     else setError('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
   }
 
+  // ── 배치 보고서 — 카드를 붙일 때마다 저절로 쓰이고 갱신되는 글 ──
+  // 배치(placements)는 카드 한 장씩의 숫자 스냅샷이라, 여섯 장을 함께 놓고 본 그림이 남지 않는다.
+  // 상담 자리에서 필요한 것은 그 그림이고, 나중에 AI 브리핑·교차 검증이 읽는 것도 이 글이다.
+  // 제목을 고정해 **한 건만 두고 갱신**한다 — 배치할 때마다 기록이 쌓이면 아무도 안 읽는다.
+  const PLACEMENT_REPORT_TITLE = '입결 배치 보고서';
+
+  function placementReportText(list = placements, cards = placementCards) {
+    const L = [];
+    const today = new Date().toISOString().slice(0, 10);
+    L.push(`[입결 배치 보고서] ${student?.name || '학생'} · ${baseYear} 기준 · ${cutPct}%컷 기준`);
+    L.push(`작성 ${today} · 배치 ${list.length}건`
+      + (Number.isFinite(grade) ? ` · 현재 내신 ${grade.toFixed(2)}` : ''));
+    if (gradeSource) L.push(`내신 근거: ${gradeSource}`);
+    L.push('');
+
+    const order = ['안정', '적정', '소신', '위험'];
+    const cnt = order.map((v) => `${v} ${list.filter((p) => p.verdict === v).length}`).join(' · ');
+    L.push(`[판정 분포] ${cnt}`);
+    L.push('');
+
+    const sorted = [...list].sort((a, b) => order.indexOf(a.verdict) - order.indexOf(b.verdict));
+    sorted.forEach((pl, i) => {
+      const sc = snapCut(pl.snapshot || {});
+      const sn = pl.snapshot || {};
+      L.push(`${i + 1}. ${(pl.univ_name || '').replace(/\[.*\]$/, '')} ${pl.dept} / ${pl.track}(${pl.type_name || '-'})`);
+      L.push(`   ${sc.pct}%컷 ${sc.v ?? '-'}${sc.year ? `(${sc.year})` : ''}`
+        + ` · 경쟁률 ${sn.rate ?? '-'} · 충원 ${sn.fill ?? '-'}명 · 모집 ${sn.recruit ?? '-'}명`
+        + ` · 판정 ${pl.verdict || '-'}`);
+      if (sn.aiVerdict) L.push(`   AI 판정 ${sn.aiVerdict}${sn.aiReason ? ` — ${sn.aiReason}` : ''}`);
+      // 지원 시 유의사항 — 숫자만으로는 알 수 없는 것. 이 글을 읽는 사람이 가장 먼저 봐야 한다.
+      const c = cards.find((x) => x.univ.unvCd === pl.unv_cd && x.entry.dept === pl.dept
+        && x.entry.track === pl.track && x.entry.typeName === pl.type_name);
+      // 대학 전체 경고와 전형별 유의사항에 같은 문장이 들어 있다("입결은 ○○대식 등급 평균").
+      // 그대로 두면 한 카드에 같은 말이 두세 번 찍힌다 — 본 문장은 한 번만.
+      const said = new Set();
+      if (c?.skypass?.scaleWarning) {
+        L.push(`   ⚠ 이 대학 입결 등급은 대학 자체 환산등급 — 일반 등급과 직접 비교 불가`);
+        for (const n of (c.skypass.univNotes || [])) said.add(n.note);
+      }
+      for (const n of (c?.skypass?.notes || [])) {
+        if (said.has(n.note)) continue;
+        said.add(n.note);
+        L.push(`   ⚠ 유의: ${n.note}`);
+      }
+    });
+
+    // 6장 균형 — 컨설턴트가 실제로 보는 것은 개별 판정이 아니라 이 구성이다
+    const safe = list.filter((p) => p.verdict === '안정').length;
+    const risky = list.filter((p) => p.verdict === '위험' || p.verdict === '소신').length;
+    L.push('');
+    L.push(`[6장 구성] 안전판 ${safe}장 · 상향(소신+위험) ${risky}장 · 전체 ${list.length}장`);
+    if (list.length >= 3 && safe === 0) L.push('   → 안전판이 없습니다. 최소 1~2장은 안정 카드로 채우기를 권합니다.');
+    if (list.length > 6) L.push('   → 수시는 6장이 한도입니다. 지금 구성에서 덜어낼 카드를 정해야 합니다.');
+    return L.join('\n');
+  }
+
+  // 저장/삭제 뒤에 보고서를 최신으로 맞춘다. 실패해도 배치 자체는 이미 저장됐으므로 조용히 넘긴다
+  // (여기서 alert 를 띄우면 배치가 실패한 것처럼 보인다).
+  async function syncPlacementReport(list, cards) {
+    if (!student) return;
+    try {
+      const title = `${PLACEMENT_REPORT_TITLE} — ${student.name || '학생'}`;
+      const content = placementReportText(list, cards);
+      const ctx = await api(`/api/board/students/${student.id}/context`);
+      if (!ctx.success) return;
+      const found = (ctx.records || []).find((r) => (r.title || '').startsWith(PLACEMENT_REPORT_TITLE));
+      if (!list.length && found) {
+        // 배치를 다 지웠으면 보고서도 지운다 — 빈 보고서가 남아 있으면 그게 더 헷갈린다
+        await api(`/api/board/records/${found.id}`, { method: 'DELETE' });
+      } else if (list.length) {
+        if (found) await api(`/api/board/records/${found.id}`, { method: 'PUT', body: { title, content } });
+        else await api(`/api/board/students/${student.id}/records`, { method: 'POST', body: { type: '입결 분석', title, content } });
+      }
+      const fresh = await api(`/api/board/students/${student.id}/context`);
+      if (fresh.success) setDossier(fresh);
+    } catch { /* 보고서 갱신 실패가 배치를 되돌리지는 않는다 */ }
+  }
+
   async function savePlacement(card) {
     if (!student) return;
     setSavingKey(card.key);
@@ -1438,7 +1535,9 @@ function toggleEdit(){
         baseYear, grade, verdict: v ? v.label : '', snapshot: snap,
       } });
       if (!j.success) throw new Error(j.message || '저장 실패');
-      setPlacements((prev) => [j.placement, ...prev.filter((p) => p.id !== dup?.id)]);
+      const next = [j.placement, ...placements.filter((p) => p.id !== dup?.id)];
+      setPlacements(next);
+      pendingReportRef.current = true;   // 카드 복원이 끝나는 자리에서 쓴다(유의사항까지 담기게)
     } catch (e) {
       if (e.auth) onAuthError?.(); else setError(`배치 저장 실패: ${e.message}`);
     } finally { setSavingKey(''); }
@@ -1447,7 +1546,11 @@ function toggleEdit(){
   async function removePlacement(p) {
     try {
       const j = await api(`/api/board/placements/${p.id}`, { method: 'DELETE' });
-      if (j.success) setPlacements((prev) => prev.filter((x) => x.id !== p.id));
+      if (j.success) {
+        const next = placements.filter((x) => x.id !== p.id);
+        setPlacements(next);
+        pendingReportRef.current = true;
+      }
     } catch (e) { if (e.auth) onAuthError?.(); }
   }
 
@@ -1534,8 +1637,15 @@ function toggleEdit(){
       if (!alive) return;
       const cache = { ...univCache, ...fetched };
       if (Object.keys(fetched).length) setUnivCache(cache);
-      setPlacementCards(placements.map((p) => cardFromPlacement(p, cache[p.unv_cd])).filter(Boolean));
+      const cards = placements.map((p) => cardFromPlacement(p, cache[p.unv_cd])).filter(Boolean);
+      setPlacementCards(cards);
       setPlCardsLoading(false);
+      // 방금 배치를 바꿨다면 여기서 보고서를 쓴다. 카드가 손에 있는 이 자리라야
+      // 유의사항(자체 환산등급 경고 등)까지 담긴다.
+      if (pendingReportRef.current) {
+        pendingReportRef.current = false;
+        syncPlacementReport(placements, cards);
+      }
     })();
     return () => { alive = false; };
   }, [placements]);
@@ -1940,6 +2050,7 @@ ${r.content || ''}`}
             analysis={analysis} analyzing={analyzing} analysisMsg={analysisMsg}
             onAnalyze={() => runReportAnalysis(reportCards.filter((c) => !repOff[`cd-${c.key}`]))}
             assigningReport={assigningReport} assignedReport={assignedReport} onAssign={assignReportToStudent}
+            verifyText={reportToText()} verifyContext={verifyContextFor()}
             onClose={() => setReportOpen(false)}
             onPrint={() => { setReportOpen(false); buildIpgyeolReport(); }} />
         )}
