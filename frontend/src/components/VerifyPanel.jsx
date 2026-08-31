@@ -24,11 +24,45 @@ const VERDICT = {
   재작성권장: { c: '#ff8a8a', b: '#331c1f', t: '이대로 내보내면 안 됩니다' },
 };
 
-export default function VerifyPanel({ kind = 'record', text, context, compact = false, onAuthError }) {
+/** 오래 걸리는 AI 호출은 SSE(keepalive)로 온다 — success 가 있는 이벤트가 결과, 나머지는 진행 알림 */
+async function postForResult(url, opts, onStage) {
+  const res = await fetch(url, opts);
+  if (!(res.headers.get('content-type') || '').includes('text/event-stream')) {
+    try { return await res.json(); } catch { return { success: false, message: `서버 응답 오류 (HTTP ${res.status})` }; }
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', result = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const obj = JSON.parse(line.slice(6));
+        if (obj.success !== undefined) result = obj;
+        else if (obj.message) onStage?.(obj.message);
+      } catch { /* keepalive 등 */ }
+    }
+  }
+  return result || { success: false, message: '서버 응답이 비었습니다 (연결 끊김)' };
+}
+
+export default function VerifyPanel({ kind = 'record', text, context, compact = false, onAuthError, onApply }) {
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
   const [open, setOpen] = useState(false);
+  // ── 반영 ── 지적을 골라 원문에 반영해 다시 쓴다. 검증만 하고 끝나면 손으로 옮겨 적다 빠뜨린다.
+  const [skip, setSkip] = useState(() => new Set());   // 반영에서 뺀 지적의 인덱스
+  const [applying, setApplying] = useState(false);
+  const [stage, setStage] = useState('');
+  const [draft, setDraft] = useState(null);            // 고쳐 쓴 글 (아직 저장 전)
+  const [applyErr, setApplyErr] = useState('');
+  const [savedMsg, setSavedMsg] = useState('');
 
   // 키가 등록된 회사만 검토자가 될 수 있다
   const available = useMemo(
@@ -39,6 +73,7 @@ export default function VerifyPanel({ kind = 'record', text, context, compact = 
 
   async function run() {
     setErr(''); setBusy(true); setData(null);
+    setSkip(new Set()); setDraft(null); setApplyErr(''); setSavedMsg('');
     try {
       const res = await fetch(`${API_BASE}/api/cross-verify`, {
         method: 'POST',
@@ -56,6 +91,40 @@ export default function VerifyPanel({ kind = 'record', text, context, compact = 
     } catch (e) {
       setErr(e.message || '검증에 실패했습니다');
     } finally { setBusy(false); }
+  }
+
+  // 반영은 검토자 중 한 곳이 맡는다 — 고른 것 중 첫 번째(누가 고쳤는지 버튼에 적어 둔다)
+  const writer = available.find((r) => picked.includes(r.group)) || available[0];
+
+  async function runApply() {
+    const chosen = (data?.consensus?.issues || []).filter((_, i) => !skip.has(i));
+    if (!chosen.length) { setApplyErr('반영할 지적을 하나 이상 골라 주세요'); return; }
+    setApplyErr(''); setSavedMsg(''); setApplying(true); setStage('');
+    try {
+      const j = await postForResult(`${API_BASE}/api/cross-verify/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ef_token')}` },
+        body: JSON.stringify({
+          kind, text, context, issues: chosen,
+          reviewer: { group: writer.group, apiKey: writer.apiKey, label: writer.label },
+        }),
+      }, (m) => setStage(m));
+      if (!j.success) { setApplyErr(j.message || j.error || '고쳐 쓰지 못했습니다'); return; }
+      setDraft(j.text);
+    } catch (e) {
+      setApplyErr(e.message || '고쳐 쓰지 못했습니다');
+    } finally { setApplying(false); setStage(''); }
+  }
+
+  async function saveDraft() {
+    if (!draft || !onApply) return;
+    setApplying(true);
+    try {
+      await onApply(draft);
+      setDraft(null); setSavedMsg('✓ 고친 내용을 저장했습니다');
+    } catch (e) {
+      setApplyErr(e.message || '저장하지 못했습니다');
+    } finally { setApplying(false); }
   }
 
   if (!available.length) {
@@ -113,6 +182,11 @@ export default function VerifyPanel({ kind = 'record', text, context, compact = 
                     <span style={S.agree}>✓ {it.agreedBy.join(' · ')} 모두 지적</span>
                   )}
                   {it.agreedBy?.length === 1 && <span style={S.one}>{it.agreedBy[0]}</span>}
+                  <label style={S.useIt} title="이 지적을 고쳐쓰기에 반영합니다">
+                    <input type="checkbox" checked={!skip.has(i)}
+                      onChange={() => setSkip((p) => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n; })} />
+                    반영
+                  </label>
                 </div>
                 {it.quote && <div style={S.quote}>“{it.quote}”</div>}
                 <div style={S.problem}>{it.problem}</div>
@@ -120,6 +194,37 @@ export default function VerifyPanel({ kind = 'record', text, context, compact = 
               </div>
             );
           })}
+
+          {/* 지적을 원문에 반영해 다시 쓰기 — 고친 글을 먼저 보여주고, 확인한 뒤에만 저장한다 */}
+          {con?.issues?.length > 0 && (
+            <div style={S.applyBox}>
+              <button style={S.applyBtn} onClick={runApply} disabled={applying}>
+                {applying ? '✍ 고쳐 쓰는 중…' : `✍ 지적 ${con.issues.length - skip.size}건 반영해 고쳐쓰기 (${writer.label})`}
+              </button>
+              <span style={S.applyHint}>
+                {onApply ? '고친 글을 먼저 보여드립니다. 확인한 뒤 [이 내용으로 저장]을 누르면 원본이 바뀝니다.'
+                  : '이 화면은 저장 대상이 없어 고친 글을 복사만 할 수 있습니다.'}
+              </span>
+              {stage && <div style={S.stage}>{stage}</div>}
+              {applyErr && <div style={S.err}>{applyErr}</div>}
+              {savedMsg && <div style={S.saved}>{savedMsg}</div>}
+              {draft != null && (
+                <>
+                  <textarea style={S.draft} value={draft} rows={14} onChange={(e) => setDraft(e.target.value)} />
+                  <div style={S.draftRow}>
+                    {onApply && (
+                      <button style={S.saveBtn} onClick={saveDraft} disabled={applying}>
+                        {applying ? '저장 중…' : '✅ 이 내용으로 저장'}
+                      </button>
+                    )}
+                    <button style={S.copyBtn} onClick={() => navigator.clipboard?.writeText(draft)}>📋 복사</button>
+                    <button style={S.cancelBtn} onClick={() => setDraft(null)} disabled={applying}>취소</button>
+                    <span style={S.applyHint}>여기서 직접 손봐도 됩니다 — 저장되는 것은 지금 보이는 글입니다.</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <div style={S.perModel}>
             {(data.reviews || []).map((r) => (
@@ -158,6 +263,17 @@ const S = {
   quote: { fontSize: 11.5, color: '#cdd8e6', fontStyle: 'italic', margin: '2px 0 4px', paddingLeft: 2 },
   problem: { fontSize: 11.5, color: '#e6edf6', lineHeight: 1.5 },
   fix: { fontSize: 11.5, color: '#8fd8b0', lineHeight: 1.5, marginTop: 2 },
+  useIt: { display: 'flex', alignItems: 'center', gap: 3, marginLeft: 'auto', fontSize: 10, color: '#8fa3bd', cursor: 'pointer', whiteSpace: 'nowrap' },
+  applyBox: { marginTop: 8, paddingTop: 8, borderTop: '1px solid #1c2735' },
+  applyBtn: { padding: '5px 12px', borderRadius: 6, border: '1px solid #2b4a72', background: '#16233a', color: '#8fd8b0', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' },
+  applyHint: { display: 'block', marginTop: 4, fontSize: 10.5, color: '#7b8ca3', lineHeight: 1.5 },
+  stage: { marginTop: 5, fontSize: 11, color: '#8fb4ea' },
+  saved: { marginTop: 5, fontSize: 11.5, color: '#7fd8a8', fontWeight: 700 },
+  draft: { width: '100%', marginTop: 7, padding: '8px 10px', borderRadius: 6, border: '1px solid #2b3a52', background: '#0e141d', color: '#cdd8e6', fontSize: 12, lineHeight: 1.65, fontFamily: 'inherit', resize: 'vertical' },
+  draftRow: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' },
+  saveBtn: { padding: '4px 12px', borderRadius: 6, border: '1px solid #2f6d4c', background: '#173026', color: '#8fd8b0', fontSize: 11.5, fontWeight: 700, cursor: 'pointer' },
+  copyBtn: { padding: '4px 10px', borderRadius: 6, border: '1px solid #2b3a52', background: 'transparent', color: '#8fa3bd', fontSize: 11, cursor: 'pointer' },
+  cancelBtn: { padding: '4px 10px', borderRadius: 6, border: '1px solid #2b3a52', background: 'transparent', color: '#8fa3bd', fontSize: 11, cursor: 'pointer' },
   perModel: { marginTop: 7, paddingTop: 6, borderTop: '1px solid #1c2735' },
   rv: { fontSize: 10.5, color: '#7b8ca3', lineHeight: 1.6 },
 };

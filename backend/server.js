@@ -26,7 +26,7 @@ import {
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { placementJudgeRules } from './services/reportUtils.js';
-import { reviewOnce, buildConsensus, VERIFY_KINDS } from './services/crossVerify.js';
+import { reviewOnce, buildConsensus, applyFixes, VERIFY_KINDS } from './services/crossVerify.js';
 import { generateAnalysisPDF, generateRoadmapPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -2827,6 +2827,32 @@ app.post('/api/cross-verify', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[/api/cross-verify] 오류:', err.message);
     res.status(500).json({ success: false, error: err.message || '검증에 실패했습니다' });
+  }
+});
+
+// 교차 검증 '반영' — 지적을 원문에 반영해 다시 쓴 글을 돌려준다(저장은 호출한 화면이 한다).
+// 글이 길어 몇 분 걸릴 수 있으므로 SSE + keepalive 로 보낸다(Railway 타임아웃 방지).
+app.post('/api/cross-verify/apply', requireAuth, async (req, res) => {
+  const { text, kind, context, issues, reviewer } = req.body || {};
+  if (!String(text || '').trim()) return res.status(400).json({ success: false, error: '고쳐 쓸 글이 없습니다' });
+  if (!reviewer?.group || !reviewer?.apiKey) return res.status(400).json({ success: false, error: '고쳐 쓸 AI 키가 없습니다. 설정에서 키를 등록해 주세요.' });
+  if (!Array.isArray(issues) || !issues.length) return res.status(400).json({ success: false, error: '반영할 지적을 하나 이상 골라 주세요' });
+  const k = VERIFY_KINDS.includes(kind) ? kind : 'record';
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+  send({ message: `${reviewer.label || 'AI'} 가 지적 ${issues.length}건을 반영해 고쳐 쓰는 중…` });
+  try {
+    const revised = await applyFixes(callAIModel, reviewer, { kind: k, text, context, issues });
+    sendDone({ success: true, text: revised });
+  } catch (err) {
+    console.error('[/api/cross-verify/apply] 오류:', err.message);
+    sendDone({ success: false, message: friendlyAIError(err, reviewer.group) });
   }
 });
 

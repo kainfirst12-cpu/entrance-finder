@@ -409,6 +409,13 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
   };
   const delRecord = async (id) => { try { await call(`/api/board/records/${id}`, { method: 'DELETE' }); await onChanged(); } catch (e) { fail(e); } };
 
+  // 교차 검증에서 고쳐 쓴 글을 기록 본문에 반영 — 지적을 손으로 옮겨 적다 빠뜨리지 않게
+  const applyToRecord = async (r, newContent) => {
+    await call(`/api/board/records/${r.id}`, { method: 'PUT', body: JSON.stringify({ title: r.title || '', content: newContent }) });
+    await onChanged();
+    setMsg(`✓ '${r.title || r.type}' 기록에 교차 검증 지적을 반영했습니다.`);
+  };
+
   // ── 다른 곳에서 만든 분석 자료 가져오기 ──────────────────
   // 파일(PDF·워드·한글·txt)에서 글자를 뽑아 기록 본문에 채운다. 스캔본은 서버가 AI로 판독한다.
   const importRecordFiles = async (fileList) => {
@@ -583,10 +590,9 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
                   {/* 이 글이 맞는지 다른 회사 모델들에게 — 쓴 모델은 자기 글을 옹호한다 */}
                   <VerifyPanel
                     kind={/입결|배치|판정/.test(r.type || '') ? 'ipgyeol' : /로드맵/.test(r.type || '') ? 'roadmap' : /분석|생기부|세특|수행/.test(r.type || '') ? 'saenggibu' : 'record'}
-                    text={`${r.title || ''}
-
-${r.content || ''}`}
-                    context={recordVerifyContext(student)} />
+                    text={r.content || ''}
+                    context={`[글 제목] ${r.title || '(제목 없음)'}\n${recordVerifyContext(student)}`}
+                    onApply={(t) => applyToRecord(r, t)} />
                 </>
               )}
             </div>
@@ -1023,6 +1029,11 @@ function RoadmapSection({ student, onError, onChanged }) {
         onDownloadPdf={isAdmin ? (rm) => downloadDoc(rm, 'pdf') : undefined}
         onDownloadDocx={isAdmin ? (rm) => downloadDoc(rm, 'docx') : undefined}
         onSimplify={simplify}
+        onApplyBody={async (rm, body) => {
+          await call(`/api/roadmap/${rm.id}`, { method: 'PATCH', body: JSON.stringify({ body }) });
+          await load();
+          setMsg('✓ 로드맵 전문에 교차 검증 지적을 반영했습니다. PDF·워드도 고친 글로 나옵니다.');
+        }}
       />
 
       {viewBody && (

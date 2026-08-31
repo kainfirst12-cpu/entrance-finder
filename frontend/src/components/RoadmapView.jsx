@@ -146,7 +146,7 @@ function AddItemForm({ section, t, onAdd }) {
   );
 }
 
-export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf, onDownloadDocx, onSimplify, verifyContext = null }) {
+export default function RoadmapView({ roadmaps = [], dark = false, editable = true, renderMd, onToggle, onSaveItem, onDeleteItem, onAddItem, onDeleteRoadmap, onViewBody, onDownloadPdf, onDownloadDocx, onSimplify, verifyContext = null, onApplyBody }) {
   const t = dark ? THEME.dark : THEME.light;
   const [openSummary, setOpenSummary] = useState({});
   const [openBody, setOpenBody] = useState({});
@@ -205,9 +205,9 @@ export default function RoadmapView({ roadmaps = [], dark = false, editable = tr
                 )}
                 {/* 교차 검증 — 선생님 화면에서만(verifyContext 를 준 쪽). 학생 셀프 페이지에는 키가 없다 */}
                 {verifyContext !== null && rm.body && (
-                  <VerifyPanel kind="roadmap" text={`${rm.title || ''}
-
-${rm.body}`} context={verifyContext} />
+                  <VerifyPanel kind="roadmap" text={rm.body}
+                    context={`[로드맵 제목] ${rm.title || '(제목 없음)'}\n${verifyContext}`}
+                    onApply={onApplyBody ? ((t) => onApplyBody(rm, t)) : undefined} />
                 )}
                 {openBody[rm.id] && rm.body && (
                   renderMd

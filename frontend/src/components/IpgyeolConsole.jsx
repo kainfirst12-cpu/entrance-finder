@@ -770,6 +770,17 @@ export default function IpgyeolConsole({ onAuthError }) {
     } finally { setRecBusy(false); }
   }
 
+  // 교차 검증에서 고쳐 쓴 글을 기록 본문에 반영한다 — 지적을 손으로 옮겨 적다 빠뜨리지 않게.
+  async function applyToRecord(r, newContent) {
+    const j = await api(`/api/board/records/${r.id}`, {
+      method: 'PUT', body: { title: r.title || '', content: newContent },
+    });
+    if (!j.success) throw new Error(j.error || j.message || '저장하지 못했습니다');
+    setDossier((d) => (!d ? d : {
+      ...d, records: d.records.map((x) => (x.id === r.id ? { ...x, content: newContent } : x)),
+    }));
+  }
+
   // 검토자에게 함께 넘길 '근거 자료'. 이게 없으면 모델은 글만 보고 트집을 잡는다 —
   // 무엇에 비추어 틀렸는지 말하게 하려면 원본을 같이 줘야 한다.
   function verifyContextFor() {
@@ -1916,10 +1927,9 @@ function toggleEdit(){
                         </div>
                         {/* 이 글이 맞는지 다른 회사 모델들에게 물어본다 — 쓴 모델은 자기 글을 옹호한다 */}
                         <VerifyPanel kind={/입결|배치|판정/.test(r.type || '') ? 'ipgyeol' : /로드맵/.test(r.type || '') ? 'roadmap' : /분석|생기부|세특/.test(r.type || '') ? 'saenggibu' : 'record'}
-                          text={`${r.title || ''}
-
-${r.content || ''}`}
-                          context={verifyContextFor(r)}
+                          text={r.content || ''}
+                          context={`[글 제목] ${r.title || '(제목 없음)'}\n${verifyContextFor(r)}`}
+                          onApply={(t) => applyToRecord(r, t)}
                           onAuthError={onAuthError} />
                       </div>
                     ))}

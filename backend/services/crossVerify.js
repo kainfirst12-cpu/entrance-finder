@@ -184,3 +184,60 @@ export async function reviewOnce(call, { label, group, submodel, apiKey }, { kin
     return { label, ok: false, error: err?.message || '검토 실패' };
   }
 }
+
+/**
+ * 지적을 **원문에 반영**해 다시 쓴다.
+ *
+ * 검증만 하고 끝나면 컨설턴트가 지적 열 건을 손으로 옮겨 적어야 한다 — 그러다 빠뜨린다.
+ * 여기서 하는 일은 '다시 쓰기'가 아니라 '지적된 곳만 고치기'다. 지적이 닿지 않은 문장은
+ * 한 글자도 건드리지 않아야 원문의 다른 판단이 조용히 바뀌는 일이 없다.
+ */
+function applySystemPrompt(kind) {
+  const guide = KIND_GUIDE[kind] || KIND_GUIDE.record;
+  return `당신은 입시 컨설팅 문서를 **지적받은 대로 고쳐 쓰는 편집자**입니다.
+아래 [원문]을 감수자들이 읽고 [지적]을 남겼습니다. 그 지적을 반영해 원문을 다시 씁니다.
+
+${guide}
+
+[지켜야 할 것]
+- **지적된 곳만** 고칩니다. 지적이 닿지 않은 문장·수치·표·목록·순서는 한 글자도 바꾸지 마세요.
+- 각 지적의 '고치는 법'을 그대로 따릅니다. 더 나은 표현이 떠올라도 지적 범위를 넘지 마세요.
+- **새 사실을 지어내지 마세요.** [원본 자료]에 없는 것은 단정하지 말고 '확인 필요'라고 쓰세요.
+- 원문의 형식(줄바꿈·머리표·번호·마크다운 표)을 그대로 유지합니다.
+- 분량을 줄이지 마세요. 지적과 무관한 대목을 요약하거나 빼면 안 됩니다.
+
+[출력 — 고쳐 쓴 글 전문만. 설명·머리말·코드펜스 금지]`;
+}
+
+/** 지적 목록을 사람이 읽는 모양 그대로 모델에게 넘긴다 — JSON 을 주면 형식을 흉내 내려 든다. */
+function issuesToText(issues) {
+  return (Array.isArray(issues) ? issues : []).map((it, i) => [
+    `${i + 1}. (${it.severity || '낮음'} · ${it.type || '지적'})`,
+    it.quote ? `   문제된 문장: "${it.quote}"` : '',
+    it.problem ? `   무엇이 잘못됐나: ${it.problem}` : '',
+    it.fix ? `   고치는 법: ${it.fix}` : '',
+  ].filter(Boolean).join('\n')).join('\n\n');
+}
+
+export async function applyFixes(call, { group, submodel, apiKey }, { kind, text, context, issues }) {
+  const list = (Array.isArray(issues) ? issues : []).filter((i) => i && (i.problem || i.fix));
+  if (!list.length) throw new Error('반영할 지적이 없습니다');
+  const original = String(text || '');
+  const userMsg = [
+    context ? `[원본 자료 — 이 글이 근거로 삼아야 하는 것]\n${String(context).slice(0, 40000)}` : '',
+    `[지적 ${list.length}건]\n${issuesToText(list)}`,
+    `[원문 — 이것을 고쳐 씁니다]\n${original.slice(0, 60000)}`,
+  ].filter(Boolean).join('\n\n');
+
+  const raw = await call({
+    aiModel: group, submodel, apiKey,
+    systemPrompt: applySystemPrompt(kind), userMsg, maxTokens: 16000,
+  });
+  const out = String(raw || '').trim().replace(/^```(?:markdown|md|text)?\n?/i, '').replace(/\n?```$/, '').trim();
+  if (!out) throw new Error('고쳐 쓴 글을 받지 못했습니다');
+  // 지적을 반영한다며 글을 반토막 내는 일이 있다. 조용히 짧아진 글을 저장하게 두면 안 된다.
+  if (original.length >= 400 && out.length < original.length * 0.5) {
+    throw new Error(`고쳐 쓴 글이 원문의 절반 이하로 줄었습니다(${original.length}자 → ${out.length}자). 반영할 지적을 줄여 다시 시도해 주세요.`);
+  }
+  return out;
+}
