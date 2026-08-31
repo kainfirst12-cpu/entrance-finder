@@ -47,7 +47,12 @@ for (const file of jsFiles) {
     splitStringsChunkLength: 10,
     renameGlobals: false,
     selfDefending: true,
-    transformObjectKeys: true,
+    // transformObjectKeys 는 켜지 말 것.
+    // 이 변환기는 객체 리터럴을 `var o={}; o['k']=...;` 로 풀어 **바깥 문장 앞으로 끌어올린다**.
+    // 그래서 `cond && <div>{con.verdict}</div>` 처럼 조건 뒤에서만 안전한 코드가
+    // 조건보다 먼저 평가되어 배포본에서만 TypeError 로 죽는다(원본 소스는 멀쩡함).
+    // 실제로 교차 검증 패널이 이것 때문에 화면 전체를 날렸다(2026-09-01).
+    transformObjectKeys: false,
     unicodeEscapeSequence: false,
     target: 'browser',
   });

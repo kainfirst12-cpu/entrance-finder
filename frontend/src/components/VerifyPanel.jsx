@@ -92,10 +92,10 @@ export default function VerifyPanel({ kind = 'record', text, context, compact = 
         <div style={S.body}>
           {v && (
             <div style={{ ...S.verdict, color: v.c, background: v.b }}>
-              <b>{con.verdict}</b> — {v.t}
+              <b>{con?.verdict}</b> — {v.t}
               <span style={S.vMeta}>
-                검토자 {con.reviewerCount}명 · 지적 {con.issues.length}건
-                {con.agreedCount > 0 && <b style={{ color: '#ffcf7a' }}> · 둘 이상이 같이 짚은 것 {con.agreedCount}건</b>}
+                검토자 {con?.reviewerCount}명 · 지적 {con?.issues?.length ?? 0}건
+                {con?.agreedCount > 0 && <b style={{ color: '#ffcf7a' }}> · 둘 이상이 같이 짚은 것 {con.agreedCount}건</b>}
               </span>
             </div>
           )}
@@ -122,7 +122,7 @@ export default function VerifyPanel({ kind = 'record', text, context, compact = 
           })}
 
           <div style={S.perModel}>
-            {data.reviews.map((r) => (
+            {(data.reviews || []).map((r) => (
               <div key={r.label} style={S.rv}>
                 <b style={{ color: r.ok ? '#9fb6d4' : '#d98a8a' }}>{r.label}</b>{' '}
                 {r.ok ? `${r.result.verdict || '-'} · ${r.result.summary || ''}` : `실패: ${r.error}`}
