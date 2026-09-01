@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import { univLabel, campusBadge, campusOf, sortByCampus } from '../univName';
 import VerifyPanel from './VerifyPanel';
 
 const token = () => localStorage.getItem('ef_token');
@@ -354,7 +355,11 @@ function Card({ card, grade, baseYear, cutPct, onPin, pinned, student, onSave, s
     <div style={S.card}>
       <div style={S.cardTop}>
         <div>
-          <div style={S.cardUniv}>{univ.name.replace(/\[.*\]$/, '')} <span style={S.cardRegion}>· {univ.region}</span></div>
+          <div style={S.cardUniv}>
+            {univLabel(univ.name)}
+            {campusBadge(univ.name) && <span style={S.campusTag} title="본교와 다른 캠퍼스입니다 — 입결·모집단위가 전혀 다릅니다">{campusBadge(univ.name)}</span>}
+            <span style={S.cardRegion}> · {univ.region}</span>
+          </div>
           <div style={S.cardDept}>{entry.dept}</div>
           <div style={S.cardType}>{entry.track}({entry.typeName.replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '') || entry.typeName})</div>
         </div>
@@ -468,7 +473,11 @@ function DetailModal({ card, guide, guideLoading, onClose }) {
       <div style={S.mBox} onClick={(e) => e.stopPropagation()}>
         <div style={S.mHead}>
           <div>
-            <div style={S.cardUniv}>{univ.name.replace(/\[.*\]$/, '')} · {univ.region}</div>
+            <div style={S.cardUniv}>
+              {univLabel(univ.name)}
+              {campusBadge(univ.name) && <span style={S.campusTag}>{campusBadge(univ.name)}</span>}
+              <span style={S.cardRegion}> · {univ.region}</span>
+            </div>
             <div style={{ ...S.cardDept, fontSize: 18 }}>{entry.dept}</div>
             <div style={S.cardType}>{entry.track} · {entry.typeName}</div>
           </div>
@@ -660,7 +669,7 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
             {placements.map((p) => {
               const s = p.snapshot || {};
               return <RepItem key={p.id} {...itemProps(`pl-${p.id}`)}
-                name={`${(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept}`}
+                name={`${univLabel(p.univ_name)} ${p.dept}`}
                 sub={`${p.track}(${p.type_name || '-'}) · ${snapCut(s).pct}%컷 ${snapCut(s).v != null ? Number(snapCut(s).v).toFixed(2) : '—'} · ${p.verdict || '판정 없음'}`} />;
             })}
           </>
@@ -671,7 +680,7 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
             <div style={S.rpSec}>AI 검색 후보</div>
             {aiSearch.results.map((c, i) => (
               <RepItem key={`${i}-${c.key}`} {...itemProps(`sr-${i}-${c.key}`)}
-                name={`${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept}`}
+                name={`${univLabel(c.univ.name)} ${c.entry.dept}`}
                 sub={`${c.entry.track}(${c.entry.typeName}) · 70%컷 ${c.match?.cut70 ?? '—'} · ${c.match?.verdict || '판정 없음'}`} />
             ))}
           </>
@@ -682,7 +691,7 @@ function ReportModal({ rep, setRep, off, setOff, memo, setMemo, placements, aiSe
             <div style={S.rpSec}>전형 카드</div>
             {cards.map((c) => (
               <RepItem key={c.key} {...itemProps(`cd-${c.key}`)}
-                name={`${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept}`}
+                name={`${univLabel(c.univ.name)} ${c.entry.dept}`}
                 sub={`${c.entry.track}(${c.entry.typeName}) · ${c.univ.region}`} />
             ))}
           </>
@@ -726,6 +735,9 @@ export default function IpgyeolConsole({ onAuthError }) {
   const [baseYear, setBaseYear] = useState('2026');
   const [cutPct, setCutPct] = useState(70); // 기준 합격선 백분위
   const [track, setTrack] = useState('교과');
+  // 캠퍼스 선택 — '' 전체 / 'main' 본캠 / 'branch' 지역캠(분교·제N캠퍼스).
+  // 대학 목록과 AI 검색 양쪽에 함께 걸린다(검색 결과에서 본캠·지역캠이 뒤섞이는 걸 막는다).
+  const [campusSel, setCampusSel] = useState('');
   const [deptQ, setDeptQ] = useState('');
   const [limit, setLimit] = useState(18);
   const [pins, setPins] = useState(() => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } });
@@ -1017,7 +1029,7 @@ export default function IpgyeolConsole({ onAuthError }) {
     if (!creds.apiKey) { setError('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
     setAiQ(q); setAiSearching(true); setError('');
     try {
-      const body = { query: q, baseYear, limit: 24 };
+      const body = { query: q, baseYear, limit: 24, ...(campusSel ? { campus: campusSel } : {}) };
       if (student && useStudentCtx) {
         body.studentProfile = { name: student.name, gpa: grade, major: student.major || '', targetUniv: student.target_univ || '' };
       }
@@ -1034,6 +1046,8 @@ export default function IpgyeolConsole({ onAuthError }) {
   function filterChips(f = {}) {
     const out = [];
     if (f.capitalOnly) out.push('수도권');
+    if (f.campus === 'main') out.push('본캠만');
+    if (f.campus === 'branch') out.push('지역캠(분교·제2캠)만');
     (f.regions || []).forEach((r) => out.push(r));
     (f.univKeywords || []).forEach((r) => out.push(`대학: ${r}`));
     (f.deptKeywords || []).forEach((r) => out.push(`학과: ${r}`));
@@ -1076,7 +1090,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       lines.push('', '[후보 목록]');
       aiSearch.results.forEach((c, i) => {
         const m = c.match || {};
-        lines.push(`${i + 1}. ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
+        lines.push(`${i + 1}. ${univLabel(c.univ.name)} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
           + ` · 70%컷 ${m.cut70 ?? '-'}${m.cutYear ? `(${m.cutYear})` : ''}`
           + ` · 경쟁률 ${m.rate ?? '-'} · 모집 ${m.recruit ?? '-'}명 · 충원 ${m.fill ?? '-'}명`
           + (m.verdict ? ` · 판정 ${m.verdict}` : ''));
@@ -1137,7 +1151,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       if (!pls.length) L.push('(없음)');
       pls.forEach((p, i) => {
         const s = p.snapshot || {};
-        L.push(`${i + 1}. ${(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'})`
+        L.push(`${i + 1}. ${univLabel(p.univ_name)} ${p.dept} ${p.track}(${p.type_name || '-'})`
           + ` · 판정 ${p.verdict || '-'} · ${snapCut(s).pct}%컷 ${snapCut(s).v ?? '-'}${snapCut(s).year ? `(${snapCut(s).year})` : ''}`
           + ` · 경쟁률 ${s.rate ?? '-'} · 모집 ${s.recruit ?? '-'}명 · 충원 ${s.fill ?? '-'}명 · 저장내신 ${p.grade ?? '-'}`);
         if (s.aiReason) L.push(`   판정 근거: ${s.aiReason}`);
@@ -1151,7 +1165,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       if (aiSearch.summary) L.push(aiSearch.summary);
       rs.forEach((c, i) => {
         const m = c.match || {};
-        L.push(`${i + 1}. ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
+        L.push(`${i + 1}. ${univLabel(c.univ.name)} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
           + ` · 70%컷 ${m.cut70 ?? '-'} · 경쟁률 ${m.rate ?? '-'} · 판정 ${m.verdict || '-'}`);
       });
     }
@@ -1166,7 +1180,7 @@ export default function IpgyeolConsole({ onAuthError }) {
         const a = aiMap[c.key];
         const cut = latestWithDelta(c.entry, cutField(cutPct), baseYear);
         const v = verdict(cut.v, grade);
-        L.push('', `■ ${c.univ.name.replace(/\[.*\]$/, '')} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
+        L.push('', `■ ${univLabel(c.univ.name)} ${c.entry.dept} ${c.entry.track}(${c.entry.typeName})`
           + ` · ${cutPct}%컷 ${cut.v != null ? cut.v.toFixed(2) : '-'}${cut.y ? `(${cut.y})` : ''} · 배치 ${v ? v.label : '-'}`
           + (a?.headline ? ` — ${a.headline}` : ''));
         [...sig.pros, ...(a?.pros || [])].forEach((t) => L.push(`  [유리] ${t}`));
@@ -1249,7 +1263,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       const changed = now && saved && now.label !== saved.label;
       return `<tr>
         <td class="v v-${esc(p.verdict)}">${esc(p.verdict || '—')}</td>
-        <td><b>${esc((p.univ_name || '').replace(/\[.*\]$/, ''))}</b> ${esc(p.dept)}<div class="sub">${esc(p.track)}(${esc(p.type_name || '-')})</div></td>
+        <td><b>${esc(univLabel(p.univ_name))}</b> ${esc(p.dept)}<div class="sub">${esc(p.track)}(${esc(p.type_name || '-')})</div></td>
         <td class="num">${sc.v != null ? Number(sc.v).toFixed(2) : '—'}<div class="sub">${esc(sc.year || p.base_year || '')}${sc.pct !== 70 ? ` · ${sc.pct}%` : ''}</div></td>
         <td class="num">${s.rate ?? '—'}</td>
         <td class="num">${s.recruit != null ? `${s.recruit}명` : '—'}</td>
@@ -1264,7 +1278,7 @@ export default function IpgyeolConsole({ onAuthError }) {
       const mk = memoOf(`sr-${(aiSearch?.results || []).indexOf(c)}-${c.key}`);
       return `<tr>
         <td class="num">${i + 1}</td>
-        <td><b>${esc(c.univ.name.replace(/\[.*\]$/, ''))}</b> ${esc(c.entry.dept)}<div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)}) · ${esc(c.univ.region)}</div>${mk ? `<div class="memo">${nl(mk)}</div>` : ''}</td>
+        <td><b>${esc(univLabel(c.univ.name))}</b> ${esc(c.entry.dept)}<div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)}) · ${esc(c.univ.region)}</div>${mk ? `<div class="memo">${nl(mk)}</div>` : ''}</td>
         <td class="num">${m.cut70 ?? '—'}<div class="sub">${esc(m.cutYear || '')}</div></td>
         <td class="num">${m.rate ?? '—'}</td>
         <td class="num">${m.recruit != null ? `${m.recruit}명` : '—'}</td>
@@ -1342,7 +1356,7 @@ ${(ov.risks || []).length ? `<div class="ov-sec risk"><b>전체 리스크</b><ul
       }).join('');
       return `<div class="card">
         <div class="card-head">
-          <div><b>${esc(c.univ.name.replace(/\[.*\]$/, ''))}</b> <span class="sub">${esc(c.univ.region)}</span>
+          <div><b>${esc(univLabel(c.univ.name))}</b> <span class="sub">${esc(c.univ.region)}</span>
             <div class="card-dept">${esc(c.entry.dept)}</div>
             <div class="sub">${esc(c.entry.track)}(${esc(c.entry.typeName)})</div></div>
           <div class="card-badges">
@@ -1517,7 +1531,7 @@ function toggleEdit(){
     sorted.forEach((pl, i) => {
       const sc = snapCut(pl.snapshot || {});
       const sn = pl.snapshot || {};
-      L.push(`${i + 1}. ${(pl.univ_name || '').replace(/\[.*\]$/, '')} ${pl.dept} / ${pl.track}(${pl.type_name || '-'})`);
+      L.push(`${i + 1}. ${univLabel(pl.univ_name)} ${pl.dept} / ${pl.track}(${pl.type_name || '-'})`);
       L.push(`   ${sc.pct}%컷 ${sc.v ?? '-'}${sc.year ? `(${sc.year})` : ''}`
         + ` · 경쟁률 ${sn.rate ?? '-'} · 충원 ${sn.fill ?? '-'}명 · 모집 ${sn.recruit ?? '-'}명`
         + ` · 판정 ${pl.verdict || '-'}`);
@@ -1665,9 +1679,11 @@ function toggleEdit(){
   const nfc = (s) => (s || '').normalize('NFC');
   const suggestions = useMemo(() => {
     const t = nfc(q.trim());
-    if (!t) return univs.slice(0, 12);
-    return univs.filter((u) => nfc(u.name).includes(t) || nfc(u.region).includes(t)).slice(0, 12);
-  }, [q, univs]);
+    let list = campusSel ? univs.filter((u) => campusOf(u.name) === campusSel) : univs;
+    if (t) list = list.filter((u) => nfc(u.name).includes(t) || nfc(u.region).includes(t));
+    // 같은 대학의 본캠·지역캠이 목록 여기저기 흩어지면 잘못 고른다 — 붙여 놓고 본캠을 먼저 보여준다.
+    return sortByCampus(list).slice(0, 14);
+  }, [q, univs, campusSel]);
 
   // 수능최저: 전형구분 키워드가 들어간 안내문 선택
   const sunungFor = (d, tr) => d?.sunung?.find((s) => s.track.includes(tr)) || null;
@@ -1871,6 +1887,17 @@ function toggleEdit(){
             </div>
           </div>
           <div style={S.ctrlGroup}>
+            <span style={S.ctrlLabel}>캠퍼스 <span style={S.ctrlHint}>(대학 목록·AI 검색에 함께 적용)</span></span>
+            <div style={S.segRow}>
+              {[['', '전체'], ['main', '본캠'], ['branch', '지역캠']].map(([v, lab]) => (
+                <button key={v || 'all'} onClick={() => setCampusSel(v)}
+                  title={v === 'branch' ? '분교·제2캠퍼스 등 본교와 다른 캠퍼스만' : v === 'main' ? '본교(본캠)만' : '본캠·지역캠 모두'}
+                  style={{ ...S.segBtn, ...(campusSel === v ? S.segOn : {}) }}>{lab}</button>
+              ))}
+            </div>
+            <span style={S.ctrlHint}>지역캠 = 분교·제2캠퍼스 (예: 고려대(세종)·한양대(ERICA)·중앙대 제2캠)</span>
+          </div>
+          <div style={S.ctrlGroup}>
             <span style={S.ctrlLabel}>기준 합격선 <span style={S.ctrlHint}>(최종등록자 백분위 컷)</span></span>
             <div style={S.segRow}>
               {CUT_OPTS.map((p) => (
@@ -1896,7 +1923,11 @@ function toggleEdit(){
               <div style={S.sugBox}>
                 {suggestions.map((u) => (
                   <button key={u.unvCd} style={S.sugItem} onClick={() => openUniv(u)}>
-                    {u.name} <span style={S.sugMeta}>{u.region} · 학과 {u.deptCount} · {u.years[0]}~{u.years[u.years.length - 1]}</span>
+                    {univLabel(u.name)}
+                    {campusBadge(u.name)
+                      ? <span style={S.sugCampus}>{campusBadge(u.name)}</span>
+                      : <span style={S.sugMain}>본캠</span>}
+                    <span style={S.sugMeta}> {u.region} · 학과 {u.deptCount} · {u.years[0]}~{u.years[u.years.length - 1]}</span>
                   </button>
                 ))}
               </div>
@@ -1904,7 +1935,7 @@ function toggleEdit(){
           </div>
           <input style={{ ...S.input, flex: '0 0 220px' }} value={deptQ} onChange={(e) => setDeptQ(e.target.value)}
             placeholder="학과·전형명 필터 (예: AI, 간호)" />
-          {selected && <span style={S.selInfo}>{selected.name} · {track} 카드 {cards.length}개</span>}
+          {selected && <span style={S.selInfo}>{univLabel(selected.name)}{campusBadge(selected.name) ? ` [${campusBadge(selected.name)}]` : ''} · {track} 카드 {cards.length}개</span>}
         </div>
 
         {error && <div style={S.error}>⚠ {error}</div>}
@@ -2073,7 +2104,7 @@ function toggleEdit(){
                             title={snap.aiReason || ''}>AI {snap.aiVerdict}</span>
                         )}
                         <span style={S.plName}>
-                          <b>{p.univ_name.replace(/\[.*\]$/, '')}</b> {p.dept} <span style={S.plType}>{p.track}({(p.type_name || '').replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '')})</span>
+                          <b>{univLabel(p.univ_name)}</b> {p.dept} <span style={S.plType}>{p.track}({(p.type_name || '').replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '')})</span>
                         </span>
                         <span style={S.plMeta}>
                           {sc.pct}%컷 {sc.v != null ? Number(sc.v).toFixed(2) : '—'}({sc.year || p.base_year}) ·
@@ -2260,6 +2291,10 @@ const S = {
   cardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
   cardUniv: { fontSize: 12, fontWeight: 700, color: '#5c6b7c' },
   cardRegion: { fontWeight: 500, color: '#98a4b3' },
+  // 지역캠(분교·제N캠퍼스)은 본캠과 입결이 전혀 다른 학교다. 이름만으로는 눈에 안 들어와 배지를 단다.
+  campusTag: { marginLeft: 5, fontSize: 10.5, fontWeight: 800, color: '#9a5b00', background: '#fff4e0', border: '1px solid #f3ddb4', borderRadius: 6, padding: '1px 6px', verticalAlign: 'middle' },
+  sugCampus: { marginLeft: 5, fontSize: 10.5, fontWeight: 800, color: '#9a5b00', background: '#fff4e0', border: '1px solid #f3ddb4', borderRadius: 6, padding: '1px 5px' },
+  sugMain: { marginLeft: 5, fontSize: 10.5, fontWeight: 700, color: '#4a7bd0', background: '#eef4fd', border: '1px solid #d8e5f8', borderRadius: 6, padding: '1px 5px' },
   cardDept: { fontSize: 16.5, fontWeight: 800, color: '#1c2733', margin: '2px 0 1px', lineHeight: 1.25 },
   cardType: { fontSize: 11.5, color: '#8492a5' },
   badge: { textAlign: 'center', fontSize: 10, fontWeight: 700, lineHeight: 1.25, borderWidth: 1, borderStyle: 'solid', borderRadius: 8, padding: '3px 8px' },

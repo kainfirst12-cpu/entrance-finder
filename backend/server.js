@@ -14,7 +14,7 @@ import {
   setStudentCode, getStudentByCode, getStudentDossier,
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
-import { searchEntries as searchIpgyeolEntries, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
+import { searchEntries as searchIpgyeolEntries, univLabel as ipgUnivLabel, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
 import { attachSkypassNotes, hasScaleWarning, skypassLoaded } from './services/skypassNotes.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
 import {
@@ -1410,7 +1410,7 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
     ? placements.map((p) => {
         const snap = p.snapshot || {};
         const parts = [
-          `${String(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'})`,
+          `${ipgUnivLabel(p.univ_name)} ${p.dept} ${p.track}(${p.type_name || '-'})`,
           `저장판정 ${p.verdict || '-'}`,
           `70%컷 ${snap.cut70 ?? '-'}${snap.cutYear ? `(${snap.cutYear})` : ''}`,
           `저장당시 내신 ${p.grade ?? '-'}`,
@@ -2993,7 +2993,9 @@ ${JSON.stringify(cards.slice(0, 12), null, 1)}`;
 // 입결 콘솔 AI 검색 — 자연어 질문 → 필터 JSON(AI) → 전 대학 결정적 검색(코드) → 요약(AI)
 // 숫자는 전부 코드가 원본 입결에서 뽑는다. AI는 "무엇을 찾을지"와 "어떻게 읽을지"만 담당한다.
 app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
-  const { query, studentProfile, baseYear = '2026', limit = 24 } = req.body || {};
+  const { query, studentProfile, baseYear = '2026', limit = 24, campus } = req.body || {};
+  // 화면의 캠퍼스 선택은 AI 해석보다 우선한다 — 원장이 직접 고른 조건이다
+  const campusPref = campus === 'main' || campus === 'branch' ? campus : null;
   if (!String(query || '').trim()) return res.status(400).json({ success: false, message: '검색어가 비었습니다' });
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -3020,6 +3022,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
 {
  "regions": ["서울"],            // 지역명 배열. '수도권/인서울'이면 capitalOnly 사용
  "capitalOnly": true,             // 수도권(서울·경기·인천)
+ "campus": "main",                // main=본교(본캠)만, branch=분교·제2캠퍼스만. 캠퍼스를 지정했을 때만
  "univKeywords": ["중앙대"],      // 특정 대학 지정 시에만
  "deptKeywords": ["간호","보건"], // 학과명 포함 키워드(OR). 계열 질문이면 대표 학과명을 여러 개 펼쳐라
  "excludeKeywords": ["야간"],
@@ -3040,6 +3043,9 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
 [해석 규칙 — 질문에 있는 조건은 하나도 빠뜨리지 말 것]
 - 지역어는 반드시 반영한다. '수도권/인서울/서울권 통틀어' → capitalOnly:true, '서울' → regions:["서울"],
   '지방/지역대학' → regions에 비수도권 지역들, 특정 시도명 → 그대로 regions.
+- 캠퍼스: '본캠만/본교만/지역캠 빼고/분교 제외' → campus:"main", '지역캠/분교/이원화 캠퍼스만' → campus:"branch".
+  단, '고려대 세종캠'처럼 특정 캠퍼스를 지목하면 univKeywords에 대학명을 넣고 campus:"branch"를 함께 쓴다.
+  캠퍼스 얘기가 없으면 campus는 넣지 마라(본캠·지역캠 모두 검색).
 - '교과전형/학생부교과' → tracks:["교과"], '종합/학종/학생부종합' → tracks:["종합"], '논술' → tracks:["논술"].
 - 학생 성적을 뜻하는 표현('내신 3.0으로', '3등급인 학생이', '2.8인데')은 gradeMax가 아니라 targetGrade다.
   gradeMin/gradeMax는 '컷이 3등급 이내인 곳'처럼 컷 자체를 한정할 때만 쓴다.
@@ -3060,6 +3066,9 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
 질문: "작년보다 컷이 완화된 경기권 경영·경제 학과"
 → {"regions":["경기"],"deptKeywords":["경영","경제"],"trend":"easing","sortBy":"trend","intent":"경기 지역 경영·경제 중 70%컷이 완화된 학과"}
 
+질문: "지역캠 빼고 본캠만 보고 싶어, 경기권 전자공학 교과"
+→ {"regions":["경기"],"campus":"main","deptKeywords":["전자"],"tracks":["교과"],"intent":"경기 지역 본캠 전자공학 교과전형"}
+
 질문: "수능최저 없는 서울 종합전형 중 2.5등급대"
 → {"regions":["서울"],"tracks":["종합"],"sunung":"none","targetGrade":2.5,"sortBy":"fit","intent":"수능최저 없는 서울 종합전형 중 내신 2.5 기준 후보"}
 
@@ -3078,6 +3087,8 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
     if (!m) throw Object.assign(new Error('질문을 검색 조건으로 바꾸지 못했습니다. 조금 더 구체적으로 적어주세요.'), { userFacing: true });
     const filter = JSON.parse(m[0]);
     filter.baseYear = baseYear;
+    if (filter.campus !== 'main' && filter.campus !== 'branch') delete filter.campus;
+    if (campusPref) filter.campus = campusPref;
     filter.limit = Math.min(Number(filter.limit) || Number(limit) || 24, 40);
     if (filter.targetGrade == null && studentProfile?.gpa != null) filter.targetGrade = Number(studentProfile.gpa);
 
@@ -3098,7 +3109,9 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
       ['typeKeywords', () => { delete filter.typeKeywords; relaxed.push('전형명'); }],
       ['deptKeywords', () => { delete filter.deptKeywords; relaxed.push('학과'); }],
       ['regions', () => { delete filter.regions; delete filter.capitalOnly; relaxed.push('지역'); }],
-    ];
+      // 캠퍼스는 AI가 스스로 넣었을 때만 푼다. 화면에서 직접 고른 조건은 끝까지 지킨다.
+      ['campus', () => { delete filter.campus; relaxed.push('캠퍼스'); }],
+    ].filter(([k]) => !(k === 'campus' && campusPref));
     for (const [key, drop] of relaxSteps) {
       if (total > 0) break;
       if (filter[key] == null && !(key === 'regions' && filter.capitalOnly)) continue;
@@ -3119,7 +3132,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
     let summary = '';
     if (results.length || knowledge.length) {
       const compact = results.slice(0, 20).map((r) => ({
-        대학: r.univ.name.replace(/\[.*\]$/, ''), 지역: r.univ.region, 학과: r.entry.dept,
+        대학: ipgUnivLabel(r.univ.name), 지역: r.univ.region, 학과: r.entry.dept,
         전형: `${r.entry.track}(${r.entry.typeName})`, 컷70: r.match.cut70, 연도: r.match.cutYear,
         전년대비: r.match.delta, 경쟁률: r.match.rate, 충원: r.match.fill, 모집: r.match.recruit, 판정: r.match.verdict,
       }));
@@ -3204,7 +3217,7 @@ app.post('/api/chat/agent', requireAuth, async (req, res) => {
       .join('\n\n---\n\n').slice(0, 32000);
     const pls = (d.placements || []).map((p) => {
       const sn = p.snapshot || {};
-      return `- ${String(p.univ_name || '').replace(/\[.*\]$/, '')} ${p.dept} ${p.track}(${p.type_name || '-'}) · 판정 ${p.verdict || '-'}`
+      return `- ${ipgUnivLabel(p.univ_name)} ${p.dept} ${p.track}(${p.type_name || '-'}) · 판정 ${p.verdict || '-'}`
         + ` · 70%컷 ${sn.cut70 ?? '-'}${sn.cutYear ? `(${sn.cutYear})` : ''} · 저장당시 내신 ${p.grade ?? '-'}`;
     }).join('\n') || '(저장된 배치 없음)';
     const rms = (d.roadmaps || []).map((m) => {

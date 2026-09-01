@@ -17,10 +17,37 @@ export const REGIONS = ['서울', '경기', '인천', '강원', '대전', '세�
 export const TRACKS = ['교과', '종합', '논술', '실기'];
 const CAPITAL = ['서울', '경기', '인천'];
 
+// 캠퍼스 구분 — 어디가 원본은 이름 뒤 대괄호로만 본캠/지역캠을 구분한다.
+//   '중앙대학교[본교]' vs '중앙대학교[제2캠퍼스]', '고려대학교(세종)[분교]'
+// 이 구분을 검색 단계에서 갖고 있지 않으면 "본캠만" 같은 조건을 아예 걸 수 없고,
+// 결과 목록에서 같은 대학의 본캠·지역캠이 뒤섞여 나온다.
+export function campusOf(name) {
+  const m = String(name || '').match(/\[([^\]]+)\]$/);
+  return !m || m[1] === '본교' ? 'main' : 'branch';
+}
+export function baseUnivName(name) {
+  return String(name || '').replace(/\s*(?:\([^)]*\))?\s*\[[^\]]*\]$/, '').trim();
+}
+
+// 표시용 이름 — 본교는 대괄호만 떼고, 지역캠은 캠퍼스를 남긴다.
+//   '중앙대학교[본교]' → '중앙대학교'   '중앙대학교[제2캠퍼스]' → '중앙대학교 제2캠'
+//   '고려대학교(세종)[분교]' → '고려대학교(세종)'
+// (예전처럼 대괄호를 통째로 지우면 두 학교가 같은 이름이 되어 AI 요약·리포트에서 구분이 사라진다)
+export function univLabel(name) {
+  const raw = String(name || '').trim();
+  const m = raw.match(/^(.*?)(?:\(([^)]+)\))?\[([^\]]+)\]$/);
+  if (!m) return raw;
+  const [, base, alias, mark] = m;
+  if (mark === '본교') return base.trim();
+  if (alias) return `${base.trim()}(${alias})`;
+  const num = mark.match(/^제\s*(\d+)\s*캠퍼스$/);
+  return num ? `${base.trim()} 제${num[1]}캠` : `${base.trim()} ${mark}`;
+}
+
 // 압축 인덱스: 전 대학 학과×전형 71,000여 건을 필터링에 필요한 필드만 담아 상주시킨다.
 // 카드 렌더에 필요한 전체 연도 상세(환산점수 등)는 상위 N건이 정해진 뒤 원본에서 다시 읽는다.
 let INDEX = null;   // [{ u, d, t, tn, y: { '2026': [g70, rate, fill, recruit] } }]
-let UNIVS = null;   // unvCd → { name, region, sunung: [{track, text}] }
+let UNIVS = null;   // unvCd → { name, region, campus, base, sunung: [{track, text}] }
 
 const nfc = (s) => String(s || '').normalize('NFC');
 
@@ -33,7 +60,10 @@ export function buildIndex() {
     if (!f.endsWith('.json')) continue;
     let j;
     try { j = JSON.parse(readFileSync(join(IPG_DIR, f), 'utf8')); } catch { continue; }
-    univs.set(j.unvCd, { name: j.name, region: j.region || '', sunung: j.sunung || [] });
+    univs.set(j.unvCd, {
+      name: j.name, region: j.region || '', sunung: j.sunung || [],
+      campus: campusOf(j.name), base: baseUnivName(j.name),
+    });
     for (const e of j.entries || []) {
       const y = {};
       for (const [yr, d] of Object.entries(e.years || {})) {
@@ -86,7 +116,7 @@ function sunungFor(univ, track) {
 /**
  * 결정적 검색 — AI가 만든 필터를 그대로 적용한다.
  * filter: {
- *   regions[], capitalOnly, univKeywords[], deptKeywords[], excludeKeywords[],
+ *   regions[], capitalOnly, campus('main'|'branch'), univKeywords[], deptKeywords[], excludeKeywords[],
  *   tracks[], typeKeywords[], gradeMin, gradeMax, targetGrade, verdicts[],
  *   rateMin, rateMax, recruitMin, trend('easing'|'tightening'), sunung('none'|'required'),
  *   baseYear, sortBy, limit
@@ -103,6 +133,7 @@ export function searchEntries(filter = {}) {
     ...(filter.capitalOnly ? CAPITAL : []),
   ]);
   const tracks = new Set((filter.tracks || []).filter((t) => TRACKS.includes(t)));
+  const campusPick = filter.campus === 'main' || filter.campus === 'branch' ? filter.campus : null;
   const deptKw = (filter.deptKeywords || []).map(nfc).filter(Boolean);
   const exKw = (filter.excludeKeywords || []).map(nfc).filter(Boolean);
   const typeKw = (filter.typeKeywords || []).map(nfc).filter(Boolean);
@@ -116,6 +147,8 @@ export function searchEntries(filter = {}) {
     if (!u) continue;
     if (regions.size && !regions.has(u.region)) continue;
     if (univKw.length && !univKw.some((k) => nfc(u.name).includes(k))) continue;
+    // 본캠/지역캠(분교·제N캠퍼스)은 입결이 전혀 다른 학교다. 섞이면 상담에서 그대로 사고가 된다.
+    if (campusPick && u.campus !== campusPick) continue;
     if (tracks.size && !tracks.has(row.t)) continue;
     if (deptKw.length && !deptKw.some((k) => nfc(row.d).includes(k))) continue;
     if (exKw.length && exKw.some((k) => nfc(row.d).includes(k) || nfc(row.tn).includes(k))) continue;
@@ -145,7 +178,7 @@ export function searchEntries(filter = {}) {
     if (verdicts.size && (!v || !verdicts.has(v))) continue;
 
     hits.push({
-      unvCd: row.u, univName: u.name, region: u.region,
+      unvCd: row.u, univName: u.name, region: u.region, campus: u.campus,
       dept: row.d, track: row.t, typeName: row.tn,
       cut70: L.g70, cutYear: L.year, rate: L.rate, fill: L.fill, recruit: L.recruit,
       delta, verdict: v,
@@ -175,7 +208,7 @@ export function searchEntries(filter = {}) {
     if (!entry) continue;
     results.push({
       key: `${h.unvCd}|${h.dept}|${h.track}|${h.typeName}`,
-      univ: { unvCd: h.unvCd, name: h.univName, region: h.region },
+      univ: { unvCd: h.unvCd, name: h.univName, region: h.region, campus: h.campus },
       entry,
       sunung: sunungFor(UNIVS.get(h.unvCd), h.track),
       jonghapSiblings: [],

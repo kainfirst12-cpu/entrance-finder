@@ -3,7 +3,7 @@
 // 설계 원칙: AI 는 "무엇을 찾을지"만 정하고, 숫자는 전부 코드가 원본에서 꺼낸다.
 //   입결 7만 건(27MB)은 프롬프트에 넣을 수 없고, 넣더라도 모델이 숫자를 지어낼 여지가 생긴다.
 //   그래서 학생 자료(유한)는 프롬프트에 직접 넣고, 입결·지식베이스는 도구로만 닿게 한다.
-import { searchEntries } from './ipgyeolSearch.js';
+import { searchEntries, univLabel } from './ipgyeolSearch.js';
 import { embedQuery, searchByType, searchByKeywords, kbReady } from './vectorStore.js';
 import { addPlacement } from './boardStore.js';
 
@@ -22,6 +22,7 @@ export const CONSULT_TOOLS = [
         properties: {
           regions: { type: 'array', items: { type: 'string' }, description: '지역명. 서울/경기/인천/강원/대전/세종/충남/충북/광주/전남/전북/대구/경북/부산/울산/경남/제주' },
           capitalOnly: { type: 'boolean', description: '수도권(서울·경기·인천)만' },
+          campus: { type: 'string', enum: ['main', 'branch'], description: "캠퍼스 구분. main=본교만, branch=분교·제2캠퍼스만. '본캠만'·'지역캠 빼고'처럼 캠퍼스를 지정했을 때만 쓴다" },
           univKeywords: { type: 'array', items: { type: 'string' }, description: '대학명 포함 키워드. 예: ["중앙대","숭실대"]' },
           deptKeywords: { type: 'array', items: { type: 'string' }, description: '학과명 포함 키워드(OR). 계열이면 대표 학과명을 여러 개 펼쳐라' },
           excludeKeywords: { type: 'array', items: { type: 'string' } },
@@ -174,7 +175,7 @@ export async function lookupAdmissionGuide(query, types) {
 function compactHit(r) {
   return {
     unvCd: r.univ.unvCd,
-    대학: r.univ.name.replace(/\[.*\]$/, ''),
+    대학: univLabel(r.univ.name),   // 본캠/지역캠이 구분되게 캠퍼스를 남긴다
     지역: r.univ.region,
     학과: r.entry.dept,
     전형구분: r.entry.track,

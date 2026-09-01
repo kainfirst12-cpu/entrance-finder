@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '../apiBase';
+import { univLabel, campusBadge, sortByCampus } from '../univName';
 
 const token = () => localStorage.getItem('ef_token');
 async function api(path) {
@@ -64,9 +65,10 @@ export default function UnivInfo({ onAuthError }) {
   }
 
   const nfc = (s) => (s || '').normalize('NFC');
-  const filtered = q.trim()
+  // 같은 대학의 본캠·지역캠(분교·제N캠퍼스)이 목록에서 흩어지지 않게 붙여 두고 본캠을 먼저 놓는다.
+  const filtered = sortByCampus(q.trim()
     ? universities.filter((u) => nfc(u.name).includes(nfc(q)) || nfc(u.region).includes(nfc(q)))
-    : universities;
+    : universities);
 
   return (
     <div style={S.page}>
@@ -85,7 +87,9 @@ export default function UnivInfo({ onAuthError }) {
             {!loadingList && filtered.map((u) => (
               <button key={u.unvCd} onClick={() => openUniv(u)}
                 style={{ ...S.listItem, ...(selected?.unvCd === u.unvCd ? S.listItemActive : {}) }}>
-                {u.name} <span style={S.region}>{u.region}</span>
+                {univLabel(u.name)}
+                {campusBadge(u.name) && <span style={S.campusTag}>{campusBadge(u.name)}</span>}
+                <span style={S.region}>{u.region}</span>
               </button>
             ))}
             {!loadingList && !filtered.length && <div style={S.muted}>검색 결과 없음</div>}
@@ -98,7 +102,11 @@ export default function UnivInfo({ onAuthError }) {
           {!selected && <div style={S.placeholder}>왼쪽에서 대학을 선택하세요.</div>}
           {selected && (
             <>
-              <h1 style={S.univName}>{selected.name} <span style={S.region}>{selected.region}</span></h1>
+              <h1 style={S.univName}>
+                {univLabel(selected.name)}
+                {campusBadge(selected.name) && <span style={S.campusTag}>{campusBadge(selected.name)}</span>}
+                <span style={S.region}>{selected.region}</span>
+              </h1>
               {loadingDetail && <div style={S.muted}>상세 불러오는 중…</div>}
               {detail && (
                 <>
@@ -151,6 +159,7 @@ const S = {
   listItem: { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', marginBottom: 4, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, background: '#16212e', color: '#cdd9e2' },
   listItemActive: { background: '#14b8a6', color: '#fff' },
   region: { fontSize: 11, opacity: 0.7 },
+  campusTag: { margin: '0 6px', fontSize: 10.5, fontWeight: 800, color: '#9a5b00', background: '#fff4e0', border: '1px solid #f3ddb4', borderRadius: 6, padding: '1px 6px' },
   detailCol: { flex: 1, overflowY: 'auto', minWidth: 0, paddingRight: 6 },
   placeholder: { color: '#6b7d8a', marginTop: 40, textAlign: 'center' },
   univName: { fontSize: 22, fontWeight: 800, margin: '0 0 16px' },
