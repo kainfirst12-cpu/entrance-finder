@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { API_BASE } from '../apiBase';
+import { univLabel } from '../univName';
 import StudentPicker from './StudentPicker';
 
 const SECTION_MAP = [
@@ -981,7 +982,7 @@ body{font-family:'Noto Sans KR',sans-serif;color:#1a1916;background:#fff;font-si
                     {dossier.placements.slice(0, 20).map((p) => (
                       <div key={p.id} style={CS.plRow}>
                         <span style={CS.plV}>{p.verdict || '—'}</span>
-                        <span style={CS.plName}>{(p.univ_name || '').replace(/\[.*\]$/, '')} {p.dept}</span>
+                        <span style={CS.plName}>{univLabel(p.univ_name)} {p.dept}</span>
                         <span style={CS.plCut}>{p.snapshot?.cut70 != null ? Number(p.snapshot.cut70).toFixed(2) : '—'}</span>
                       </div>
                     ))}

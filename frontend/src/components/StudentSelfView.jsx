@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import { univLabel } from '../univName';
 import RoadmapView from './RoadmapView';
 
 // 학생 셀프 페이지 — 선생님이 발급한 열람 코드만으로 본인 내용을 본다.
@@ -195,7 +196,7 @@ export default function StudentSelfView({ onBack }) {
                 return (
                   <div key={p.id} style={S.plRow}>
                     <span style={{ ...S.plChip, color: v.color, background: v.bg, borderColor: v.border }}>{p.verdict || '—'}</span>
-                    <span style={{ fontWeight: 700 }}>{String(p.univ_name).replace(/\[.*\]$/, '')}</span>
+                    <span style={{ fontWeight: 700 }}>{univLabel(p.univ_name)}</span>
                     <span>{p.dept}</span>
                     <span style={{ color: '#8492a5', fontSize: 12 }}>{p.track}{p.type_name ? ` · ${p.type_name}` : ''}</span>
                     <span style={{ marginLeft: 'auto', color: '#8492a5', fontSize: 12 }}>
