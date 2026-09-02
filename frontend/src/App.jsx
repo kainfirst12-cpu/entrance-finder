@@ -348,6 +348,11 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
+          {/* 이 화면이 어느 빌드인지 — 새로고침이 먹었는지 한눈에 확인하는 자리 */}
+          <div className="drive-status" title="이 화면을 그린 빌드 시각(한국시간). 최신이 아니면 Ctrl+F5로 새로고침하세요.">
+            <span className="status-dot green"></span>
+            <span>빌드 {typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : '-'}</span>
+          </div>
           <div className="drive-status">
             <span className="status-dot green"></span>
             <span>Drive 연결됨</span>

@@ -594,6 +594,15 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
               </div>
               {expandedRec === r.id && r.content && (
                 <>
+                  {onOpenAnalysis && isRestorableRecord(r) && (
+                    <div style={S.openAnalysisRow}>
+                      <button style={S.openAnalysisBig}
+                        onClick={() => onOpenAnalysis(analysisDataFromRecord(student, r))}>
+                        📄 이 분석을 생기부 분석 화면으로 열기
+                      </button>
+                      <span style={{ color: '#8fa3b8', fontSize: 12 }}>리포트 인쇄·PDF·워드를 다시 만들 수 있습니다</span>
+                    </div>
+                  )}
                   <div style={S.recContent} dangerouslySetInnerHTML={{ __html: mdToHtml(r.content) }} />
                   {/* 이 글이 맞는지 다른 회사 모델들에게 — 쓴 모델은 자기 글을 옹호한다 */}
                   <VerifyPanel
@@ -1112,6 +1121,8 @@ const STYLES = {
   gradeRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#1c2937', borderRadius: 7 },
   recType: { background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' },
   miniDel: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer' },
+  openAnalysisRow: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '8px 0 6px' },
+  openAnalysisBig: { background: '#5b86d6', border: 'none', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', borderRadius: 8, padding: '8px 14px' },
   // 저장된 분석을 분석 화면으로 되살리는 버튼 — 미리 보기·복사와 구분되게 색을 달리한다
   openAnalysisBtn: { background: 'rgba(91,134,214,0.18)', border: '1px solid rgba(91,134,214,0.55)', color: '#9dc0ff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
   viewBtn: { background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#2dd4bf', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
