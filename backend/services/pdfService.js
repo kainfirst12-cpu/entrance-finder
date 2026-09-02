@@ -87,17 +87,20 @@ function generateAnalysisPDF(analysisData, studentData) {
       curY = _drawSectionHeader(doc, '요약', 'EXECUTIVE SUMMARY', curY, ML, BODY_W);
       curY += 6;
 
+      // 역량 점수는 리포트 본문에 실제로 적혀 있을 때만 그린다(없으면 이 절을 통째로 건너뛴다)
       const scores = _extractScores(analysisData);
-      const totalScore = Math.round(scores.reduce((s, i) => s + i.score, 0) * 10) / 10;
-      const totalMax = scores.reduce((s, i) => s + i.max, 0);
+      if (scores) {
+        const totalScore = Math.round(scores.reduce((s, i) => s + i.score, 0) * 10) / 10;
+        const totalMax = scores.reduce((s, i) => s + i.max, 0);
 
-      doc.roundedRect(ML, curY, BODY_W, 50, 4).fill(C.LIGHT);
-      doc.fontSize(9).fillColor(C.NAVY).text('■  종합 평가 점수', ML + 12, curY + 10);
-      doc.fontSize(24).fillColor(C.BLUE).text(`${totalScore} / ${totalMax}점`, PW - MR - 120, curY + 8, { width: 110, align: 'right' });
-      doc.fontSize(8).fillColor(C.GRAY).text(`종합 평가: ${_gradeLabel(totalScore, totalMax)}`, ML + 12, curY + 30);
-      curY += 58;
+        doc.roundedRect(ML, curY, BODY_W, 50, 4).fill(C.LIGHT);
+        doc.fontSize(9).fillColor(C.NAVY).text('■  종합 평가 점수', ML + 12, curY + 10);
+        doc.fontSize(24).fillColor(C.BLUE).text(`${totalScore} / ${totalMax}점`, PW - MR - 120, curY + 8, { width: 110, align: 'right' });
+        doc.fontSize(8).fillColor(C.GRAY).text(`종합 평가: ${_gradeLabel(totalScore, totalMax)}`, ML + 12, curY + 30);
+        curY += 58;
 
-      curY = _drawScoreBars(doc, scores, ML, curY, BODY_W);
+        curY = _drawScoreBars(doc, scores, ML, curY, BODY_W);
+      }
       curY += 8;
 
       curY = _drawStrengthWeakness(doc, analysisData, ML, curY, BODY_W);
@@ -187,8 +190,8 @@ function _drawScoreBars(doc, scores, ml, y, bw) {
 
 function _drawStrengthWeakness(doc, analysisData, ml, y, bw) {
   const hw = (bw - 6) / 2;
-  const strengths = _extractList(analysisData, ['강점', '유지', '강화']);
-  const weaknesses = _extractList(analysisData, ['약점', '개선', '부족']);
+  const strengths = _extractList(analysisData, /강점|강화|유지/);
+  const weaknesses = _extractList(analysisData, /보완|약점|개선|부족/).filter(t => !strengths.includes(t));
   const maxItems = Math.max(strengths.length, weaknesses.length, 1);
   const boxH = maxItems * 16 + 28;
 
@@ -208,41 +211,50 @@ function _drawStrengthWeakness(doc, analysisData, ml, y, bw) {
 }
 
 function _extractScores(data) {
-  const defaults = [
-    { label: '학업역량', score: 5.5, max: 10 },
-    { label: '비교과', score: 6.5, max: 10 },
-    { label: '진로역량', score: 7.0, max: 10 },
-    { label: '세특 질', score: 5.0, max: 10 },
-    { label: '전공적합성', score: 6.0, max: 10 },
-  ];
-  if (!data) return defaults;
+  // ⚠ 예전에는 못 찾으면 5.5/6.5/7.0 같은 **가짜 기본 점수**를 돌려줬고, 그 숫자가 학부모에게
+  //   나가는 PDF의 '종합 평가 점수'로 찍혔다. 이제 못 찾으면 null 이고 호출부가 그 절을 뺀다.
+  //   또 '학업'이 든 첫 줄의 첫 숫자를 집던 규칙 때문에 합격사례 표의 '2.2등급대'가 점수로
+  //   둔갑했다. 항목명을 정확히 보고, 숫자가 '점수 자리'일 때만 인정한다.
+  //   (프론트 analysisMetrics.js 와 같은 규칙 — 화면과 PDF의 숫자가 갈리면 안 된다)
+  if (!data) return null;
   try {
-    // 원본 텍스트로 본다(JSON.stringify 하면 \n 이 이스케이프돼 줄 단위 표 파싱이 깨진다).
+    // 원본 텍스트로 본다(JSON.stringify 하면 개행이 이스케이프돼 줄 단위 표 파싱이 깨진다).
     const text = typeof data === 'string'
       ? data
       : Object.values(data).filter(v => typeof v === 'string').join('\n');
-    // 리포트는 마크다운 표로 나온다: | 학업역량 | 7.8 / 10 | 우수 | ... 또는 | 학업역량 | 7.8 | ...
-    // 강조 기호(**)가 남아 있어도 잡히도록 정리 후 매칭한다.
     const clean = text.replace(/\*\*/g, '');
-    const WANT = [
-      { key: '학업', label: '학업역량' },
-      { key: '비교과', label: '비교과' },
-      { key: '진로', label: '진로역량' },
-      { key: '세특', label: '세특 질' },
-      { key: '전공', label: '전공적합성' },
+    const LABELS = [
+      { re: /학업\s*역량/, label: '학업역량' },
+      { re: /비교과(\s*활동)?/, label: '비교과' },
+      { re: /진로\s*역량/, label: '진로역량' },
+      { re: /세특(\s*질)?|세부능력/, label: '세특 질' },
+      { re: /전공\s*적합(성)?/, label: '전공적합성' },
     ];
+    const NOT_SCORE = /등급|백분위|경쟁률|%/;   // 성적·비율 줄은 역량 점수가 아니다
+    const scoreFromLine = (line) => {
+      if (NOT_SCORE.test(line)) return null;
+      // ① 배점·획득 표: | 학업 역량 | 10점 | 8.0점 |
+      let m = line.match(/\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*(?=\||$)/);
+      if (m) { const max = parseFloat(m[1]), score = parseFloat(m[2]); if (max >= 5 && score >= 0 && score <= max) return { score, max }; }
+      // ② 8.0 / 10 · 8점/10점
+      m = line.match(/([0-9]+(?:\.[0-9]+)?)\s*점?\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*점?/);
+      if (m) { const score = parseFloat(m[1]), max = parseFloat(m[2]); if (max >= 5 && score >= 0 && score <= max) return { score, max }; }
+      // ③ 점수 칸 하나: | 학업역량 | 8.5 | 우수 |
+      m = line.match(/\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*(?=\||$)/);
+      if (m) { const score = parseFloat(m[1]); if (score >= 0 && score <= 10) return { score, max: 10 }; }
+      return null;
+    };
+    const lines = clean.split('\n');
     const found = [];
-    for (const w of WANT) {
-      // 같은 줄에서 '항목명 ... 숫자[ /최대]' 를 찾는다. 표(|)·콜론·공백 구분 모두 허용.
-      const re = new RegExp(`^[^\\n]*${w.key}[^\\n]*?([0-9]+(?:\\.[0-9]+)?)\\s*(?:/\\s*([0-9]+(?:\\.[0-9]+)?))?\\s*(?:점|/\\s*10)?[^\\n]*$`, 'm');
-      const m = re.exec(clean);
-      if (!m) continue;
-      const score = parseFloat(m[1]);
-      const max = m[2] ? parseFloat(m[2]) : 10;
-      if (!isNaN(score) && max > 0 && score <= max) found.push({ label: w.label, score, max });
+    for (const w of LABELS) {
+      for (const line of lines) {
+        if (!w.re.test(line)) continue;
+        const sc = scoreFromLine(line);
+        if (sc) { found.push({ label: w.label, ...sc }); break; }
+      }
     }
-    return found.length >= 3 ? found : defaults;
-  } catch { return defaults; }
+    return found.length >= 3 ? found : null;
+  } catch { return null; }
 }
 
 function _extractStrategy(data) {
@@ -252,23 +264,31 @@ function _extractStrategy(data) {
   return m ? m[0].replace(/[*_#"\\]/g, '').trim().slice(0, 80) : '학생부종합 + 논술 병행, 정시 안전망 필수';
 }
 
-function _extractList(data, keywords) {
+// 소제목(불릿이 아닌 짧은 줄) 아래의 불릿만 그 절의 항목으로 본다.
+// 예전에는 키워드를 한 번 만나면 글 끝까지 불릿을 주워, 강점과 약점 칸에 같은 문장이 실렸다.
+function _extractList(data, kwRe) {
   if (!data) return [];
-  const text = typeof data === 'string' ? data : JSON.stringify(data);
-  const lines = text.split(/\n|\\n/);
-  const results = [];
+  const text = typeof data === 'string'
+    ? data
+    : Object.values(data).filter(v => typeof v === 'string').join('\n');
+  const out = [];
   let capture = false;
-  for (const line of lines) {
-    const clean = line.replace(/[*_#"\\]/g, '').trim();
-    if (!clean) continue;
-    if (keywords.some(k => clean.includes(k))) capture = true;
-    if (capture && /^[-•]/.test(clean)) {
-      const item = clean.replace(/^[-•]\s*/, '').trim();
-      if (item.length > 3 && item.length < 60) results.push(item);
+  for (const raw of text.split(/\n/)) {
+    const line = raw.replace(/[*_#"]/g, '').trim();
+    if (!line) continue;
+    const isBullet = /^[-•]/.test(line);
+    const looksHeading = !isBullet && line.length <= 30;
+    if (looksHeading && kwRe.test(line)) { capture = true; continue; }
+    if (!capture) continue;
+    if (isBullet) {
+      const item = line.replace(/^[-•]\s*/, '').trim();
+      if (item.length > 3 && item.length < 70 && !out.includes(item)) out.push(item);
+      if (out.length >= 4) break;
+      continue;
     }
-    if (results.length >= 4) break;
+    if (looksHeading || out.length) break;   // 다음 소제목이거나 불릿이 끊기면 그 절은 끝
   }
-  return results;
+  return out;
 }
 
 function _parseSections(data) {

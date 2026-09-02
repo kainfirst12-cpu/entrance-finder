@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import { extractScores, extractHighlights, scoreTone, totalScore, radarSvg } from '../analysisMetrics';
 
 // SSE(keepalive 포함) 또는 일반 JSON 응답을 모두 처리해 최종 결과 객체를 반환.
 // 긴 AI 생성(refine 등)은 서버가 8초마다 keepalive를 보내고 마지막에 data: {결과}를 보낸다.
@@ -161,93 +162,19 @@ function mdToHtml(raw) {
     .trim();
 }
 
-// ══════════ 📊 한눈에 보기 — 리포트 텍스트에서 역량 점수·강점·보완점을 파싱해 도표로 ══════════
-// 파싱 규칙은 PDF 리포트(backend pdfService._extractScores)와 동일 — 리포트 표의
-// "| 학업역량 | 7.8 / 10 |" 류를 찾는다. 3개 미만이면 지표 패널 자체를 숨긴다(가짜 점수 금지).
-function extractScoresFromResults(results) {
-  try {
-    const text = Object.values(results || {}).filter(v => typeof v === 'string').join('\n');
-    const clean = text.replace(/\*\*/g, '');
-    const WANT = [
-      { key: '학업', label: '학업역량' },
-      { key: '비교과', label: '비교과' },
-      { key: '진로', label: '진로역량' },
-      { key: '세특', label: '세특 질' },
-      { key: '전공', label: '전공적합성' },
-    ];
-    const found = [];
-    for (const w of WANT) {
-      const re = new RegExp(`^[^\\n]*${w.key}[^\\n]*?([0-9]+(?:\\.[0-9]+)?)\\s*(?:/\\s*([0-9]+(?:\\.[0-9]+)?))?\\s*(?:점|/\\s*10)?[^\\n]*$`, 'm');
-      const m = re.exec(clean);
-      if (!m) continue;
-      const score = parseFloat(m[1]);
-      const max = m[2] ? parseFloat(m[2]) : 10;
-      if (!isNaN(score) && max > 0 && score <= max) found.push({ label: w.label, score, max });
-    }
-    return found.length >= 3 ? found : null;
-  } catch { return null; }
-}
+// ══════════ 📊 한눈에 보기 — 지표 파싱은 analysisMetrics.js 한 곳에서 ══════════
+// 화면 패널과 인쇄 리포트가 같은 규칙을 써야 두 문서의 숫자가 갈리지 않는다.
 
-function extractListFromResults(results, keywords, cap = 4) {
-  try {
-    const text = Object.values(results || {}).filter(v => typeof v === 'string').join('\n');
-    const out = [];
-    let capture = false;
-    for (const raw of text.split('\n')) {
-      const line = raw.replace(/[*_#"\\]/g, '').trim();
-      if (!line) continue;
-      if (keywords.some(k => line.includes(k))) capture = true;
-      if (capture && /^[-•]/.test(line)) {
-        const item = line.replace(/^[-•]\s*/, '').trim();
-        if (item.length > 3 && item.length < 60 && !out.includes(item)) out.push(item);
-      }
-      if (out.length >= cap) break;
-    }
-    return out;
-  } catch { return []; }
-}
-
-const scoreTone = (pct) => pct >= 80 ? '#16a34a' : pct >= 60 ? '#4f7cff' : pct >= 40 ? '#d97706' : '#dc2626';
-
+// 화면 차트도 인쇄 리포트와 같은 SVG 생성기를 쓴다(좌표 계산이 두 벌이면 언젠가 갈린다)
 function ScoreRadar({ scores }) {
-  const N = scores.length;
-  const CX = 110, CY = 104, R = 74;
-  const angle = (i) => (-90 + (360 / N) * i) * Math.PI / 180;
-  const pt = (i, r) => [CX + r * Math.cos(angle(i)), CY + r * Math.sin(angle(i))];
-  const ring = (frac) => scores.map((_, i) => pt(i, R * frac).map(v => v.toFixed(1)).join(',')).join(' ');
-  const dataPoly = scores.map((s, i) => pt(i, R * (s.score / s.max)).map(v => v.toFixed(1)).join(',')).join(' ');
-  return (
-    <svg width="220" height="208" viewBox="0 0 220 208" role="img" aria-label="역량 레이더 차트">
-      {[0.25, 0.5, 0.75, 1].map(f => (
-        <polygon key={f} points={ring(f)} fill="none" stroke="#e2e8f0" strokeWidth="1" />
-      ))}
-      {scores.map((_, i) => {
-        const [x, y] = pt(i, R);
-        return <line key={i} x1={CX} y1={CY} x2={x} y2={y} stroke="#e2e8f0" strokeWidth="1" />;
-      })}
-      <polygon points={dataPoly} fill="rgba(79,124,255,0.22)" stroke="#4f7cff" strokeWidth="2" strokeLinejoin="round" />
-      {scores.map((s, i) => {
-        const [x, y] = pt(i, R * (s.score / s.max));
-        return <circle key={i} cx={x} cy={y} r="3.5" fill="#4f7cff" />;
-      })}
-      {scores.map((s, i) => {
-        const [x, y] = pt(i, R + 17);
-        return (
-          <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="700" fill="#475569">
-            {s.label}
-          </text>
-        );
-      })}
-    </svg>
-  );
+  return <div style={{ flex: '0 0 auto' }} dangerouslySetInnerHTML={{ __html: radarSvg(scores) }} />;
 }
 
 function SummaryDashboard({ results, studentData }) {
-  const scores = extractScoresFromResults(results);
-  const strengths = extractListFromResults(results, ['강점', '강한 부분', '우수한 점']);
-  const weaknesses = extractListFromResults(results, ['보완', '약점', '개선']);
+  const scores = extractScores(results);
+  const { strengths, weaknesses } = extractHighlights(results);
   if (!scores && !strengths.length && !weaknesses.length) return null;
-  const avg = scores ? scores.reduce((s, x) => s + (x.score / x.max) * 10, 0) / scores.length : null;
+  const avg = totalScore(scores);
   const gpa = studentData?.gpa && !isNaN(parseFloat(studentData.gpa)) ? parseFloat(studentData.gpa) : null;
   const card = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: '16px 18px' };
   const statNum = { fontSize: 26, fontWeight: 800, lineHeight: 1.1 };
@@ -510,6 +437,35 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
 
     const activeSections = sectionTitles.filter(({ key }) => results?.[key]);
 
+    // 화면의 '한눈에 보기'를 리포트에도 그대로 싣는다. 파싱은 화면과 같은 규칙(analysisMetrics).
+    // 뽑을 지표가 없으면 이 절 자체를 넣지 않는다 — 빈 도표는 없느니만 못하다.
+    const glScores = extractScores(results);
+    const { strengths: glStrengths, weaknesses: glWeak } = extractHighlights(results);
+    const glAvg = totalScore(glScores);
+    const glanceHTML = (!glScores && !glStrengths.length && !glWeak.length) ? '' : `
+    <div class="section glance">
+      <h2 class="section-title">한눈에 보기</h2>
+      <div class="section-line"></div>
+      <div class="glance-top">
+        ${glScores ? `<div class="glance-chart">${radarSvg(glScores)}</div>` : ''}
+        ${glScores ? `<div class="glance-bars">
+          ${glScores.map((x) => {
+            const pct = Math.round((x.score / x.max) * 100);
+            return `<div class="gl-row">
+              <div class="gl-head"><span>${x.label}</span><b style="color:${scoreTone(pct)}">${x.score} <span class="gl-max">/ ${x.max}</span></b></div>
+              <div class="gl-bar"><i style="width:${pct}%;background:${scoreTone(pct)}"></i></div>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+        ${glAvg != null ? `<div class="gl-total"><div class="gl-total-label">종합 역량</div><div class="gl-total-num" style="color:${scoreTone(glAvg * 10)}">${glAvg.toFixed(1)}<span>/ 10</span></div></div>` : ''}
+      </div>
+      ${(glStrengths.length || glWeak.length) ? `<div class="glance-lists">
+        ${glStrengths.length ? `<div class="gl-list gl-strong"><div class="gl-list-title">강점</div>${glStrengths.map((t) => `<div class="gl-item">${t}</div>`).join('')}</div>` : ''}
+        ${glWeak.length ? `<div class="gl-list gl-weak"><div class="gl-list-title">보완점</div>${glWeak.map((t) => `<div class="gl-item">${t}</div>`).join('')}</div>` : ''}
+      </div>` : ''}
+      <div class="glance-note">위 지표는 아래 분석 본문에서 자동 추출한 값입니다.</div>
+    </div>`;
+
     // 검증 결과
     let verifyHTML = '';
     if (verifyResult) {
@@ -726,6 +682,29 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
     break-inside: auto;
   }
   .section:first-of-type { padding-top: 4px; }
+  /* 한눈에 보기 — 인쇄에서도 한 장 안에 들어가게 */
+  .glance { page-break-inside: avoid; }
+  .glance-top { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 10px 0 4px; }
+  .glance-chart { flex: 0 0 auto; }
+  .glance-bars { flex: 1 1 240px; min-width: 220px; }
+  .gl-row { margin-bottom: 8px; }
+  .gl-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; color: #334155; font-weight: 700; }
+  .gl-max { color: #94a3b8; font-weight: 500; }
+  .gl-bar { height: 8px; background: #f1f5f9; border-radius: 6px; overflow: hidden; }
+  .gl-bar i { display: block; height: 100%; border-radius: 6px; }
+  .gl-total { flex: 0 0 auto; background: #eef4ff; border: 1px solid #dbe7ff; border-radius: 12px; padding: 12px 18px; text-align: center; }
+  .gl-total-label { font-size: 11px; color: #64748b; font-weight: 700; }
+  .gl-total-num { font-size: 26px; font-weight: 800; line-height: 1.15; }
+  .gl-total-num span { font-size: 13px; color: #94a3b8; margin-left: 3px; }
+  .glance-lists { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+  .gl-list { flex: 1 1 260px; }
+  .gl-list-title { font-size: 12px; font-weight: 800; margin-bottom: 5px; }
+  .gl-strong .gl-list-title { color: #16a34a; }
+  .gl-weak .gl-list-title { color: #d97706; }
+  .gl-item { font-size: 12px; line-height: 1.55; padding: 5px 10px; border-radius: 8px; margin-bottom: 5px; }
+  .gl-strong .gl-item { background: #f0fdf4; border: 1px solid #dcfce7; color: #166534; }
+  .gl-weak .gl-item { background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; }
+  .glance-note { font-size: 10.5px; color: #94a3b8; margin-top: 8px; }
   .section-title {
     font-size: 20px;
     font-weight: 900;
@@ -885,10 +864,14 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
     <div class="toc">
       <h2>목차</h2>
       <div class="toc-line"></div>
+      ${glanceHTML ? '<div class="toc-item"><span class="toc-bullet"></span>한눈에 보기</div>' : ''}
       ${activeSections.map(({ num, title }, idx) =>
         `<div class="toc-item"><span class="toc-bullet"></span>${idx + 1}. [${num}단계] ${title}</div>`
       ).join('')}
     </div>
+
+    <!-- 한눈에 보기 -->
+    ${glanceHTML}
 
     <!-- 분석 섹션들 -->
     ${activeSections.map(({ key, num, title }, idx) => {
