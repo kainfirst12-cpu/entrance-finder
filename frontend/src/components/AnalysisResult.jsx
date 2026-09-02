@@ -1441,6 +1441,13 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
               ⚠️ 일부 항목만 완료된 상태로 저장되었습니다. 누락된 항목은 아래 "🔄 이 데이터로 재분석"으로 이어서 분석하세요.
             </div>
           )}
+          {data?.restoredFrom && (
+            <div style={{ background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#0f766e', padding: '8px 12px', borderRadius: 8, fontSize: 13, margin: '6px 0', lineHeight: 1.6 }}>
+              📂 저장된 기록에서 불러온 분석입니다 — {data.restoredFrom}
+              {data.restoredAt ? ` (${new Date(data.restoredAt).toLocaleDateString('ko-KR')} 저장)` : ''}
+              <br />리포트 인쇄·PDF·워드는 그대로 만들 수 있습니다. 다만 원본 생기부 PDF의 글자는 기록에 남지 않아, 재분석하려면 PDF를 다시 올려야 합니다.
+            </div>
+          )}
           {pdfCount > 0 && <span className="pdf-badge">📎 PDF {pdfCount}건 분석 포함</span>}
         </div>
         <div className="result-actions">

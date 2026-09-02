@@ -2,6 +2,7 @@
 // 보드(ef_students)의 학생을 그대로 보여주고, 신규 등록·기록 추가·AI 컨설턴트 브리핑까지 한 화면에서.
 import { useState, useEffect, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
+import { analysisDataFromRecord, isRestorableRecord } from '../analysisRecord';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -72,7 +73,7 @@ function mdToHtml(md) {
 
 const REC_TYPES = ['수행평가', '상담', '생기부 분석', '보완', '기타'];
 
-export default function StudentList({ onNewAnalysis, onAuthError }) {
+export default function StudentList({ onNewAnalysis, onAuthError, onOpenAnalysis }) {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -258,7 +259,13 @@ export default function StudentList({ onNewAnalysis, onAuthError }) {
                           <span style={{ color: '#5b86d6', fontSize: 11.5 }}>{openRec === r.id ? '닫기' : '보기'}</span>
                           {r.content && (
                             <span style={{ color: '#8fb8f0', fontSize: 11.5, fontWeight: 700 }}
-                              onClick={(e) => { e.stopPropagation(); setViewRec(r); }}>🔍 크게</span>
+                              onClick={(e) => { e.stopPropagation(); setViewRec({ ...r, _student: s }); }}>🔍 크게</span>
+                          )}
+                          {/* 배정해 둔 분석은 언제든 분석 화면으로 되살려 리포트를 다시 만든다 */}
+                          {onOpenAnalysis && isRestorableRecord(r) && (
+                            <span style={{ color: '#9dc0ff', fontSize: 11.5, fontWeight: 700 }}
+                              title="이 분석을 생기부 분석 화면으로 불러옵니다"
+                              onClick={(e) => { e.stopPropagation(); onOpenAnalysis(analysisDataFromRecord(s, r)); }}>📄 분석 화면</span>
                           )}
                         </div>
                         {openRec === r.id && (
@@ -304,6 +311,10 @@ export default function StudentList({ onNewAnalysis, onAuthError }) {
                 <span style={{ color: '#6b7d8a', fontSize: 12, whiteSpace: 'nowrap' }}>{String(viewRec.created_at).slice(0, 10)}</span>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
+                {onOpenAnalysis && isRestorableRecord(viewRec) && (
+                  <button style={S.smBtn} title="이 분석을 생기부 분석 화면으로 불러옵니다"
+                    onClick={() => { const d = analysisDataFromRecord(viewRec._student, viewRec); setViewRec(null); onOpenAnalysis(d); }}>📄 분석 화면으로</button>
+                )}
                 <button style={S.smBtn} onClick={() => navigator.clipboard.writeText(viewRec.content)}>복사</button>
                 <button style={S.smBtn} onClick={() => setViewRec(null)}>닫기 ✕</button>
               </div>

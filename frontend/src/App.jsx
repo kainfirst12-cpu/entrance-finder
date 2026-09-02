@@ -269,6 +269,18 @@ export default function App() {
     e.target.value = '';
   };
 
+  // 학생에게 배정해 둔 생기부 분석을 언제든 분석 화면으로 되살린다.
+  // 리포트(HTML 인쇄·PDF·워드)는 results 와 studentData 만 있으면 다시 만들 수 있다.
+  const openSavedAnalysis = (d) => {
+    if (!d?.results || !Object.keys(d.results).length) {
+      alert('이 기록에서는 분석 섹션을 찾지 못했습니다. 분석 화면에서 배정한 기록만 되살릴 수 있습니다.');
+      return;
+    }
+    setAnalysisData(d);
+    if (d.analyzedModel && modelConfig[d.analyzedModel]) setSelectedModel(d.analyzedModel);
+    setView('result');
+  };
+
   if (!isLoggedIn) {
     return <Login onLogin={() => { setIsLoggedIn(true); setRole(localStorage.getItem('ef_role') || 'user'); }} />;
   }
@@ -351,7 +363,7 @@ export default function App() {
         {view === 'dashboard' && (
           <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout} />
         )}
-        {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} onAuthError={handleLogout} />}
+        {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} onAuthError={handleLogout} onOpenAnalysis={openSavedAnalysis} />}
         {view === 'form'      && (
           <StudentForm
             onSubmit={startAnalysis}
@@ -392,6 +404,7 @@ export default function App() {
         {view === 'board' && (
           <Board
             onAuthError={handleLogout}
+            onOpenAnalysis={openSavedAnalysis}
             onAnalyzeFile={async (student, file) => {
               // 보드에 저장된 파일(학생 셀프 업로드 포함)을 내려받아 생기부 PDF로 넣고 분석 폼 오픈
               try {

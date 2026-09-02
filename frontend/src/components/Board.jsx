@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import { analysisDataFromRecord, isRestorableRecord } from '../analysisRecord';
 import RoadmapView from './RoadmapView';
 import VerifyPanel from './VerifyPanel';
 
@@ -176,7 +177,7 @@ function recordVerifyContext(student) {
   return L.join('\n');
 }
 
-export default function Board({ onAuthError, onAnalyzeFile }) {
+export default function Board({ onAuthError, onAnalyzeFile, onOpenAnalysis }) {
   const role = localStorage.getItem('ef_role') || 'user';
   const isAdmin = role === 'admin';
   const [columns, setColumns] = useState(['신규', '생기부 분석', '보완 중', '수행평가', '완료']);
@@ -341,13 +342,14 @@ export default function Board({ onAuthError, onAnalyzeFile }) {
           onChanged={refreshDetail}
           onError={handleErr}
           onAnalyzeFile={onAnalyzeFile}
+          onOpenAnalysis={onOpenAnalysis}
         />
       )}
     </div>
   );
 }
 
-function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyzeFile }) {
+function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyzeFile, onOpenAnalysis }) {
   const [form, setForm] = useState({
     name: student.name || '', school: student.school || '', grade: student.grade || '',
     major: student.major || '', targetUniv: student.target_univ || '', status: student.status, notes: student.notes || '',
@@ -581,6 +583,12 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
                 <span style={{ flex: 1 }}>{r.title}</span>
                 {r.content ? <button style={S.viewBtn} onClick={() => setExpandedRec(expandedRec === r.id ? null : r.id)}>{expandedRec === r.id ? '닫기' : '미리 보기'}</button> : null}
                 {r.content ? <button style={S.viewBtn} onClick={() => setViewRec(r)}>🔍 크게 보기</button> : null}
+                {/* 배정해 둔 분석을 그대로 분석 화면으로 — 리포트를 다시 만들 수 있다 */}
+                {onOpenAnalysis && isRestorableRecord(r) ? (
+                  <button style={S.openAnalysisBtn}
+                    title="이 분석을 생기부 분석 화면으로 불러옵니다. 리포트 인쇄·PDF·워드를 다시 만들 수 있습니다."
+                    onClick={() => onOpenAnalysis(analysisDataFromRecord(student, r))}>📄 분석 화면으로</button>
+                ) : null}
                 <span style={{ color: '#6b7d8a', fontSize: 12 }}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
                 <button style={S.miniDel} onClick={() => delRecord(r.id)}>삭제</button>
               </div>
@@ -682,6 +690,11 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
                 <span style={{ color: '#6b7d8a', fontSize: 12, whiteSpace: 'nowrap' }}>{new Date(viewRec.created_at).toLocaleDateString('ko-KR')}</span>
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
+                {onOpenAnalysis && isRestorableRecord(viewRec) ? (
+                  <button style={S.openAnalysisBtn}
+                    title="이 분석을 생기부 분석 화면으로 불러옵니다"
+                    onClick={() => { const d = analysisDataFromRecord(student, viewRec); setViewRec(null); onOpenAnalysis(d); }}>📄 분석 화면으로</button>
+                ) : null}
                 <button style={S.viewBtn} onClick={() => navigator.clipboard.writeText(viewRec.content)}>복사</button>
                 <button style={S.viewBtn} onClick={() => setViewRec(null)}>닫기 ✕</button>
               </div>
@@ -1099,6 +1112,8 @@ const STYLES = {
   gradeRow: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, padding: '5px 8px', background: '#1c2937', borderRadius: 7 },
   recType: { background: 'rgba(45,212,191,0.15)', color: '#2dd4bf', fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' },
   miniDel: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer' },
+  // 저장된 분석을 분석 화면으로 되살리는 버튼 — 미리 보기·복사와 구분되게 색을 달리한다
+  openAnalysisBtn: { background: 'rgba(91,134,214,0.18)', border: '1px solid rgba(91,134,214,0.55)', color: '#9dc0ff', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
   viewBtn: { background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#2dd4bf', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
   recContent: { background: '#0e1620', border: '1px solid #2a3a48', borderRadius: 8, padding: '12px 16px', margin: '4px 0 8px', fontSize: 13, lineHeight: 1.65, color: '#cdd9e2', maxHeight: 420, overflowY: 'auto' },
   addRow: { display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' },
