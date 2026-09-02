@@ -579,10 +579,12 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
             기록 줄의 버튼은 줄이 좁아 묻히기 쉬워, 목록 위에 항상 이 줄을 둔다.
             열 수 있는 기록이 없을 때도 줄은 남겨 둔다 — 무엇을 보고 그렇게 판단했는지 밝혀야
             '버튼이 왜 없냐'를 다시 묻지 않아도 된다. */}
-        {onOpenAnalysis && (
-          <div style={S.restoreBar}>
+        {/* 이 줄은 조건 없이 항상 그린다 — 안 보이면 화면이 옛 버전이라는 뜻이다 */}
+        <div style={S.restoreBar}>
             <span style={S.restoreLabel}>📄 저장된 분석을 분석 화면으로 열기</span>
-            {(student.records || []).filter(isRestorableRecord).length > 0 ? (
+            {!onOpenAnalysis ? (
+              <span style={S.restoreEmpty}>화면 연결이 끊겨 있습니다 — 새로고침해 주세요</span>
+            ) : (student.records || []).filter(isRestorableRecord).length > 0 ? (
               (student.records || []).filter(isRestorableRecord).map((r) => (
                 <button key={r.id} style={S.restoreBtn}
                   title="이 분석을 생기부 분석 화면으로 불러옵니다. 리포트 인쇄·PDF·워드를 다시 만들 수 있습니다."
@@ -596,8 +598,8 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
                 본문 있는 기록 {(student.records || []).filter((r) => r.content).length}건)
               </span>
             )}
-          </div>
-        )}
+            <span style={S.restoreBuild}>빌드 {typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : '-'}</span>
+        </div>
         <div style={S.gradeList}>
           {(student.records || []).length === 0 && <div style={{ color: '#6b7d8a', fontSize: 13 }}>아직 기록이 없습니다. 분석/수행평가를 하면 자동으로 쌓이고, 아래에서 직접 추가할 수도 있습니다.</div>}
           {(student.records || []).map(r => (
@@ -1149,6 +1151,7 @@ const STYLES = {
   restoreLabel: { fontSize: 12.5, fontWeight: 800, color: '#9dc0ff' },
   restoreBtn: { background: '#5b86d6', border: 'none', color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', borderRadius: 7, padding: '6px 12px' },
   restoreEmpty: { fontSize: 12, color: '#8fa3b8' },
+  restoreBuild: { marginLeft: 'auto', fontSize: 11, color: '#6b7d8a', whiteSpace: 'nowrap' },
   openAnalysisRow: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '8px 0 6px' },
   openAnalysisBig: { background: '#5b86d6', border: 'none', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', borderRadius: 8, padding: '8px 14px' },
   // 저장된 분석을 분석 화면으로 되살리는 버튼 — 미리 보기·복사와 구분되게 색을 달리한다
