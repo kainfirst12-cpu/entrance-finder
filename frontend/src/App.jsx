@@ -269,6 +269,26 @@ export default function App() {
     e.target.value = '';
   };
 
+  // 보드에 저장된 파일(학생 셀프 업로드 포함)을 내려받아 생기부 PDF로 넣고 분석 폼 오픈.
+  // 대시보드에 박힌 보드와 단독 보드가 같은 동작을 해야 해서 이름 있는 함수로 둔다.
+  const analyzeBoardFile = async (student, file) => {
+    try {
+      const token = localStorage.getItem('ef_token');
+      const res = await fetch(`${API_BASE}/api/board/files/${file.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error(`파일을 불러오지 못했습니다 (HTTP ${res.status})`);
+      const blob = await res.blob();
+      const f = new File([blob], file.name || 'record.pdf', { type: file.mime || 'application/pdf' });
+      setFormPrefill({
+        recordFile: f,
+        studentData: {
+          name: student.name || '', school: student.school || '', grade: student.grade || '',
+          major: student.major || '', targetUniv: student.target_univ || '',
+        },
+      });
+      setView('form');
+    } catch (e) { alert(e.message); }
+  };
+
   // 학생에게 배정해 둔 생기부 분석을 언제든 분석 화면으로 되살린다.
   // 리포트(HTML 인쇄·PDF·워드)는 results 와 studentData 만 있으면 다시 만들 수 있다.
   const openSavedAnalysis = (d) => {
@@ -366,7 +386,8 @@ export default function App() {
 
       <main className="main">
         {view === 'dashboard' && (
-          <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout} />
+          <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout}
+            onOpenAnalysis={openSavedAnalysis} onAnalyzeFile={analyzeBoardFile} />
         )}
         {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} onAuthError={handleLogout} onOpenAnalysis={openSavedAnalysis} />}
         {view === 'form'      && (
@@ -410,24 +431,7 @@ export default function App() {
           <Board
             onAuthError={handleLogout}
             onOpenAnalysis={openSavedAnalysis}
-            onAnalyzeFile={async (student, file) => {
-              // 보드에 저장된 파일(학생 셀프 업로드 포함)을 내려받아 생기부 PDF로 넣고 분석 폼 오픈
-              try {
-                const token = localStorage.getItem('ef_token');
-                const res = await fetch(`${API_BASE}/api/board/files/${file.id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-                if (!res.ok) throw new Error(`파일을 불러오지 못했습니다 (HTTP ${res.status})`);
-                const blob = await res.blob();
-                const f = new File([blob], file.name || 'record.pdf', { type: file.mime || 'application/pdf' });
-                setFormPrefill({
-                  recordFile: f,
-                  studentData: {
-                    name: student.name || '', school: student.school || '', grade: student.grade || '',
-                    major: student.major || '', targetUniv: student.target_univ || '',
-                  },
-                });
-                setView('form');
-              } catch (e) { alert(e.message); }
-            }}
+            onAnalyzeFile={analyzeBoardFile}
           />
         )}
         {view === 'admissions' && (

@@ -12,7 +12,7 @@ const ACTIONS = [
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];
 
-export default function Dashboard({ onNav, onImport, onAuthError }) {
+export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis, onAnalyzeFile }) {
   return (
     <div style={S.page}>
       <h2 style={S.h2}>대시보드</h2>
@@ -30,7 +30,9 @@ export default function Dashboard({ onNav, onImport, onAuthError }) {
       </div>
 
       <div style={S.boardWrap}>
-        <Board onAuthError={onAuthError} />
+        {/* 대시보드에 박힌 보드도 단독 보드와 같은 기능을 해야 한다.
+            여기에 프롭을 안 넘겨서 '분석 화면으로 열기'가 대시보드에서만 안 보였다. */}
+        <Board onAuthError={onAuthError} onOpenAnalysis={onOpenAnalysis} onAnalyzeFile={onAnalyzeFile} />
       </div>
     </div>
   );
