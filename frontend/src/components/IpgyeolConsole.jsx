@@ -22,6 +22,18 @@ const REPORT_KEY = 'ef_ipgyeol_report'; // 리포트 제목·총평 등 편집�
 // 50%·70%는 대부분의 전형에 있고, 85·90·100%는 제출한 대학이 극소수다(전체의 0~5%).
 const CUT_FIELD = { 50: 'grade50', 70: 'grade70', 85: 'grade85', 90: 'grade90', 100: 'grade100' };
 const CUT_OPTS = [50, 70, 90, 100];
+
+// 계열(문과/이과) — 서버가 학과명에서 판별해 entry.field 로 붙여 준다.
+// 자유전공·융합처럼 교차모집하는 모집단위는 미분류('')로 오고, 계열 필터에서는 빠진다.
+const FIELD_LABEL = { 인문: '문과', 자연: '이과', 예체능: '예체능' };
+const FIELD_OPTS = [['', '전체'], ['인문', '문과'], ['자연', '이과'], ['예체능', '예체능']];
+
+// 추천을 세 칸으로 나눈다 — 상담은 이 순서로 이야기한다
+const BUCKET_HINT = {
+  소신: '컷이 내 성적보다 앞선 상향 구간 (최대 0.4등급)',
+  적정: '컷과 내 성적이 맞물리는 구간',
+  안정: '컷이 내 성적보다 0.35등급 이상 여유 있는 구간',
+};
 const cutField = (pct) => CUT_FIELD[pct] || 'grade70';
 
 const DEFAULT_NOTE = `배치 판정(안정·적정·소신·위험)은 최종등급 70%컷과 기준 내신의 차이에 따른 참고용 지표입니다. 실제 지원 판단은 반영교과·수능최저·모집인원 변화를 함께 검토해야 합니다.
@@ -371,7 +383,10 @@ function Card({ card, grade, baseYear, cutPct, onPin, pinned, student, onSave, s
             {campusBadge(univ.name) && <span style={S.campusTag} title="본교와 다른 캠퍼스입니다 — 입결·모집단위가 전혀 다릅니다">{campusBadge(univ.name)}</span>}
             <span style={S.cardRegion}> · {univ.region}</span>
           </div>
-          <div style={S.cardDept}>{entry.dept}</div>
+          <div style={S.cardDept}>
+            {entry.dept}
+            {entry.field && <span style={S.fieldTag}>{FIELD_LABEL[entry.field]}</span>}
+          </div>
           <div style={S.cardType}>{entry.track}({entry.typeName.replace(/^학생부(교과|종합)\(?/, '').replace(/\)$/, '') || entry.typeName})</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -749,6 +764,11 @@ export default function IpgyeolConsole({ onAuthError }) {
   // 캠퍼스 선택 — '' 전체 / 'main' 본캠 / 'branch' 지역캠(분교·제N캠퍼스).
   // 대학 목록과 AI 검색 양쪽에 함께 걸린다(검색 결과에서 본캠·지역캠이 뒤섞이는 걸 막는다).
   const [campusSel, setCampusSel] = useState('');
+  // 계열 선택 — '' 전체 / '인문'(문과) / '자연'(이과) / '예체능'. 카드 목록·AI 검색·추천에 함께 걸린다.
+  const [fieldSel, setFieldSel] = useState('');
+  const [reco, setReco] = useState(null);        // 성적 기반 추천 결과
+  const [recoBusy, setRecoBusy] = useState(false);
+  const [recoCapital, setRecoCapital] = useState(false);
   const [deptQ, setDeptQ] = useState('');
   const [limit, setLimit] = useState(18);
   const [pins, setPins] = useState(() => { try { return JSON.parse(localStorage.getItem(PIN_KEY) || '[]'); } catch { return []; } });
@@ -1040,7 +1060,9 @@ export default function IpgyeolConsole({ onAuthError }) {
     if (!creds.apiKey) { setError('설정에서 AI API 키를 먼저 입력해 주세요.'); return; }
     setAiQ(q); setAiSearching(true); setError('');
     try {
-      const body = { query: q, baseYear, limit: 24, ...(campusSel ? { campus: campusSel } : {}) };
+      const body = { query: q, baseYear, limit: 24,
+        ...(campusSel ? { campus: campusSel } : {}),
+        ...(fieldSel ? { fields: [fieldSel] } : {}) };
       if (student && useStudentCtx) {
         body.studentProfile = { name: student.name, gpa: grade, major: student.major || '', targetUniv: student.target_univ || '' };
       }
@@ -1053,12 +1075,39 @@ export default function IpgyeolConsole({ onAuthError }) {
     finally { setAiSearching(false); }
   }
 
+  // ── 성적 기반 추천 — 질문 없이 "이 내신으로 갈 만한 곳"을 교과·종합 한 번에 ──
+  // 후보 선정과 숫자는 서버(코드)가 공식 입결에서 결정적으로 뽑는다. AI 키가 있으면 설명만 덧붙는다.
+  async function runReco() {
+    if (recoBusy) return;
+    setRecoBusy(true); setError('');
+    try {
+      const creds = aiCreds();
+      const headers = creds.apiKey
+        ? aiHeaders(creds)
+        : { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` };
+      const body = {
+        grade, baseYear, perBucket: 6,
+        ...(fieldSel ? { fields: [fieldSel] } : {}),
+        ...(campusSel ? { campus: campusSel } : {}),
+        ...(recoCapital ? { capitalOnly: true } : {}),
+      };
+      if (student && useStudentCtx) {
+        body.studentProfile = { name: student.name, major: student.major || '', targetUniv: student.target_univ || '' };
+      }
+      const d = await postForResult(`${API_BASE}/api/ipgyeol/recommend`, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!d.success) throw new Error(d.message || '추천 실패');
+      setReco(d);
+    } catch (e) { setError('추천 오류: ' + e.message); }
+    finally { setRecoBusy(false); }
+  }
+
   // 해석된 필터를 사람이 읽는 칩으로 (AI가 뭘로 알아들었는지 보이지 않으면 결과를 믿을 수 없다)
   function filterChips(f = {}) {
     const out = [];
     if (f.capitalOnly) out.push('수도권');
     if (f.campus === 'main') out.push('본캠만');
     if (f.campus === 'branch') out.push('지역캠(분교·제2캠)만');
+    (f.fields || []).forEach((x) => out.push(`${FIELD_LABEL[x] || x}만`));
     (f.regions || []).forEach((r) => out.push(r));
     (f.univKeywords || []).forEach((r) => out.push(`대학: ${r}`));
     (f.deptKeywords || []).forEach((r) => out.push(`학과: ${r}`));
@@ -1710,6 +1759,7 @@ function toggleEdit(){
     const out = [];
     for (const e of detail.entries) {
       if (e.track !== track) continue;
+      if (fieldSel && e.field !== fieldSel) continue;
       if (t && !nfc(e.dept).includes(t) && !nfc(e.typeName).includes(t)) continue;
       if (!Object.keys(e.years).some((y) => y <= baseYear && y > String(Number(baseYear) - 4))) continue;
       const sibs = track === '교과'
@@ -1727,7 +1777,7 @@ function toggleEdit(){
     }
     out.sort((a, b) => a.entry.dept.localeCompare(b.entry.dept, 'ko'));
     return out;
-  }, [detail, track, deptQ, baseYear]);
+  }, [detail, track, deptQ, baseYear, fieldSel]);
 
   // 배치 기록 한 줄 → 카드 한 장. 저장된 건 수치 스냅샷뿐이라 카드로 그리려면 원본 입결을 다시 읽어야 한다.
   function cardFromPlacement(p, d) {
@@ -1843,6 +1893,19 @@ function toggleEdit(){
               {aiSearching ? '검색 중…' : 'AI 검색'}
             </button>
           </div>
+          <div style={S.recoRow}>
+            <button style={{ ...S.recoBtn, ...(recoBusy ? S.aiRunBusy : {}) }} onClick={runReco} disabled={recoBusy}>
+              {recoBusy ? '추천 만드는 중…' : `🎯 내신 ${grade.toFixed(2)}로 갈 만한 곳 추천`}
+            </button>
+            <label style={S.aiChk}>
+              <input type="checkbox" checked={recoCapital} onChange={(e) => setRecoCapital(e.target.checked)} /> 수도권만
+            </label>
+            <span style={S.ctrlHint}>
+              교과·종합을 각각 소신·적정·안정으로 나눠 보여줍니다
+              {fieldSel ? ` · ${FIELD_LABEL[fieldSel]}만` : ''}
+              {campusSel === 'main' ? ' · 본캠만' : campusSel === 'branch' ? ' · 지역캠만' : ''}
+            </span>
+          </div>
           <div style={S.exRow}>
             {[
               '수도권 간호학과 중 내신 3.0으로 적정·안정인 교과전형',
@@ -1898,6 +1961,16 @@ function toggleEdit(){
             </div>
           </div>
           <div style={S.ctrlGroup}>
+            <span style={S.ctrlLabel}>계열 <span style={S.ctrlHint}>(학과명으로 판별)</span></span>
+            <div style={S.segRow}>
+              {FIELD_OPTS.map(([v, lab]) => (
+                <button key={v || 'all'} onClick={() => setFieldSel(v)}
+                  style={{ ...S.segBtn, ...(fieldSel === v ? S.segOn : {}) }}>{lab}</button>
+              ))}
+            </div>
+            <span style={S.ctrlHint}>자유전공·융합학부처럼 교차모집하는 모집단위는 '전체'에서만 보입니다</span>
+          </div>
+          <div style={S.ctrlGroup}>
             <span style={S.ctrlLabel}>캠퍼스 <span style={S.ctrlHint}>(대학 목록·AI 검색에 함께 적용)</span></span>
             <div style={S.segRow}>
               {[['', '전체'], ['main', '본캠'], ['branch', '지역캠']].map(([v, lab]) => (
@@ -1950,6 +2023,74 @@ function toggleEdit(){
         </div>
 
         {error && <div style={S.error}>⚠ {error}</div>}
+
+        {/* 성적 기반 추천 결과 — 교과·종합 × 소신·적정·안정 */}
+        {reco && (
+          <div style={S.aiResBox}>
+            <div style={S.aiResHead}>
+              <b style={{ fontSize: 14 }}>🎯 내신 {Number(reco.grade).toFixed(2)}등급으로 갈 만한 곳</b>
+              <span style={S.plCount}>
+                조건에 맞는 후보 {reco.groups.reduce((a, g) => a + g.total, 0).toLocaleString()}건 중 {reco.shown}건 표시
+              </span>
+              <button style={S.plDel} title="추천 닫기" onClick={() => setReco(null)}>✕</button>
+            </div>
+            <div style={S.chipRow}>
+              <span style={S.fchip}>기준 내신 {Number(reco.grade).toFixed(2)}</span>
+              <span style={S.fchip}>{reco.baseYear} 기준</span>
+              {(reco.filter?.fields || []).map((f) => <span key={f} style={S.fchip}>{FIELD_LABEL[f] || f}</span>)}
+              {reco.filter?.campus === 'main' && <span style={S.fchip}>본캠만</span>}
+              {reco.filter?.campus === 'branch' && <span style={S.fchip}>지역캠만</span>}
+              {reco.filter?.capitalOnly && <span style={S.fchip}>수도권</span>}
+            </div>
+            {reco.summaryError && (
+              <div style={S.relaxNote}>AI 요약을 만들지 못했습니다 — {reco.summaryError} (후보 목록은 아래 그대로입니다)</div>
+            )}
+            {!reco.summary && !reco.summaryError && (
+              <div style={S.relaxNote}>AI 키가 없어 설명 없이 후보만 뽑았습니다. 설정에서 키를 넣으면 상담용 설명이 함께 나옵니다.</div>
+            )}
+            {reco.summary && <div style={S.aiSummary}>{reco.summary}</div>}
+
+            {reco.groups.map((g) => (
+              <div key={g.track} style={S.recoGroup}>
+                <div style={S.recoTrack}>
+                  {g.track}전형
+                  <span style={S.plCount}>조건에 맞는 후보 {g.total.toLocaleString()}건</span>
+                  {g.track === '종합' && <span style={S.recoWarn}>종합은 컷이 참고치입니다 — 서류·면접에서 갈립니다</span>}
+                </div>
+                {g.buckets.map((bk) => {
+                  const vc = VCOLORS[bk.verdict] || {};
+                  return (
+                    <div key={bk.verdict}>
+                      <div style={S.recoBucket}>
+                        <span style={{ ...S.badge, color: vc.color, background: vc.bg, borderColor: vc.border, padding: '2px 9px' }}>
+                          {bk.verdict}
+                        </span>
+                        <span style={S.recoHint}>{BUCKET_HINT[bk.verdict]}</span>
+                        <span style={S.plCount}>{bk.total.toLocaleString()}건 중 {bk.results.length}건</span>
+                      </div>
+                      {bk.results.length ? (
+                        <div style={S.grid}>
+                          {bk.results.map((c) => (
+                            <Card key={`rc-${g.track}-${bk.verdict}-${c.key}`} card={c} grade={grade} baseYear={baseYear}
+                              cutPct={cutPct} onPin={togglePin} pinned={pinnedKeys.has(c.key)} student={student}
+                              onSave={savePlacement} saving={savingKey === c.key} saved={isSaved(c)}
+                              onDetail={openDetail} ai={aiJudgments[c.key]} />
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={S.plEmpty}>이 구간에 해당하는 후보가 없습니다.</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+            <div style={S.aiFoot}>
+              후보와 숫자는 어디가 공식 입결에서 코드가 직접 골랐습니다. 판정은 {cutPct === 70 ? '70' : cutPct}%컷과 기준 내신의 차이로만 계산한 참고 지표이며,
+              반영교과·수능최저·모집인원 변화를 함께 검토해야 합니다.
+            </div>
+          </div>
+        )}
 
         {/* AI 검색 결과 */}
         {aiSearch && (
@@ -2248,6 +2389,14 @@ const S = {
   aiResHead: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 7 },
   aiIntent: { fontSize: 12, color: '#5c6b7c', marginBottom: 7 },
   chipRow: { display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 },
+  fieldTag: { marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: '#4a5b7a', background: '#eef2f9', border: '1px solid #dde4ef', borderRadius: 6, padding: '1px 6px', verticalAlign: 'middle' },
+  recoRow: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 8 },
+  recoBtn: { border: 'none', background: 'linear-gradient(135deg,#2b6fe3,#1b4fae)', color: '#fff', borderRadius: 10, padding: '10px 18px', fontSize: 13.5, fontWeight: 800, cursor: 'pointer', boxShadow: '0 3px 10px rgba(43,111,227,0.28)' },
+  recoGroup: { marginTop: 14, borderTop: '1px solid #e6ecf4', paddingTop: 10 },
+  recoTrack: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 14, fontWeight: 800, color: '#26313e', marginBottom: 6 },
+  recoBucket: { display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap', margin: '10px 0 6px' },
+  recoHint: { fontSize: 11.5, color: '#7b8798', fontWeight: 600 },
+  recoWarn: { fontSize: 11.5, fontWeight: 700, color: '#9a5b00', background: '#fff4e0', border: '1px solid #f3ddb4', borderRadius: 6, padding: '2px 8px' },
   fchip: { fontSize: 11, fontWeight: 700, color: '#4a3a7a', background: '#f2edfc', border: '1px solid #e0d8f5', borderRadius: 7, padding: '2px 8px' },
   relaxNote: { fontSize: 11.5, color: '#8a6d1f', background: '#fdf7e3', border: '1px solid #f0e6b8', borderRadius: 8, padding: '6px 10px', marginBottom: 8 },
   aiSummary: { fontSize: 12.8, lineHeight: 1.75, color: '#26313e', background: '#f8f6fe', border: '1px solid #e8e2f8', borderRadius: 10, padding: '11px 13px', marginBottom: 10, whiteSpace: 'pre-wrap' },

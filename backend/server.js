@@ -15,6 +15,7 @@ import {
   getStudentIdByCode, countStudentUploads, deleteStudentUpload,
 } from './services/boardStore.js';
 import { searchEntries as searchIpgyeolEntries, univLabel as ipgUnivLabel, REGIONS as IPG_REGIONS, TRACKS as IPG_TRACKS } from './services/ipgyeolSearch.js';
+import { fieldOf } from './services/deptField.js';
 import { attachSkypassNotes, hasScaleWarning, skypassLoaded } from './services/skypassNotes.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
 import {
@@ -2796,6 +2797,8 @@ app.get('/api/ipgyeol/:unvCd', requireAuth, (req, res) => {
   if (!/^[0-9]+$/.test(unvCd)) return res.status(400).json({ success: false, error: '잘못된 대학 코드' });
   try {
     const data = JSON.parse(readFileSync(join(ADIGA_DIR, 'ipgyeol', `${unvCd}.json`), 'utf8'));
+    // 계열(문과/이과)은 원본에 없다. 학과명에서 판별해 붙여 보낸다 — 화면의 계열 필터가 이 값을 쓴다.
+    data.entries = (data.entries || []).map((e) => ({ ...e, field: fieldOf(e.dept) }));
     // 지원 시 유의사항(SKYPASS)을 카드에 붙여 보낸다 — 특히 '이 대학 등급은 자체 환산'
     // 경고가 있으면 화면이 판정을 액면 그대로 읽지 않게 해야 한다.
     const skypass = attachSkypassNotes(unvCd, data.entries || []);
@@ -2996,6 +2999,8 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
   const { query, studentProfile, baseYear = '2026', limit = 24, campus } = req.body || {};
   // 화면의 캠퍼스 선택은 AI 해석보다 우선한다 — 원장이 직접 고른 조건이다
   const campusPref = campus === 'main' || campus === 'branch' ? campus : null;
+  const fieldsPref = (Array.isArray(req.body?.fields) ? req.body.fields : [])
+    .filter((f) => ['인문', '자연', '예체능'].includes(f));
   if (!String(query || '').trim()) return res.status(400).json({ success: false, message: '검색어가 비었습니다' });
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -3023,6 +3028,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
  "regions": ["서울"],            // 지역명 배열. '수도권/인서울'이면 capitalOnly 사용
  "capitalOnly": true,             // 수도권(서울·경기·인천)
  "campus": "main",                // main=본교(본캠)만, branch=분교·제2캠퍼스만. 캠퍼스를 지정했을 때만
+ "fields": ["자연"],              // 계열. 인문=문과, 자연=이과, 예체능. 계열을 말했을 때만
  "univKeywords": ["중앙대"],      // 특정 대학 지정 시에만
  "deptKeywords": ["간호","보건"], // 학과명 포함 키워드(OR). 계열 질문이면 대표 학과명을 여러 개 펼쳐라
  "excludeKeywords": ["야간"],
@@ -3043,6 +3049,8 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
 [해석 규칙 — 질문에 있는 조건은 하나도 빠뜨리지 말 것]
 - 지역어는 반드시 반영한다. '수도권/인서울/서울권 통틀어' → capitalOnly:true, '서울' → regions:["서울"],
   '지방/지역대학' → regions에 비수도권 지역들, 특정 시도명 → 그대로 regions.
+- 계열: '문과/인문계열/문과생' → fields:["인문"], '이과/자연계열/이과생' → fields:["자연"], '예체능' → fields:["예체능"].
+  학과를 이미 지정했으면(간호·경영 등) 계열은 넣지 않는다 — 중복으로 걸어 봐야 좁아지기만 한다.
 - 캠퍼스: '본캠만/본교만/지역캠 빼고/분교 제외' → campus:"main", '지역캠/분교/이원화 캠퍼스만' → campus:"branch".
   단, '고려대 세종캠'처럼 특정 캠퍼스를 지목하면 univKeywords에 대학명을 넣고 campus:"branch"를 함께 쓴다.
   캠퍼스 얘기가 없으면 campus는 넣지 마라(본캠·지역캠 모두 검색).
@@ -3088,6 +3096,9 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
     const filter = JSON.parse(m[0]);
     filter.baseYear = baseYear;
     if (filter.campus !== 'main' && filter.campus !== 'branch') delete filter.campus;
+    if (Array.isArray(filter.fields)) filter.fields = filter.fields.filter((f) => ['인문', '자연', '예체능'].includes(f));
+    if (!filter.fields?.length) delete filter.fields;
+    if (fieldsPref.length) filter.fields = fieldsPref;   // 화면에서 고른 계열이 우선
     if (campusPref) filter.campus = campusPref;
     filter.limit = Math.min(Number(filter.limit) || Number(limit) || 24, 40);
     if (filter.targetGrade == null && studentProfile?.gpa != null) filter.targetGrade = Number(studentProfile.gpa);
@@ -3111,7 +3122,8 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
       ['regions', () => { delete filter.regions; delete filter.capitalOnly; relaxed.push('지역'); }],
       // 캠퍼스는 AI가 스스로 넣었을 때만 푼다. 화면에서 직접 고른 조건은 끝까지 지킨다.
       ['campus', () => { delete filter.campus; relaxed.push('캠퍼스'); }],
-    ].filter(([k]) => !(k === 'campus' && campusPref));
+      ['fields', () => { delete filter.fields; relaxed.push('계열'); }],
+    ].filter(([k]) => !(k === 'campus' && campusPref) && !(k === 'fields' && fieldsPref.length));
     for (const [key, drop] of relaxSteps) {
       if (total > 0) break;
       if (filter[key] == null && !(key === 'regions' && filter.capitalOnly)) continue;
@@ -3179,6 +3191,102 @@ ${knowledge.length ? knowledge.map((k) => `[${k.종류}] ${k.제목}\n${k.내용
   } catch (err) {
     console.error('[ipgyeol/ai-search] 오류:', err.message);
     sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
+  }
+});
+
+// ── 성적 기반 추천 — "이 성적으로 갈 만한 곳" 을 교과·종합 한 번에 ──
+//
+// AI 검색과 다른 점: 질문이 없다. 내신·계열·지역만 있으면 코드가 안정/적정/소신 세 칸을
+// 교과·종합 각각 채운다. 숫자와 후보 선정은 전부 코드가 하고, AI 는 (키가 있을 때만)
+// 그 결과를 읽고 상담용 설명을 붙인다. 그래서 AI 키가 없어도 추천 자체는 나온다.
+app.post('/api/ipgyeol/recommend', requireAuth, async (req, res) => {
+  const b = req.body || {};
+  const grade = Number(b.grade);
+  if (!Number.isFinite(grade) || grade < 1 || grade > 9) {
+    return res.status(400).json({ success: false, message: '내신 등급이 있어야 추천할 수 있습니다.' });
+  }
+  const baseYear = String(b.baseYear || '2026');
+  const fields = (Array.isArray(b.fields) ? b.fields : []).filter((f) => ['인문', '자연', '예체능'].includes(f));
+  const campus = b.campus === 'main' || b.campus === 'branch' ? b.campus : null;
+  const regions = (Array.isArray(b.regions) ? b.regions : []).filter((r) => IPG_REGIONS.includes(r));
+  const deptKeywords = (Array.isArray(b.deptKeywords) ? b.deptKeywords : [])
+    .map((k) => String(k).trim()).filter(Boolean).slice(0, 8);
+  const per = Math.min(Math.max(Number(b.perBucket) || 6, 3), 12);
+
+  const base = {
+    baseYear, targetGrade: grade, sortBy: 'fit',
+    ...(fields.length ? { fields } : {}),
+    ...(campus ? { campus } : {}),
+    ...(regions.length ? { regions } : {}),
+    ...(b.capitalOnly ? { capitalOnly: true } : {}),
+    ...(deptKeywords.length ? { deptKeywords } : {}),
+  };
+
+  // 소신 → 적정 → 안정 순으로 담는다. 상담은 위에서 아래로 내려오며 이야기한다.
+  const BUCKETS = ['소신', '적정', '안정'];
+  const groups = [];
+  for (const track of ['교과', '종합']) {
+    const buckets = BUCKETS.map((verdict) => {
+      const { total, results } = searchIpgyeolEntries({ ...base, tracks: [track], verdicts: [verdict], limit: per });
+      return { verdict, total, results };
+    });
+    groups.push({ track, buckets, total: buckets.reduce((a, x) => a + x.total, 0) });
+  }
+  const shown = groups.reduce((a, g) => a + g.buckets.reduce((n, x) => n + x.results.length, 0), 0);
+
+  const apiKey = req.headers['x-api-key'];
+  const payload = { success: true, grade, baseYear, filter: base, groups, shown };
+  if (!apiKey || b.summary === false || !shown) return res.json(payload);
+
+  // 요약은 시간이 걸린다 — AI 검색과 같은 SSE keepalive 로 끊기지 않게 보낸다
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const compact = groups.map((g) => ({
+    전형구분: g.track,
+    후보: g.buckets.flatMap((bk) => bk.results.slice(0, 6).map((r) => ({
+      판정: bk.verdict, 대학: ipgUnivLabel(r.univ.name), 지역: r.univ.region, 학과: r.entry.dept,
+      계열: r.entry.field || '미분류', 전형명: r.entry.typeName,
+      컷70: r.match.cut70, 기준연도: r.match.cutYear, 전년대비: r.match.delta,
+      경쟁률: r.match.rate, 충원: r.match.fill, 모집: r.match.recruit,
+    }))),
+  }));
+  const fieldText = fields.length ? fields.map((f) => ({ 인문: '문과', 자연: '이과', 예체능: '예체능' }[f])).join('·') : '계열 지정 없음';
+  const sumPrompt = `당신은 수시 배치 상담 컨설턴트입니다.
+내신 ${grade.toFixed(2)}등급 학생에게 학생부교과·학생부종합 후보를 정리해 설명하십시오.
+후보는 이미 대학어디가 공식 입결에서 코드가 골라 놓았습니다. 당신은 읽고 설명만 합니다.
+
+[출력 — 마크다운, 이모지 금지, 합니다체, 18줄 이내]
+- 첫 줄: 이 성적대의 전반적인 위치를 한 문장으로
+- **교과전형**: 소신·적정·안정에서 각각 눈여겨볼 곳과 이유
+- **종합전형**: 같은 방식으로. 교과와 갈리는 지점이 있으면 짚어 주십시오
+- **주의할 점**: 경쟁률 급등·모집인원 적음·컷 상승 등 표에서 읽히는 리스크
+- **다음 확인 사항**: 이 자료만으로 알 수 없는 것(반영교과·수능최저·서류 경쟁력 등)
+
+[원칙]
+- 표에 있는 숫자만 인용하고 새로 계산하거나 추정하지 마십시오.
+- 학교 이름의 캠퍼스 표기(제2캠·(세종) 등)를 임의로 떼지 마십시오. 본캠과 다른 학교입니다.
+- 종합전형은 내신만으로 판정할 수 없습니다. 컷은 참고치이고 서류·면접이 갈린다는 점을 분명히 하십시오.
+- 후보가 없는 칸이 있으면 없다고 말하고, 왜 없는지(성적대·조건) 한 줄로 밝히십시오.`;
+  try {
+    const profileLine = b.studentProfile
+      ? `[학생] ${b.studentProfile.name || '-'} / 희망 전공 ${b.studentProfile.major || '-'} / 목표 ${b.studentProfile.targetUniv || '-'}`
+      : '[학생] 정보 없음';
+    const summary = await callAIModel({
+      aiModel, submodel, apiKey, systemPrompt: sumPrompt, maxTokens: 2000,
+      userMsg: `[기준 내신] ${grade.toFixed(2)}등급\n[계열] ${fieldText}\n[기준연도] ${baseYear}\n${profileLine}\n\n=== 후보 표 ===\n${JSON.stringify(compact, null, 1)}`,
+    });
+    sendDone({ ...payload, summary });
+  } catch (err) {
+    console.error('[ipgyeol/recommend] 요약 오류:', err.message);
+    // 요약이 실패해도 추천 자체는 살아 있다 — 후보 목록은 그대로 돌려준다
+    sendDone({ ...payload, summaryError: friendlyAIError(err, aiModel) });
   }
 });
 

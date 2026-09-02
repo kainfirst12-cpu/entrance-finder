@@ -6,6 +6,7 @@
 //   → AI는 "자연어 → 필터 JSON" 변환만 맡고, 실제 검색은 이 모듈이 결정적으로 수행한다.
 //     (AI가 숫자를 지어내는 일이 원천적으로 불가능한 구조)
 import { readFileSync, readdirSync } from 'fs';
+import { fieldOf, FIELDS } from './deptField.js';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -15,6 +16,7 @@ const IPG_DIR = join(ADIGA_DIR, 'ipgyeol');
 export const REGIONS = ['서울', '경기', '인천', '강원', '대전', '세종', '충남', '충북',
   '광주', '전남', '전북', '대구', '경북', '부산', '울산', '경남', '제주'];
 export const TRACKS = ['교과', '종합', '논술', '실기'];
+export { FIELDS, FIELD_LABEL } from './deptField.js';
 const CAPITAL = ['서울', '경기', '인천'];
 
 // 캠퍼스 구분 — 어디가 원본은 이름 뒤 대괄호로만 본캠/지역캠을 구분한다.
@@ -46,7 +48,7 @@ export function univLabel(name) {
 
 // 압축 인덱스: 전 대학 학과×전형 71,000여 건을 필터링에 필요한 필드만 담아 상주시킨다.
 // 카드 렌더에 필요한 전체 연도 상세(환산점수 등)는 상위 N건이 정해진 뒤 원본에서 다시 읽는다.
-let INDEX = null;   // [{ u, d, t, tn, y: { '2026': [g70, rate, fill, recruit] } }]
+let INDEX = null;   // [{ u, d, t, tn, f(계열), y: { '2026': [g70, rate, fill, recruit] } }]
 let UNIVS = null;   // unvCd → { name, region, campus, base, sunung: [{track, text}] }
 
 const nfc = (s) => String(s || '').normalize('NFC');
@@ -70,7 +72,7 @@ export function buildIndex() {
         // 경쟁률·모집인원 0은 실제 값이 아니라 미기재다. 그대로 두면 '경쟁률 낮은 순'이 빈칸으로 뒤덮인다.
         y[yr] = [d.grade70 ?? null, d.rate > 0 ? d.rate : null, d.fill ?? null, d.recruit > 0 ? d.recruit : null];
       }
-      idx.push({ u: j.unvCd, d: e.dept, t: e.track, tn: e.typeName, y });
+      idx.push({ u: j.unvCd, d: e.dept, t: e.track, tn: e.typeName, f: fieldOf(e.dept), y });
     }
   }
   INDEX = idx;
@@ -116,7 +118,8 @@ function sunungFor(univ, track) {
 /**
  * 결정적 검색 — AI가 만든 필터를 그대로 적용한다.
  * filter: {
- *   regions[], capitalOnly, campus('main'|'branch'), univKeywords[], deptKeywords[], excludeKeywords[],
+ *   regions[], capitalOnly, campus('main'|'branch'), fields[]('인문'|'자연'|'예체능'),
+ *   univKeywords[], deptKeywords[], excludeKeywords[],
  *   tracks[], typeKeywords[], gradeMin, gradeMax, targetGrade, verdicts[],
  *   rateMin, rateMax, recruitMin, trend('easing'|'tightening'), sunung('none'|'required'),
  *   baseYear, sortBy, limit
@@ -134,6 +137,8 @@ export function searchEntries(filter = {}) {
   ]);
   const tracks = new Set((filter.tracks || []).filter((t) => TRACKS.includes(t)));
   const campusPick = filter.campus === 'main' || filter.campus === 'branch' ? filter.campus : null;
+  // 계열(문과/이과) — 학과명에서 판별한다. 미분류(자유전공·융합 등)는 어느 계열로도 잡히지 않는다.
+  const fields = new Set((filter.fields || []).filter((f) => FIELDS.includes(f)));
   const deptKw = (filter.deptKeywords || []).map(nfc).filter(Boolean);
   const exKw = (filter.excludeKeywords || []).map(nfc).filter(Boolean);
   const typeKw = (filter.typeKeywords || []).map(nfc).filter(Boolean);
@@ -149,6 +154,7 @@ export function searchEntries(filter = {}) {
     if (univKw.length && !univKw.some((k) => nfc(u.name).includes(k))) continue;
     // 본캠/지역캠(분교·제N캠퍼스)은 입결이 전혀 다른 학교다. 섞이면 상담에서 그대로 사고가 된다.
     if (campusPick && u.campus !== campusPick) continue;
+    if (fields.size && !fields.has(row.f)) continue;
     if (tracks.size && !tracks.has(row.t)) continue;
     if (deptKw.length && !deptKw.some((k) => nfc(row.d).includes(k))) continue;
     if (exKw.length && exKw.some((k) => nfc(row.d).includes(k) || nfc(row.tn).includes(k))) continue;
@@ -179,7 +185,7 @@ export function searchEntries(filter = {}) {
 
     hits.push({
       unvCd: row.u, univName: u.name, region: u.region, campus: u.campus,
-      dept: row.d, track: row.t, typeName: row.tn,
+      dept: row.d, track: row.t, typeName: row.tn, field: row.f,
       cut70: L.g70, cutYear: L.year, rate: L.rate, fill: L.fill, recruit: L.recruit,
       delta, verdict: v,
     });
@@ -209,7 +215,7 @@ export function searchEntries(filter = {}) {
     results.push({
       key: `${h.unvCd}|${h.dept}|${h.track}|${h.typeName}`,
       univ: { unvCd: h.unvCd, name: h.univName, region: h.region, campus: h.campus },
-      entry,
+      entry: { ...entry, field: h.field },
       sunung: sunungFor(UNIVS.get(h.unvCd), h.track),
       jonghapSiblings: [],
       match: { cut70: h.cut70, cutYear: h.cutYear, rate: h.rate, fill: h.fill, recruit: h.recruit, delta: h.delta, verdict: h.verdict },
