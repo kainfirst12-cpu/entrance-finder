@@ -282,6 +282,7 @@ function _parseSections(data) {
     roadmap:        '3년 로드맵 및 실행 계획',
     recordFeedback: '세부능력 및 특기사항 개선안',
     dashboard:      '종합 평가 및 최종 권고사항',
+    fullText:       '분석 전문',
   };
   return Object.entries(nameMap)
     .filter(([k]) => data[k] && typeof data[k] === 'string')

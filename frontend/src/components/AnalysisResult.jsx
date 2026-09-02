@@ -49,6 +49,8 @@ const SECTION_MAP = [
   { key: 'roadmap',        num: '5', title: '핵심 리스크 및 대응 방안' },
   { key: 'recordFeedback', num: '6', title: '실행 계획' },
   { key: 'dashboard',      num: '7', title: '종합 평가 및 권고사항' },
+  // 섹션이 나뉘지 않은 기록을 되살렸을 때만 값이 있다(그 외에는 없는 칸이라 화면에 나오지 않는다)
+  { key: 'fullText',       num: '·', title: '분석 전문' },
 ];
 
 // 검증 반영 결과에서 메타 표현 제거 (보수적: 명백한 마커만)

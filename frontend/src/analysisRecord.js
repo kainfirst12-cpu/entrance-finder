@@ -17,6 +17,8 @@ export const ANALYSIS_SECTIONS = [
   { key: 'roadmap',        num: '5', title: '핵심 리스크 및 대응 방안' },
   { key: 'recordFeedback', num: '6', title: '실행 계획' },
   { key: 'dashboard',      num: '7', title: '종합 평가 및 권고사항' },
+  // 섹션이 나뉘지 않은 기록을 통째로 담는 칸. 되살린 뒤 다시 배정해도 같은 칸으로 돌아온다.
+  { key: 'fullText',       num: '·', title: '분석 전문' },
 ];
 
 // 제목 비교용 정규화 — 괄호 주석('(6장 카드)')·단계 번호·공백·기호를 걷어낸다
@@ -61,10 +63,21 @@ export function analysisResultsFromText(text) {
   return results;
 }
 
-/** 이 기록을 분석 화면으로 되살릴 수 있는가 (섹션이 하나라도 잡히면 가능) */
+// 생기부 분석 계열의 기록인가 — 입결·배치 보고서는 분석 화면이 다룰 글이 아니다
+function looksLikeAnalysis(rec) {
+  const t = `${rec?.type || ''} ${rec?.title || ''}`;
+  if (/입결|배치|판정|로드맵/.test(t)) return false;
+  return /생기부|분석/.test(t);
+}
+
+/** 이 기록을 분석 화면으로 되살릴 수 있는가 */
 export function isRestorableRecord(rec) {
-  if (!rec?.content) return false;
-  return Object.keys(analysisResultsFromText(rec.content)).length > 0;
+  const body = String(rec?.content || '').trim();
+  if (body.length < 40) return false;
+  if (Object.keys(analysisResultsFromText(body)).length > 0) return true;
+  // 섹션 제목이 없는 기록(다른 도구에서 옮겨 온 글 등)도 생기부 분석이면 전문 그대로 연다.
+  // 리포트를 다시 만드는 것이 목적이므로, 칸이 하나뿐이어도 인쇄·PDF·워드는 그대로 나온다.
+  return looksLikeAnalysis(rec);
 }
 
 // 기록 제목에 적힌 모델 이름('Gemini 3.1 Pro 분석')에서 모델 키를 되찾는다.
@@ -84,8 +97,14 @@ export function modelKeyFromTitle(title) {
 
 /** 학생 카드 + 기록 → 분석 결과 화면이 그대로 쓰는 데이터 */
 export function analysisDataFromRecord(student, rec) {
-  const results = analysisResultsFromText(rec?.content);
-  if (!Object.keys(results).length) return null;
+  const body = String(rec?.content || '').trim();
+  let results = analysisResultsFromText(body);
+  // 섹션이 안 잡히면 전문을 한 칸에 담는다. 없는 제목을 붙여 나누는 것보다,
+  // 글을 그대로 두고 '분석 전문'이라고 말하는 편이 정직하고 리포트도 온전하다.
+  if (!Object.keys(results).length) {
+    if (!body) return null;
+    results = { fullText: body };
+  }
   return {
     results,
     studentData: {
