@@ -70,18 +70,25 @@ async function postForResult(url, opts) {
 // 예전 방식(기록을 전부 이어붙여 '내신…N등급'류 패턴의 첫 매치를 취함)은 수능최저 문구의 '등급 합 4'나
 // 과목별 등급 같은 남의 숫자를 집어와 배치 판정을 통째로 틀어놨다. 그래서
 //  ① 분석·브리핑 기록만 보고 ② 줄 단위로 신뢰도 순서대로 찾고 ③ 근거 문구를 함께 돌려준다.
-const GPA_TOKEN = /(?<![\d.])([1-9](?:\.\d{1,3})?)(?![\d.])/g;
+// 숫자는 '등급'에 붙어 있을 때만 내신 후보로 본다.
+//   그냥 소수점 숫자를 집으면 역량 평가표의 '8.0점'(10점 만점)이나 이수단위 '24' 같은 남의 숫자가
+//   내신으로 둔갑한다 — 실제로 2.21등급 학생이 콘솔에서 8등급으로 떴다.
+//   '9등급제 기준'처럼 제도를 설명하는 말은 성적이 아니므로 '등급제'는 제외한다.
+const GRADE_TOKEN = /(?<![\d.])([1-9](?:\.\d{1,3})?)(?![\d.])\s*등급(?!제)/g;
 const NOISE_LINE = /수능|모의고사|모평|최저|백분위|표준점수|영역\s*등급|등급\s*합/;
 const round2 = (v) => Math.round(v * 100) / 100;
 
-function gpaTokens(line) {
+// 한 줄에서 '○.○○등급' 꼴만 뽑는다(소수점 없는 '1등급'은 과목별 등급일 때가 많아 쓰지 않는다)
+function gradeTokens(line) {
   const out = [];
-  for (const m of line.matchAll(GPA_TOKEN)) {
+  for (const m of line.matchAll(GRADE_TOKEN)) {
     const v = parseFloat(m[1]);
-    if (v >= 1 && v <= 9) out.push({ v, decimal: m[1].includes('.') });
+    if (v >= 1 && v <= 9 && m[1].includes('.')) out.push(v);
   }
   return out;
 }
+// 표 행이면 왼쪽 열이 '환산 평균 등급(전과목)'이고 오른쪽은 주요교과 등급이라, 첫 값을 쓴다.
+const firstGrade = (line) => (gradeTokens(line)[0] ?? null);
 
 // ⚠ 우리가 자동으로 쓴 '입결 배치 보고서'는 여기서 읽지 않는다.
 //   그 글에는 "현재 내신 2.30"이 적히는데, 그건 우리가 방금 쓴 값이다. 그걸 다시 근거로 삼으면
@@ -95,32 +102,36 @@ function extractGradeFromRecords(s) {
   const targets = pool.length ? pool : all; // 분석 기록이 없으면 어쩔 수 없이 전체
   for (const rec of targets) {
     const lines = String(rec.content).split('\n');
-    // 신뢰도 순: ① "…2.69등급을 기준으로" ② 전체 합산·전 교과·최종/환산 내신 줄 ③ '내신 2.69'
+    // 신뢰도 순: ① 글이 직접 밝힌 기준 등급 ② 누적 행 ③ 전체 합산·환산 평균 줄 ④ '내신 2.69'
     const rules = [
-      (line) => {
+      // ① "…2.69등급을 기준으로 지원" — 사람이 결론으로 쓴 값
+      { get: (line) => {
         const m = line.match(/([1-9](?:\.\d{1,3})?)\s*등급(?:을|를)?\s*(?:기준|적용|사용)/);
         return m ? parseFloat(m[1]) : null;
-      },
-      (line) => {
-        if (!/전체\s*합산|전\s*교과|최종\s*내신|환산\s*내신|평균\s*등급|내신\s*평균|평균\s*내신/.test(line)) return null;
-        const toks = gpaTokens(line);
-        const dec = toks.filter((t) => t.decimal);
-        return dec.length ? dec[dec.length - 1].v : null; // 표 행이면 마지막 열(평균등급)
-      },
-      (line) => {
-        if (!/내신/.test(line)) return null;
-        const dec = gpaTokens(line).filter((t) => t.decimal);
-        return dec.length ? dec[0].v : null;
-      },
+      } },
+      // ② 누적 행 — 성적표는 학기순으로 쌓이므로 마지막 누적 행이 최신 누적 성적이다
+      //    (예: '1학년 전체 … 2.60' → '2학년 전체 … 1.80' → '1~2학년 누적 … 2.21' 이면 2.21)
+      { last: true, get: (line) => (/누적|전\s*학년/.test(line) ? firstGrade(line) : null) },
+      // ③ 전체 합산·전 교과·최종/환산 내신·평균 등급 줄
+      { get: (line) => (/전체\s*합산|전\s*교과|최종\s*내신|환산\s*내신|평균\s*등급|내신\s*평균|평균\s*내신/.test(line)
+        ? firstGrade(line) : null) },
+      // ④ '내신 2.69' — 등급이라는 말 없이 적힌 경우. 숫자가 '내신' 바로 뒤일 때만 받는다.
+      { get: (line) => {
+        if (/내신/.test(line)) { const g = firstGrade(line); if (g != null) return g; }
+        const m = line.match(/내신[^\d\n]{0,10}?([1-9]\.\d{1,3})(?![\d.])/);
+        return m ? parseFloat(m[1]) : null;
+      } },
     ];
     for (const rule of rules) {
+      let hit = null;
       for (const line of lines) {
         if (NOISE_LINE.test(line)) continue; // 수능·최저 문구에서 등급 숫자를 집지 않는다
-        const v = rule(line);
-        if (v != null && v >= 1 && v <= 9) {
-          return { value: round2(v), snippet: line.trim().slice(0, 90), from: rec.type || '기록' };
-        }
+        const v = rule.get(line);
+        if (v == null || v < 1 || v > 9) continue;
+        hit = { value: round2(v), snippet: line.trim().slice(0, 90), from: rec.type || '기록' };
+        if (!rule.last) break;               // 기본은 먼저 나온 줄, ②만 마지막 줄
       }
+      if (hit) return hit;
     }
   }
   return null;
