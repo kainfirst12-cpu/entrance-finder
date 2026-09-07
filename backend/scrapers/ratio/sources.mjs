@@ -73,8 +73,13 @@ async function fromUway() {
     const univ = univName(rawName);
     if (!univ) continue;
     const { start, end } = period(cells[5]);
-    const ratioUrl = links.find((a2) => /경쟁률/.test(a2.text))?.href || null;
+    // '준비중' 은 링크가 javascript:void(0) 로 온다 — 주소가 아니므로 없는 것으로 본다.
+    const isUrl = (h) => /^https?:\/\//i.test(h || '');
+    const rawRatio = links.find((a2) => /경쟁률/.test(a2.text))?.href || null;
+    const ratioUrl = isUrl(rawRatio) ? rawRatio : null;
     const applyUrl = links[0]?.href || null;
+    // 자동으로 못 가져오는 대학이라도 **어디서 보는지는 알려줘야 한다** — 대학 쪽 주소를 남긴다.
+    const homeUrl = isUrl(applyUrl) ? applyUrl : null;
     out.push({
       univ,
       region: cells[2] || null,
@@ -84,6 +89,7 @@ async function fromUway() {
       periodEnd: end,
       ratioUrl,
       applyUrl: /uwayapply[.]com/.test(applyUrl || '') ? applyUrl : null,
+      homeUrl,
       kind: ratioUrl ? hostKind(ratioUrl) : 'own',
       uwaySolo: /[ ]U$/.test(clean(rawName)),
     });

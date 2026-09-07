@@ -238,6 +238,7 @@ export async function initDb() {
         period_end   DATE,
         opens_at    TIMESTAMPTZ,
         closes_at   TIMESTAMPTZ,
+        home_url    TEXT DEFAULT '',
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
@@ -257,6 +258,8 @@ export async function initDb() {
         captured_at TIMESTAMPTZ NOT NULL
       );
     `);
+    // 이미 만들어진 표에도 뒤늦게 넣은 칸을 더한다(옛 배포에서 만들어진 표 호환).
+    await pool.query(`ALTER TABLE ef_ratio_univ ADD COLUMN IF NOT EXISTS home_url TEXT DEFAULT '';`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_ratio_point_key ON ef_ratio_point(univ, jeonhyeong, unit, captured_at DESC);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_ratio_point_time ON ef_ratio_point(captured_at DESC);`);
     // 한 바퀴 돌 때마다 남기는 기록 — 몇 곳이 되고 몇 곳이 실패했는지 나중에 따질 수 있어야 한다.

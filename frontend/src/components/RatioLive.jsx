@@ -292,7 +292,7 @@ export default function RatioLive({ onAuthError }) {
                   </span>
                   {!u.lastSeen && (
                     <span style={S.noData}>
-                      {u.kind === 'own' || !u.ratioUrl ? '대학이 직접 발표 — 자동 수집 안 됨' : '아직 경쟁률 미공개'}
+                      {u.ratioUrl ? '아직 경쟁률 미공개' : '대학이 직접 발표 — 링크로 확인'}
                     </span>
                   )}
                 </button>
@@ -312,18 +312,38 @@ export default function RatioLive({ onAuthError }) {
                     {kstLabel(sel.closesAt)} 마감
                   </span>
                 )}
-                {sel.ratioUrl && (
-                  <a style={S.link} href={sel.ratioUrl} target="_blank" rel="noreferrer">대학 발표 페이지 ↗</a>
-                )}
+                {sel.ratioUrl
+                  ? <a style={S.link} href={sel.ratioUrl} target="_blank" rel="noreferrer">대학 발표 페이지 ↗</a>
+                  : sel.homeUrl
+                    ? <a style={S.link} href={sel.homeUrl} target="_blank" rel="noreferrer">대학 입학처 ↗</a>
+                    : null}
               </div>
 
               {units === null && <p style={S.dim}>불러오는 중…</p>}
               {units && units.length === 0 && (
-                <p style={S.dim}>
-                  {sel.kind === 'own' || !sel.ratioUrl
-                    ? '이 대학은 대행사를 거치지 않고 직접 경쟁률을 발표합니다 — 자동으로 가져올 수 없습니다. 대학 입학처에서 확인해 주세요.'
-                    : '아직 이 대학의 경쟁률이 쌓이지 않았습니다. 접수 초반에는 공개하지 않는 대학이 많습니다.'}
-                </p>
+                <div style={S.empty}>
+                  {sel.ratioUrl ? (
+                    <>
+                      <p style={{ margin: 0 }}>아직 이 대학의 경쟁률이 쌓이지 않았습니다. 접수 초반에는 공개하지 않는 대학이 많습니다.</p>
+                      <a style={S.bigLink} href={sel.ratioUrl} target="_blank" rel="noreferrer">
+                        대학 발표 페이지에서 바로 보기 ↗
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      {/* 기다리면 채워질 것처럼 말하지 않는다 — 이 대학은 영영 자동으로 안 들어온다 */}
+                      <p style={{ margin: 0 }}>
+                        이 대학은 대행사 경쟁률 서비스를 쓰지 않아 자동으로 가져올 수 없습니다.
+                        {sel.univ === '서울대학교' && ' 서울대는 입학처에 PDF로 올립니다(학과 이름이 그림으로 박혀 있어 자동 판독이 안 됩니다).'}
+                      </p>
+                      {sel.homeUrl && (
+                        <a style={S.bigLink} href={sel.homeUrl} target="_blank" rel="noreferrer">
+                          대학 입학처 열기 ↗
+                        </a>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
               {units && units.length > 0 && (
                 <>
@@ -426,4 +446,6 @@ const S = {
   btn: { fontSize: 12.5, padding: '7px 14px', borderRadius: 9, border: 'none', background: '#3f6fe0', color: '#fff', fontWeight: 700, cursor: 'pointer' },
   btnGhost: { fontSize: 12.5, padding: '7px 14px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.14)', background: 'transparent', color: '#9db0bd', cursor: 'pointer' },
   dim: { color: '#7f93a3', fontSize: 12 },
+  empty: { color: '#9db0bd', fontSize: 13, lineHeight: 1.7, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '14px 16px', maxWidth: 620 },
+  bigLink: { display: 'inline-block', marginTop: 10, padding: '8px 14px', borderRadius: 9, background: '#3f6fe0', color: '#fff', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' },
 };

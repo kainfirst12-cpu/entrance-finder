@@ -61,10 +61,13 @@ export async function collectOne(src, { timeoutMs = 30000, retry = true } = {}) 
  * @param {number} o.concurrency 동시에 몇 곳 (기본 4 — 넉넉히 느리게)
  * @param {number} o.gapMs       묶음 사이 쉼 (기본 800ms)
  * @param {string[]} o.only      특정 대학만 (시험용)
- * @param {string[]} o.kinds     'jinhak' | 'uway' | 'own'
+ * @param {string[]} o.kinds     'jinhak' | 'uway' | 'own' (기본: 주소가 있는 곳 전부)
  */
-export async function collectAll({ concurrency = 4, gapMs = 800, only = null, kinds = ['jinhak', 'uway'], onProgress } = {}) {
+export async function collectAll({ concurrency = 4, gapMs = 800, only = null, kinds = null, onProgress } = {}) {
   let list = await loadSources();
+  // 대행사가 아닌 대학 자체 페이지도 그냥 읽어 본다. 표 머리글로 판을 읽는 파서라
+  // 모양만 같으면 그대로 읽힌다(동양대는 실제로 93개 모집단위가 그대로 나왔다).
+  // 안 맞으면 '표를 찾지 못함'으로 실패 기록만 남고 끝이라 손해가 없다.
   if (kinds) list = list.filter((s) => kinds.includes(s.kind));
   list = list.filter((s) => !!s.ratioUrl);      // 주소가 없으면 읽을 것이 없다
   if (only && only.length) list = list.filter((s) => only.includes(s.univ));

@@ -207,6 +207,7 @@ export async function upcomingDeadlines() {
     periodEnd: r.period_end,
     lastSeen: r.last_seen,
     ratioUrl: r.ratio_url,
+    homeUrl: r.home_url,
     // 대학이 직접 발표하는 곳은 자동 수집 대상이 아니다 — '아직 미공개'와 구분해서 말해야 한다.
     kind: r.kind,
     // 남은 시간(분) — 지났으면 음수

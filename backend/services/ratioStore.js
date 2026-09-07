@@ -13,17 +13,18 @@ export async function upsertUnivs(list) {
   let n = 0;
   for (const s of list) {
     await pool.query(
-      `INSERT INTO ef_ratio_univ (univ, region, kind, ratio_url, apply_url, period_start, period_end, opens_at, closes_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now())
+      `INSERT INTO ef_ratio_univ (univ, region, kind, ratio_url, apply_url, period_start, period_end, opens_at, closes_at, home_url, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
        ON CONFLICT (univ) DO UPDATE SET
          region = EXCLUDED.region, kind = EXCLUDED.kind,
          ratio_url = EXCLUDED.ratio_url, apply_url = EXCLUDED.apply_url,
          period_start = EXCLUDED.period_start, period_end = EXCLUDED.period_end,
+         home_url  = COALESCE(EXCLUDED.home_url,  ef_ratio_univ.home_url),
          opens_at  = COALESCE(EXCLUDED.opens_at,  ef_ratio_univ.opens_at),
          closes_at = COALESCE(EXCLUDED.closes_at, ef_ratio_univ.closes_at),
          updated_at = now()`,
       [s.univ, s.region || '', s.kind || '', s.ratioUrl || '', s.applyUrl || '',
-        s.periodStart || null, s.periodEnd || null, s.opensAt || null, s.closesAt || null],
+        s.periodStart || null, s.periodEnd || null, s.opensAt || null, s.closesAt || null, s.homeUrl || null],
     );
     n += 1;
   }
