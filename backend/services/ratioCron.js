@@ -82,12 +82,28 @@ export async function runOnce({ force = false } = {}) {
     // 작은 서버에서는 메모리로 죽는다(그러면 앱 전체가 함께 죽는다).
     const capturedAt = new Date().toISOString();
     let ok = 0; let fail = 0; let points = 0;
+    // 왜 실패했는지 묶어서 센다 — '실패 94곳'만으로는 손쓸 데를 못 찾는다.
+    const reasons = {};
+    const bucket = (msg) => {
+      const m = String(msg || '');
+      if (/abort|timeout|ETIMEDOUT/i.test(m)) return '시간 초과';
+      if (/fetch failed|ECONN|ENOTFOUND|socket/i.test(m)) return '연결 실패';
+      if (/HTTP 4\d\d/.test(m)) return m.match(/HTTP 4\d\d/)[0];
+      if (/HTTP 5\d\d/.test(m)) return m.match(/HTTP 5\d\d/)[0];
+      if (/표를 찾지 못함/.test(m)) return '아직 미공개(표 없음)';
+      return m.slice(0, 40) || '알 수 없음';
+    };
     await collectAll({
       concurrency: 3,
       gapMs: 1000,
       onProgress: async (_done, _total, batch) => {
         for (const r of batch) {
-          if (!r.ok) { fail += 1; continue; }
+          if (!r.ok) {
+            fail += 1;
+            const k = bucket(r.error);
+            reasons[k] = (reasons[k] || 0) + 1;
+            continue;
+          }
           ok += 1;
           try { points += await saveUnivUnits(r.univ, r.units, capturedAt); }
           catch (e) { console.warn('[ratio] 저장 실패', r.univ, e.message); }
@@ -97,8 +113,10 @@ export async function runOnce({ force = false } = {}) {
         progress = { ...progress, done: _done, ok, fail, points };
       },
     });
-    await recordRun({ startedAt, ok, fail, points });
-    lastRun = { startedAt, finishedAt: new Date().toISOString(), ok, fail, points };
+    const reasonText = Object.entries(reasons).sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${v}`).join(' · ');
+    await recordRun({ startedAt, ok, fail, points, note: reasonText });
+    lastRun = { startedAt, finishedAt: new Date().toISOString(), ok, fail, points, reasons };
     progress = null;
     console.log(`[ratio] 수집 완료 — 성공 ${ok} / 실패 ${fail} · 새 관측 ${points}줄`);
     return lastRun;
@@ -189,6 +207,8 @@ export async function upcomingDeadlines() {
     periodEnd: r.period_end,
     lastSeen: r.last_seen,
     ratioUrl: r.ratio_url,
+    // 대학이 직접 발표하는 곳은 자동 수집 대상이 아니다 — '아직 미공개'와 구분해서 말해야 한다.
+    kind: r.kind,
     // 남은 시간(분) — 지났으면 음수
     minutesLeft: r.closes_at ? Math.round((new Date(r.closes_at).getTime() - now) / MIN) : null,
   }));

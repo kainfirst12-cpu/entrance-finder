@@ -19,11 +19,21 @@ export const OUT_DIR = path.join(HERE, '..', '..', 'data', 'ratio');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** 대학 한 곳 */
-export async function collectOne(src) {
+/** 대학 한 곳.
+ *  배포 서버는 이 사이트들과 멀어서(리전이 다르다) 로컬보다 잘 끊긴다 — 실측으로
+ *  로컬 실패 26곳이 서버에서 94곳이었다. 그래서 끊긴 것은 한 번 더, 더 길게 기다려 본다. */
+export async function collectOne(src, { timeoutMs = 30000, retry = true } = {}) {
   const t0 = Date.now();
   try {
-    const { html } = await fetchHtml(src.ratioUrl, { timeoutMs: 25000 });
+    let html;
+    try {
+      ({ html } = await fetchHtml(src.ratioUrl, { timeoutMs }));
+    } catch (e) {
+      const netish = /abort|timeout|fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|socket/i.test(String(e?.message || e));
+      if (!retry || !netish) throw e;
+      await new Promise((r) => setTimeout(r, 1500));
+      ({ html } = await fetchHtml(src.ratioUrl, { timeoutMs: timeoutMs * 2 }));
+    }
     const parsed = parseRatioPage(html);
     const real = parsed.units.filter((u) => !u.isTotal);
     if (!parsed.summary.length && !real.length) {

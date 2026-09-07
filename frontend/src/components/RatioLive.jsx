@@ -235,6 +235,9 @@ export default function RatioLive({ onAuthError }) {
             ? ` · 수집 중 — ${status.progress.stage} ${status.progress.done}/${status.progress.total}곳 (새 관측 ${status.progress.points}줄)`
             : status.lastRun
               ? ` · 마지막 수집 ${kstLabel(status.lastRun.finishedAt)} (성공 ${status.lastRun.ok} / 실패 ${status.lastRun.fail} · 새 관측 ${status.lastRun.points}줄)`
+                + (status.lastRun.reasons && Object.keys(status.lastRun.reasons).length
+                  ? ` — 실패 사유: ${Object.entries(status.lastRun.reasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}곳`).join(', ')}`
+                  : '')
               : ' · 아직 수집한 적이 없습니다'}
           {status.cronEnabled === false && <span style={{ color: '#ffc46b' }}> · 자동 수집 꺼짐</span>}
           {status.check && (
@@ -287,7 +290,11 @@ export default function RatioLive({ onAuthError }) {
                       ? <span style={{ color: t.c }}>{kstLabel(u.closesAt)} 마감 · {leftLabel(u.minsLeft)}</span>
                       : <span style={S.dim}>마감 시각 미확인</span>}
                   </span>
-                  {!u.lastSeen && <span style={S.noData}>아직 경쟁률 미공개</span>}
+                  {!u.lastSeen && (
+                    <span style={S.noData}>
+                      {u.kind === 'own' || !u.ratioUrl ? '대학이 직접 발표 — 자동 수집 안 됨' : '아직 경쟁률 미공개'}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -313,7 +320,9 @@ export default function RatioLive({ onAuthError }) {
               {units === null && <p style={S.dim}>불러오는 중…</p>}
               {units && units.length === 0 && (
                 <p style={S.dim}>
-                  아직 이 대학의 경쟁률이 쌓이지 않았습니다. 접수 초반에는 공개하지 않는 대학이 많습니다.
+                  {sel.kind === 'own' || !sel.ratioUrl
+                    ? '이 대학은 대행사를 거치지 않고 직접 경쟁률을 발표합니다 — 자동으로 가져올 수 없습니다. 대학 입학처에서 확인해 주세요.'
+                    : '아직 이 대학의 경쟁률이 쌓이지 않았습니다. 접수 초반에는 공개하지 않는 대학이 많습니다.'}
                 </p>
               )}
               {units && units.length > 0 && (
