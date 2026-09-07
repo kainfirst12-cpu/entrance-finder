@@ -237,9 +237,20 @@ export default function RatioLive({ onAuthError }) {
               ? ` · 마지막 수집 ${kstLabel(status.lastRun.finishedAt)} (성공 ${status.lastRun.ok} / 실패 ${status.lastRun.fail} · 새 관측 ${status.lastRun.points}줄)`
               : ' · 아직 수집한 적이 없습니다'}
           {status.cronEnabled === false && <span style={{ color: '#ffc46b' }}> · 자동 수집 꺼짐</span>}
+          {status.check && (
+            <span style={{ color: status.check.scrapers === 'ok' && status.check.db === 'ok' ? '#7f93a3' : '#ff8a8a' }}>
+              {' · 점검: DB '}{status.check.db}{' · 수집기 '}{status.check.scrapers}{' · 주소록 '}{status.check.sources}
+            </span>
+          )}
         </p>
       )}
       {err && <p style={S.err}>{err}</p>}
+      {status?.lastError && !status.running && (
+        <p style={S.err}>
+          마지막 수집이 실패했습니다 — {status.lastError.message}
+          <span style={{ color: '#b98', marginLeft: 6 }}>({kstLabel(status.lastError.at)})</span>
+        </p>
+      )}
 
       {closingSoon.length > 0 && (
         <div style={S.soonBar}>

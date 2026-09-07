@@ -37,7 +37,7 @@ import {
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
 } from './services/db.js';
-import { startRatioCron, runInBackground as ratioRunInBackground, refreshSources as ratioRefreshSources, ratioStatus, upcomingDeadlines } from './services/ratioCron.js';
+import { startRatioCron, runInBackground as ratioRunInBackground, refreshSources as ratioRefreshSources, ratioStatus, selfCheck as ratioSelfCheck, upcomingDeadlines } from './services/ratioCron.js';
 import { listUnivs as ratioListUnivs, currentOf as ratioCurrentOf, seriesOf as ratioSeriesOf } from './services/ratioStore.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
@@ -2793,6 +2793,8 @@ app.get('/api/ratio/status', requireAuth, async (req, res) => {
     res.json({
       success: true,
       ...ratioStatus(),
+      // 왜 비어 있는지까지 함께 준다 — 화면에 '0곳'만 뜨면 원인을 짚을 수가 없다.
+      check: await ratioSelfCheck(),
       univCount: univs.length,
       withDeadline: univs.filter((u) => u.closes_at).length,
     });

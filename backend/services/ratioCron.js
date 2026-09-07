@@ -32,6 +32,8 @@ let running = false;
 let lastRun = null;
 // 한 바퀴 도는 데 몇 분이 걸린다. 부르는 쪽이 기다리지 않고 진행 상황만 물어볼 수 있게 남긴다.
 let progress = null;
+// 뒤에서 도는 일이 실패하면 아무도 모른다 — 화면이 물어볼 수 있게 마지막 실패를 들고 있는다.
+let lastError = null;
 
 /** 접수 기간 안인가 — 주소록의 시작·마감 시각으로 판단한다. */
 function windowOf(list) {
@@ -56,8 +58,15 @@ export async function runOnce({ force = false } = {}) {
   const startedAt = new Date().toISOString();
   progress = { startedAt, stage: '주소록 읽는 중', done: 0, total: 0, ok: 0, fail: 0, points: 0 };
   try {
-    const { loadSources, collectAll } = await scrapers();
+    let loadSources; let collectAll;
+    try {
+      ({ loadSources, collectAll } = await scrapers());
+    } catch (e) {
+      // 여기서 걸리면 수집기 묶음(cheerio·iconv)이 서버에 없다는 뜻이다. 원인을 그대로 남긴다.
+      throw new Error(`수집기를 불러오지 못했습니다(cheerio·iconv-lite 설치 확인): ${e?.message || e}`);
+    }
     const list = await loadSources();
+    if (!list.length) throw new Error('주소록(sources.json)이 비어 있거나 읽히지 않습니다');
     const win = windowOf(list);
     const now = Date.now();
     if (!force && win && (now < win.from || now > win.to)) {
@@ -107,7 +116,24 @@ export async function refreshSources() {
 }
 
 export function ratioStatus() {
-  return { running, lastRun, progress, scheduled: !!timer, cronEnabled: process.env.RATIO_CRON === 'on' };
+  return { running, lastRun, progress, lastError, scheduled: !!timer, cronEnabled: process.env.RATIO_CRON === 'on' };
+}
+
+/** 왜 안 되는지 스스로 짚어 본다 — 화면에 '0곳'만 뜨면 원장은 원인을 알 길이 없다. */
+export async function selfCheck() {
+  const out = { db: dbEnabled() ? 'ok' : 'DATABASE_URL 없음', scrapers: null, sources: null };
+  try {
+    const { loadSources } = await scrapers();
+    out.scrapers = 'ok';
+    try {
+      const list = await loadSources();
+      out.sources = `${list.length}곳`;
+    } catch (e) { out.sources = `읽기 실패: ${e?.message || e}`; }
+  } catch (e) {
+    out.scrapers = `불러오기 실패: ${e?.message || e}`;
+    out.sources = '확인 못 함';
+  }
+  return out;
 }
 
 /** 한 바퀴를 뒤에서 돌린다 — 부르는 쪽은 기다리지 않는다.
@@ -115,8 +141,10 @@ export function ratioStatus() {
  *  (원장 화면에 'Failed to fetch' 로 보였다 — 2026-09-07). */
 export function runInBackground(opts = {}) {
   if (running) return { started: false, reason: '이미 도는 중', progress };
+  lastError = null;
   runOnce(opts).catch((e) => {
     progress = null;
+    lastError = { at: new Date().toISOString(), message: String(e?.message || e) };
     console.warn('[ratio] 수집 실패:', e?.message || e);
   });
   return { started: true };
