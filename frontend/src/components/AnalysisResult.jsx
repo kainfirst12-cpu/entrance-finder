@@ -257,6 +257,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState(null); // raw text (legacy)
   const [verifyItems, setVerifyItems] = useState([]); // parsed checklist items
+  // 검증 글은 왔는데 체크 항목으로 못 나눴을 때 그 사실을 화면에 말해 준다.
+  // (그냥 '0개'만 뜨면 검증이 실패한 건지 지적할 게 없는 건지 알 수가 없다)
+  const [verifyNote, setVerifyNote] = useState('');
   const [checkedItems, setCheckedItems] = useState({}); // { index: boolean }
   const [refining, setRefining] = useState(false);
   const [refinedResults, setRefinedResults] = useState(null);
@@ -913,6 +916,11 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
 
     setVerifying(true);
     setVerifyResult(null);
+    // 지난 검증 결과를 반드시 비운다 — 안 비우면 다른 모델로 다시 돌렸는데 앞 모델의 항목이
+    // 그대로 남아 '똑같이 나온다'로 보인다(원장 제보 2026-09-07).
+    setVerifyItems([]);
+    setCheckedItems({});
+    setVerifyNote('');
 
     try {
       const token = localStorage.getItem('ef_token');
@@ -992,6 +1000,12 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           } catch (parseErr) {
             console.warn('[검증] JSON 파싱 실패, 레거시 모드 사용:', parseErr.message);
           }
+          // 여기까지 와서도 항목이 없으면 글만 온 것이다 — 아래 원문을 읽으라고 알린다.
+          setVerifyNote(
+            String(data.reply || '').trim()
+              ? '검증 글은 받았지만 체크할 항목으로 나누지 못했습니다. 아래 원문을 확인해 주세요.'
+              : `${MODEL_CONFIG[verifyModel]?.label || verifyModel} 이(가) 빈 응답을 돌려줬습니다. 다시 실행하거나 다른 모델로 검증해 주세요.`
+          );
         }
       } else {
         alert('검증 오류: ' + data.message);
@@ -1550,10 +1564,20 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
               </div>
             </>
           ) : (
-            <div
-              className="verify-result-body md-rendered"
-              dangerouslySetInnerHTML={{ __html: mdToHtml(verifyResult.content) }}
-            />
+            <>
+              {verifyNote && (
+                <div style={{
+                  margin: '0 0 10px', padding: '10px 12px', borderRadius: 8,
+                  background: '#332a17', color: '#ffcf7a', fontSize: 13, lineHeight: 1.6,
+                }}>
+                  ⚠ {verifyNote}
+                </div>
+              )}
+              <div
+                className="verify-result-body md-rendered"
+                dangerouslySetInnerHTML={{ __html: mdToHtml(verifyResult.content) }}
+              />
+            </>
           )}
 
           <div className="verify-result-actions">

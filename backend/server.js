@@ -2245,20 +2245,14 @@ app.post('/api/chat-refine', async (req, res) => {
       });
       reply = response.choices[0].message.content;
     } else {
-      const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
-      const client = new AnthropicSDK({ apiKey });
-      const response = await client.messages.create({
-        model: getModelId('claude', submodel || aiModel),
-        max_tokens: 8000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMsg }],
-      });
-      reply = response.content[0].text;
+      // content[0] 을 그대로 읽지 않는다 — Claude 5 는 첫 블록이 사고(thinking)라 .text 가 없다.
+      // 사고 토큰 여유분까지 callAIModel 이 챙긴다(/api/verify 와 같은 이유).
+      reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, maxTokens: 8000 });
     }
     res.json({ success: true, reply });
   } catch (err) {
     console.error(`[chat-refine/${aiModel}] 오류:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: friendlyAIError(err, aiModel) });
   }
 });
 
@@ -2313,44 +2307,20 @@ priority 설명:
 계열: ${studentData?.major || '미입력'}`;
 
   try {
-    let reply;
-
-    if (aiModel === 'gemini') {
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: getModelId('gemini', submodel || aiModel) });
-      const result = await model.generateContent([
-        { text: systemPrompt },
-        { text: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
-      ]);
-      reply = result.response.text();
-
-    } else if (aiModel === 'gpt') {
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey });
-      const response = await openai.chat.completions.create({
-        model: getModelId('gpt', submodel || aiModel),
-        max_completion_tokens: 8000,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
-        ],
-      });
-      reply = response.choices[0].message.content;
-
-    } else {
-      const AnthropicSDK = (await import('@anthropic-ai/sdk')).default;
-      const client = new AnthropicSDK({ apiKey });
-      const response = await client.messages.create({
-        model: getModelId('claude', submodel || aiModel),
-        max_tokens: 8000,
-        system: systemPrompt,
-        messages: [
-          { role: 'user', content: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}` },
-        ],
-      });
-      reply = response.content[0].text;
-    }
+    // ⚠ 여기서 SDK를 직접 부르지 않는다.
+    // Claude 5 계열과 GPT·Gemini pro 계열은 **사고(thinking) 토큰을 출력 한도 안에서 먼저 쓴다.**
+    // 한도를 그대로 주면 사고만 하다 예산을 채워 본문이 빈 문자열로 돌아오고, Claude 는
+    // content[0] 이 사고 블록이라 `.text` 가 undefined 가 된다.
+    // 그 처리(여유분 + 빈 응답 감지)는 callAIModel 한 곳에 있는데 이 라우트만 자기가 따로
+    // 부르고 있었다 — 교차 검증이 늘 '0건'으로 뜨던 진짜 원인이다(원장 제보 2026-09-07).
+    const reply = await callAIModel({
+      aiModel,
+      submodel,
+      apiKey,
+      systemPrompt,
+      userMsg: `아래는 ${originalModel || '다른 AI'}가 작성한 분석 결과입니다. 검증해 주세요.\n\n${analysisText}`,
+      maxTokens: 8000,
+    });
 
     // 서버에서 JSON 파싱 시도 → 프론트엔드 파싱 실패 방지
     let parsedItems = null;
@@ -2390,10 +2360,12 @@ priority 설명:
     }
     console.log(`[verify] 파싱 결과: ${parsedItems ? parsedItems.length + '개 항목' : '실패'}`);
 
-    res.json({ success: true, reply, parsedItems });
+    // 항목으로 못 나눴으면 그 사실을 알린다 — 화면에 '0건'만 뜨면 원장은 검증이 실패한 건지
+    // 지적할 게 없는 건지 알 수 없다.
+    res.json({ success: true, reply, parsedItems, parseFailed: !parsedItems });
   } catch (err) {
     console.error(`[verify/${aiModel}] 오류:`, err.message);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: friendlyAIError(err, aiModel) });
   }
 });
 
