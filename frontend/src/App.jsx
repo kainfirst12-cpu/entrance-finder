@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import StudentForm from './components/StudentForm';
 import AnalysisProgress from './components/AnalysisProgress';
 import AnalysisResult from './components/AnalysisResult';
-import StudentList from './components/StudentList';
+import StudentsPage from './components/StudentsPage';
 import ChatInterface from './components/ChatInterface';
 import Assessment from './components/Assessment';
 import Board from './components/Board';
@@ -390,7 +390,14 @@ export default function App() {
           <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout}
             onOpenAnalysis={openSavedAnalysis} onAnalyzeFile={analyzeBoardFile} />
         )}
-        {view === 'list'      && <StudentList onNewAnalysis={() => setView('form')} onAuthError={handleLogout} onOpenAnalysis={openSavedAnalysis} />}
+        {view === 'list'      && (
+          <StudentsPage
+            onNewAnalysis={() => setView('form')}
+            onAuthError={handleLogout}
+            onOpenAnalysis={openSavedAnalysis}
+            onAnalyzeFile={analyzeBoardFile}
+          />
+        )}
         {view === 'form'      && (
           <StudentForm
             onSubmit={startAnalysis}

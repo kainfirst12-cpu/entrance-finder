@@ -1,4 +1,3 @@
-import Board from './Board';
 
 const ACTIONS = [
   { key: 'form', icon: '✨', label: '새 분석', desc: '생기부 종합 분석 시작', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
@@ -17,7 +16,7 @@ export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis
   return (
     <div style={S.page}>
       <h2 style={S.h2}>대시보드</h2>
-      <p style={S.lead}>학생 관리 보드를 중심으로 분석·수행평가·상담·입결 조회를 한 곳에서.</p>
+      <p style={S.lead}>분석·수행평가·상담·입결·실시간 경쟁률을 한 곳에서.</p>
 
       <div style={S.actions}>
         {ACTIONS.map(a => (
@@ -30,11 +29,11 @@ export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis
         ))}
       </div>
 
-      <div style={S.boardWrap}>
-        {/* 대시보드에 박힌 보드도 단독 보드와 같은 기능을 해야 한다.
-            여기에 프롭을 안 넘겨서 '분석 화면으로 열기'가 대시보드에서만 안 보였다. */}
-        <Board onAuthError={onAuthError} onOpenAnalysis={onOpenAnalysis} onAnalyzeFile={onAnalyzeFile} />
-      </div>
+      {/* 학생 관리 보드는 여기 있지 않다 — 대시보드가 끝없이 길어져서 '학생 목록' 안으로 옮겼다
+          (원장 요청 2026-09-07). 없어진 게 아니라 자리를 옮긴 것이므로 그렇다고 적어 둔다. */}
+      <p style={S.moved}>
+        📋 학생 관리 보드는 <b style={S.movedLink} onClick={() => onNav?.('list')}>학생 목록</b> 안으로 옮겼습니다 — 목록과 보드를 위에서 골라 보세요.
+      </p>
     </div>
   );
 }
@@ -48,5 +47,6 @@ const S = {
   actionIcon: { fontSize: 24 },
   actionLabel: { fontSize: 15, fontWeight: 700, color: '#e8eef3', marginTop: 4 },
   actionDesc: { fontSize: 12, color: '#9db0bd' },
-  boardWrap: { marginTop: 8, borderTop: '1px solid #e8e6df' },
+  moved: { marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', color: '#7f93a3', fontSize: 12.5 },
+  movedLink: { color: '#5b86d6', cursor: 'pointer' },
 };
