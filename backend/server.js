@@ -37,7 +37,7 @@ import {
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
 } from './services/db.js';
-import { startRatioCron, runOnce as ratioRunOnce, refreshSources as ratioRefreshSources, ratioStatus, upcomingDeadlines } from './services/ratioCron.js';
+import { startRatioCron, runInBackground as ratioRunInBackground, refreshSources as ratioRefreshSources, ratioStatus, upcomingDeadlines } from './services/ratioCron.js';
 import { listUnivs as ratioListUnivs, currentOf as ratioCurrentOf, seriesOf as ratioSeriesOf } from './services/ratioStore.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
@@ -2801,10 +2801,12 @@ app.get('/api/ratio/status', requireAuth, async (req, res) => {
   }
 });
 
-/** 손으로 한 바퀴 돌리기 — 접수 기간이 아니어도 강제로(원장 전용) */
-app.post('/api/ratio/run', requireAdmin, async (req, res) => {
+/** 손으로 한 바퀴 돌리기 — 접수 기간이 아니어도 강제로(원장 전용).
+ *  **기다리지 않고 바로 답한다.** 166곳을 도는 데 몇 분이 걸려서 요청 안에서 다 하면
+ *  브라우저가 먼저 끊어버린다(화면엔 'Failed to fetch' 로만 보인다). 진행 상황은 /status 로 묻는다. */
+app.post('/api/ratio/run', requireAdmin, (req, res) => {
   try {
-    res.json({ success: true, ...(await ratioRunOnce({ force: !!req.body?.force })) });
+    res.json({ success: true, ...ratioRunInBackground({ force: !!req.body?.force }) });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }

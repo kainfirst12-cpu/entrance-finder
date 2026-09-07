@@ -30,6 +30,8 @@ const AFTER_CLOSE_GRACE = 2 * 60 * MIN; // 마감 뒤 2시간까지는 최종값
 let timer = null;
 let running = false;
 let lastRun = null;
+// 한 바퀴 도는 데 몇 분이 걸린다. 부르는 쪽이 기다리지 않고 진행 상황만 물어볼 수 있게 남긴다.
+let progress = null;
 
 /** 접수 기간 안인가 — 주소록의 시작·마감 시각으로 판단한다. */
 function windowOf(list) {
@@ -49,18 +51,23 @@ function nextInterval(list) {
 
 /** 한 바퀴 — 읽어서 DB에 넣는다. 바뀐 줄만 들어간다. */
 export async function runOnce({ force = false } = {}) {
-  if (running) return { skipped: '이미 도는 중' };
+  if (running) return { skipped: '이미 도는 중', progress };
   running = true;
   const startedAt = new Date().toISOString();
+  progress = { startedAt, stage: '주소록 읽는 중', done: 0, total: 0, ok: 0, fail: 0, points: 0 };
   try {
     const { loadSources, collectAll } = await scrapers();
     const list = await loadSources();
     const win = windowOf(list);
     const now = Date.now();
     if (!force && win && (now < win.from || now > win.to)) {
+      progress = null;
       return { skipped: '접수 기간이 아님', window: win };
     }
+    // 대학 목록·마감 시각을 **먼저** 넣는다 — 경쟁률을 다 받기 전에도 화면에
+    // '어디가 언제 닫는지'는 바로 떠야 한다(그것만으로도 쓸모가 있다).
     await upsertUnivs(list);
+    progress = { ...progress, stage: '경쟁률 받는 중', total: list.filter((s2) => s2.ratioUrl).length };
 
     // 대학 한 곳을 받으면 그 자리에서 넣고 버린다 — 166곳 × 수백 줄을 다 들고 있으면
     // 작은 서버에서는 메모리로 죽는다(그러면 앱 전체가 함께 죽는다).
@@ -78,10 +85,12 @@ export async function runOnce({ force = false } = {}) {
           r.units = null;   // 붙들고 있을 이유가 없다
           r.summary = null;
         }
+        progress = { ...progress, done: _done, ok, fail, points };
       },
     });
     await recordRun({ startedAt, ok, fail, points });
     lastRun = { startedAt, finishedAt: new Date().toISOString(), ok, fail, points };
+    progress = null;
     console.log(`[ratio] 수집 완료 — 성공 ${ok} / 실패 ${fail} · 새 관측 ${points}줄`);
     return lastRun;
   } finally {
@@ -98,7 +107,19 @@ export async function refreshSources() {
 }
 
 export function ratioStatus() {
-  return { running, lastRun, scheduled: !!timer };
+  return { running, lastRun, progress, scheduled: !!timer, cronEnabled: process.env.RATIO_CRON === 'on' };
+}
+
+/** 한 바퀴를 뒤에서 돌린다 — 부르는 쪽은 기다리지 않는다.
+ *  166곳을 도는 데 몇 분이 걸려서, 한 번의 HTTP 요청 안에 넣으면 브라우저가 먼저 끊는다
+ *  (원장 화면에 'Failed to fetch' 로 보였다 — 2026-09-07). */
+export function runInBackground(opts = {}) {
+  if (running) return { started: false, reason: '이미 도는 중', progress };
+  runOnce(opts).catch((e) => {
+    progress = null;
+    console.warn('[ratio] 수집 실패:', e?.message || e);
+  });
+  return { started: true };
 }
 
 export async function startRatioCron() {

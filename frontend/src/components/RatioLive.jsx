@@ -143,18 +143,33 @@ export default function RatioLive({ onAuthError }) {
     }
   }
 
+  // 한 바퀴는 몇 분이 걸린다. **기다리지 않는다** — 시작만 시키고 진행 상황을 물어본다.
+  // (예전엔 이 요청 하나로 166곳을 다 돌아서 브라우저가 먼저 끊고 'Failed to fetch' 만 떴다)
   async function runNow() {
     setBusy(true);
+    setErr('');
     try {
       const r = await api('/api/ratio/run', { method: 'POST', body: JSON.stringify({ force: true }) });
-      if (!r.success) setErr(r.message || '수집 실패');
-      await load();
-      if (sel) await openUniv(sel);
+      if (!r.success) { setErr(r.message || '수집을 시작하지 못했습니다'); setBusy(false); return; }
     } catch (e) {
       if (e.auth) onAuthError?.(); else setErr(e.message);
-    } finally {
       setBusy(false);
+      return;
     }
+    // 3초마다 물어보며 목록을 갱신한다 — 대학·마감 시각은 경쟁률보다 먼저 채워진다.
+    const started = Date.now();
+    const poll = async () => {
+      try {
+        const st = await api('/api/ratio/status');
+        if (st.success) setStatus(st);
+        const u = await api('/api/ratio/univs');
+        if (u.success) setUnivs(u.univs || []);
+        if (st.success && !st.running) { setBusy(false); if (sel) await openUniv(sel); return; }
+      } catch { /* 한 번 실패해도 다음에 다시 묻는다 */ }
+      if (Date.now() - started > 15 * 60 * 1000) { setBusy(false); return; }   // 15분이면 그만 묻는다
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 2000);
   }
 
   // 남은 시간은 화면에서 다시 센다 — 서버가 준 값은 응답한 그 순간의 것이다.
@@ -203,16 +218,25 @@ export default function RatioLive({ onAuthError }) {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button style={S.btnGhost} onClick={load} disabled={loading}>새로고침</button>
-          <button style={S.btn} onClick={runNow} disabled={busy}>{busy ? '수집 중…' : '지금 한 바퀴'}</button>
+          <button style={S.btn} onClick={runNow} disabled={busy}>
+            {busy
+              ? (status?.progress?.total
+                ? `수집 중… ${status.progress.done}/${status.progress.total}곳`
+                : '수집 중…')
+              : '지금 한 바퀴'}
+          </button>
         </div>
       </div>
 
       {status && (
         <p style={S.status}>
           대학 {status.univCount}곳 · 마감 시각 확보 {status.withDeadline}곳
-          {status.lastRun
-            ? ` · 마지막 수집 ${kstLabel(status.lastRun.finishedAt)} (성공 ${status.lastRun.ok} / 실패 ${status.lastRun.fail} · 새 관측 ${status.lastRun.points}줄)`
-            : ' · 아직 수집한 적이 없습니다'}
+          {status.running && status.progress
+            ? ` · 수집 중 — ${status.progress.stage} ${status.progress.done}/${status.progress.total}곳 (새 관측 ${status.progress.points}줄)`
+            : status.lastRun
+              ? ` · 마지막 수집 ${kstLabel(status.lastRun.finishedAt)} (성공 ${status.lastRun.ok} / 실패 ${status.lastRun.fail} · 새 관측 ${status.lastRun.points}줄)`
+              : ' · 아직 수집한 적이 없습니다'}
+          {status.cronEnabled === false && <span style={{ color: '#ffc46b' }}> · 자동 수집 꺼짐</span>}
         </p>
       )}
       {err && <p style={S.err}>{err}</p>}
