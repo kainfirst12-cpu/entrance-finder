@@ -64,7 +64,9 @@ export async function collectAll({ concurrency = 4, gapMs = 800, only = null, ki
     const batch = list.slice(i, i + concurrency);
     const done = await Promise.all(batch.map(collectOne));
     results.push(...done);
-    if (onProgress) onProgress(results.length, list.length, done);
+    // 기다린다 — 부르는 쪽이 이 자리에서 저장하고 메모리를 비운다. 안 기다리면 저장이
+    // 겹쳐 돌고, 다 받을 때까지 166곳치를 통째로 들고 있게 된다.
+    if (onProgress) await onProgress(results.length, list.length, done);
     if (i + concurrency < list.length) await sleep(gapMs);
   }
   return { collectedAt: new Date().toISOString(), results };

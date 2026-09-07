@@ -6,10 +6,20 @@
 //
 // 얼마나 자주: 평소 30분. 어느 대학이든 마감 3시간 안이면 10분.
 // 경쟁률은 마감 직전 몇 시간에 몰려 오르므로 그때만 촘촘히 본다.
-import { collectAll } from '../scrapers/ratio/collect.mjs';
-import { loadSources, scrapeSources } from '../scrapers/ratio/sources.mjs';
 import { upsertUnivs, saveUnivUnits, recordRun, listUnivs } from './ratioStore.js';
 import { dbEnabled } from './db.js';
+
+// ⚠ 수집기(cheerio·iconv 를 쓴다)는 **필요할 때 불러온다.**
+// 맨 위에서 import 하면 그 묶음이 하나라도 안 깔린 서버에서 **서버 자체가 못 뜬다**
+// (2026-09-07 실제로 Railway 가 502 로 죽었다 — 경쟁률 기능 하나 때문에 앱 전체가 멈추면 안 된다).
+// 늦게 부르면 실패해도 이 기능만 조용히 꺼지고 상담·분석은 그대로 돌아간다.
+async function scrapers() {
+  const [collect, sources] = await Promise.all([
+    import('../scrapers/ratio/collect.mjs'),
+    import('../scrapers/ratio/sources.mjs'),
+  ]);
+  return { ...collect, ...sources };
+}
 
 const MIN = 60 * 1000;
 const BASE_INTERVAL = 30 * MIN;
@@ -43,7 +53,8 @@ export async function runOnce({ force = false } = {}) {
   running = true;
   const startedAt = new Date().toISOString();
   try {
-    let list = await loadSources();
+    const { loadSources, collectAll } = await scrapers();
+    const list = await loadSources();
     const win = windowOf(list);
     const now = Date.now();
     if (!force && win && (now < win.from || now > win.to)) {
@@ -51,14 +62,24 @@ export async function runOnce({ force = false } = {}) {
     }
     await upsertUnivs(list);
 
-    const snap = await collectAll({ concurrency: 4, gapMs: 800 });
+    // 대학 한 곳을 받으면 그 자리에서 넣고 버린다 — 166곳 × 수백 줄을 다 들고 있으면
+    // 작은 서버에서는 메모리로 죽는다(그러면 앱 전체가 함께 죽는다).
+    const capturedAt = new Date().toISOString();
     let ok = 0; let fail = 0; let points = 0;
-    for (const r of snap.results) {
-      if (!r.ok) { fail += 1; continue; }
-      ok += 1;
-      try { points += await saveUnivUnits(r.univ, r.units, snap.collectedAt); }
-      catch (e) { console.warn('[ratio] 저장 실패', r.univ, e.message); }
-    }
+    await collectAll({
+      concurrency: 3,
+      gapMs: 1000,
+      onProgress: async (_done, _total, batch) => {
+        for (const r of batch) {
+          if (!r.ok) { fail += 1; continue; }
+          ok += 1;
+          try { points += await saveUnivUnits(r.univ, r.units, capturedAt); }
+          catch (e) { console.warn('[ratio] 저장 실패', r.univ, e.message); }
+          r.units = null;   // 붙들고 있을 이유가 없다
+          r.summary = null;
+        }
+      },
+    });
     await recordRun({ startedAt, ok, fail, points });
     lastRun = { startedAt, finishedAt: new Date().toISOString(), ok, fail, points };
     console.log(`[ratio] 수집 완료 — 성공 ${ok} / 실패 ${fail} · 새 관측 ${points}줄`);
@@ -70,6 +91,7 @@ export async function runOnce({ force = false } = {}) {
 
 /** 주소록 새로 받기 — 해마다 주소가 바뀌므로 가끔 다시 받아야 한다. */
 export async function refreshSources() {
+  const { scrapeSources } = await scrapers();
   const list = await scrapeSources();
   await upsertUnivs(list);
   return list.length;
@@ -81,6 +103,12 @@ export function ratioStatus() {
 
 export async function startRatioCron() {
   if (timer) return;
+  // 켜는 건 사람이 정한다(RATIO_CRON=on). 스스로 도는 일이 앱을 멈추게 한 적이 있어서,
+  // 기본은 꺼짐이다 — 화면의 '지금 한 바퀴'는 이 값과 무관하게 언제나 쓸 수 있다.
+  if (process.env.RATIO_CRON !== 'on') {
+    console.log('[ratio] 자동 수집 꺼짐 — 켜려면 RATIO_CRON=on (화면의 "지금 한 바퀴"는 그대로 동작)');
+    return;
+  }
   if (!dbEnabled()) {
     console.log('[ratio] DATABASE_URL 없음 — 자동 수집을 켜지 않는다(수동 실행은 가능)');
     return;
@@ -90,9 +118,10 @@ export async function startRatioCron() {
       const r = await runOnce();
       if (r?.skipped) console.log('[ratio]', r.skipped);
     } catch (e) {
-      console.warn('[ratio] 수집 중 오류:', e.message);
+      // 여기서 새어 나가면 처리되지 않은 거절이 되어 프로세스가 통째로 죽는다.
+      console.warn('[ratio] 수집 중 오류:', e?.message || e);
     }
-    const list = await loadSources().catch(() => []);
+    const list = await scrapers().then((m) => m.loadSources()).catch(() => []);
     timer = setTimeout(tick, nextInterval(list));
   };
   // 부팅 직후 바로 한 번 돌지 않는다 — 배포가 잦으면 그때마다 175곳을 두드리게 된다.
