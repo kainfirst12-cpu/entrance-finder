@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-07T08:38:19.319Z",
+  "fetchedAt": "2026-09-07T09:57:27.364Z",
   "list": [
     {
       "univ": "가야대학교",
@@ -1463,7 +1463,7 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "https://www.acts.ac.kr/admission/design/admission08.asp?&left=occa4&cry=2027&crs=susi&mode=view",
+      "ratioUrl": "https://www.acts.ac.kr/admission/design/admission08.asp?&amp;left=occa4&amp;cry=2027&amp;crs=susi&amp;mode=view",
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/acts/?CHA=1",
       "kind": "own",
       "uwaySolo": true,
@@ -2492,5 +2492,5 @@
       "deadlineVia": "jinhak-timer"
     }
   ],
-  "deadlinesAt": "2026-09-07T08:41:04.785Z"
+  "deadlinesAt": "2026-09-07T09:58:45.423Z"
 }

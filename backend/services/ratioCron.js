@@ -9,7 +9,7 @@
 import { upsertUnivs, saveUnivUnits, recordRun, listUnivs } from './ratioStore.js';
 import { dbEnabled } from './db.js';
 
-// ⚠ 수집기(cheerio·iconv 를 쓴다)는 **필요할 때 불러온다.**
+// ⚠ 수집기(node-html-parser·iconv-lite 를 쓴다)는 **필요할 때 불러온다.**
 // 맨 위에서 import 하면 그 묶음이 하나라도 안 깔린 서버에서 **서버 자체가 못 뜬다**
 // (2026-09-07 실제로 Railway 가 502 로 죽었다 — 경쟁률 기능 하나 때문에 앱 전체가 멈추면 안 된다).
 // 늦게 부르면 실패해도 이 기능만 조용히 꺼지고 상담·분석은 그대로 돌아간다.
@@ -62,8 +62,8 @@ export async function runOnce({ force = false } = {}) {
     try {
       ({ loadSources, collectAll } = await scrapers());
     } catch (e) {
-      // 여기서 걸리면 수집기 묶음(cheerio·iconv)이 서버에 없다는 뜻이다. 원인을 그대로 남긴다.
-      throw new Error(`수집기를 불러오지 못했습니다(cheerio·iconv-lite 설치 확인): ${e?.message || e}`);
+      // 여기서 걸리면 수집기 묶음이 서버에 없거나 런타임과 안 맞는다는 뜻이다. 원인을 그대로 남긴다.
+      throw new Error(`수집기를 불러오지 못했습니다(node-html-parser·iconv-lite 설치 확인): ${e?.message || e}`);
     }
     const list = await loadSources();
     if (!list.length) throw new Error('주소록(sources.json)이 비어 있거나 읽히지 않습니다');

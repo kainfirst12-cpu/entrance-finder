@@ -5,9 +5,27 @@
 //   상세: 대학(캠퍼스) · 모집단위 · 모집인원 · 지원인원 · 경쟁률
 // 그래서 클래스가 아니라 **머리글로** 표를 가른다 — 대학 자체 페이지가 섞여 들어와도
 // 모양만 같으면 그대로 읽히고, 대행사가 클래스 이름을 바꿔도 안 깨진다.
-import * as cheerio from 'cheerio';
+// cheerio 를 쓰지 않는다 — 그 묶음이 Node 20+ 전역(File)을 건드려서, 배포 서버의
+// 낮은 Node 에서 "File is not defined" 로 수집기가 통째로 못 올라왔다(2026-09-07 실측).
+// node-html-parser 는 순수 JS(css-select·entities)라 런타임을 안 가린다.
+import { parse as parseHtml } from 'node-html-parser';
+
+/** 이 요소 앞의 형제 요소들 — 가까운 것부터 */
+function prevElements(el) {
+  const parent = el.parentNode;
+  if (!parent) return [];
+  const kids = parent.childNodes.filter((n) => n.nodeType === 1);
+  const i = kids.indexOf(el);
+  return i <= 0 ? [] : kids.slice(0, i).reverse();
+}
 
 const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+/** 요소의 글자 — node-html-parser 는 text 가 속성이다(cheerio 의 .text() 와 다르다) */
+const txt = (el) => clean(el?.text);
+/** 머리글 이름을 견줄 때 쓰는 꼴 — 공백을 아예 지운다.
+ *  대학마다 '지원인원' 을 '지원<br>인원' 으로 적어서 '지원 인원' 으로 읽힌다.
+ *  띄어쓰기 하나 때문에 그 대학이 통째로 안 읽히면 안 된다(가톨릭관동대에서 실제로 그랬다). */
+const bare = (s) => clean(s).replace(/\s+/g, '');
 /** "2,127" → 2127 · 빈 칸이나 '-' 는 null */
 const num = (s) => {
   const t = clean(s).replace(/,/g, '');
@@ -23,19 +41,17 @@ const ratioOf = (s) => {
 };
 
 /** 이 표 바로 앞의 '○○ 경쟁률 현황' 제목 — 상세표가 어느 전형인지는 여기에만 적혀 있다. */
-function headingFor($, el) {
+function headingFor(el) {
   const RE = /^(.*?)\s*경쟁률\s*현황$/;
   let node = el;
   for (let up = 0; up < 4 && node; up += 1) {
-    const prevs = $(node).prevAll().toArray();          // 가까운 것부터
-    for (const p of prevs) {
-      const $p = $(p);
-      if ($p.is('table') || $p.find('table').length) continue;   // 다른 표의 내용은 제목이 아니다
-      const t = clean($p.text());
-      const m = t.match(RE);
+    for (const prev of prevElements(node)) {           // 가까운 것부터
+      const tag = (prev.rawTagName || '').toLowerCase();
+      if (tag === 'table' || prev.querySelector?.('table')) continue;   // 다른 표의 내용은 제목이 아니다
+      const m = txt(prev).match(RE);
       if (m && m[1]) return m[1].trim();
     }
-    node = $(node).parent().get(0);
+    node = node.parentNode;
   }
   return null;
 }
@@ -48,7 +64,7 @@ const APP_COL = /지원인원|지원자/;
 
 /** 머리글로 표의 성격을 정한다. */
 function kindOf(head) {
-  const h = head.map(clean);
+  const h = head.map(bare);
   const has = (re) => h.some((x) => re.test(x));
   if (!has(APP_COL) || !has(RATIO_COL)) return null;
   if (has(/모집단위/)) return 'unit';
@@ -57,39 +73,40 @@ function kindOf(head) {
 }
 
 /** 표 한 장을 줄 배열로. 병합된 앞칸(rowspan)은 윗줄 값을 이어 쓴다. */
-function readRows($, table, width) {
+function readRows(table, width) {
   const out = [];
   let carry = [];
-  $(table).find('tr').slice(1).each((_, tr) => {
-    const cells = $(tr).find('th,td').map((__, c) => clean($(c).text())).get();
-    if (!cells.length) return;
+  for (const tr of table.querySelectorAll('tr').slice(1)) {
+    const cells = tr.querySelectorAll('th,td').map((c) => txt(c));
+    if (!cells.length) continue;
     // 칸이 모자라면 앞쪽이 병합된 것 — 윗줄에서 그만큼 가져온다.
     const lack = width - cells.length;
     const row = lack > 0 && carry.length >= lack ? [...carry.slice(0, lack), ...cells] : cells;
-    if (row.length < width) return;
+    if (row.length < width) continue;
     carry = row;
     out.push(row);
-  });
+  }
   return out;
 }
 
 export function parseRatioPage(html) {
-  const $ = cheerio.load(html);
-  const bodyText = clean($('body').text());
+  const root = parseHtml(html);
+  const bodyText = txt(root.querySelector('body') || root);
 
   const summary = [];
   const units = [];
 
-  $('table').each((_, t) => {
-    const head = $(t).find('tr').first().find('th,td').map((__, c) => clean($(c).text())).get();
+  for (const t of root.querySelectorAll('table')) {
+    const firstRow = t.querySelector('tr');
+    const head = firstRow ? firstRow.querySelectorAll('th,td').map((c) => txt(c)) : [];
     const kind = kindOf(head);
-    if (!kind) return;
-    const rows = readRows($, t, head.length);
+    if (!kind) continue;
+    const rows = readRows(t, head.length);
 
     // 칸 순서를 1·2·3 으로 박지 않는다 — 대학마다 앞에 계열·대학 칸이 더 붙는다.
-    const iCap = head.findIndex((x) => /모집인원/.test(x));
-    const iApp = head.findIndex((x) => APP_COL.test(x));
-    const iRatio = head.findIndex((x) => RATIO_COL.test(x));
+    const iCap = head.findIndex((x) => /모집인원/.test(bare(x)));
+    const iApp = head.findIndex((x) => APP_COL.test(bare(x)));
+    const iRatio = head.findIndex((x) => RATIO_COL.test(bare(x)));
 
     if (kind === 'summary') {
       for (const r of rows) {
@@ -103,18 +120,18 @@ export function parseRatioPage(html) {
           ratio: ratioOf(r[iRatio]),
         });
       }
-      return;
+      continue;
     }
 
-    const jeonhyeong = headingFor($, t);
+    const jeonhyeong = headingFor(t);
     // 머리글에서 '모집단위' 가 몇 번째인지 보고 그 앞을 캠퍼스/단과대로 본다.
-    const ui = head.findIndex((x) => /모집단위/.test(x));
+    const ui = head.findIndex((x) => /모집단위/.test(bare(x)));
     for (const r of rows) {
       const unit = clean(r[ui]);
       if (!unit) continue;
       // 캠퍼스 칸은 모집단위 앞에 오기도 하고 뒤에 오기도 한다(중앙대는 뒤).
       // 이름이 있으면 그 칸을, 없으면 모집단위 바로 앞 칸을 캠퍼스로 본다.
-      const iCampus = head.findIndex((x) => /캠퍼스/.test(x));
+      const iCampus = head.findIndex((x) => /캠퍼스/.test(bare(x)));
       units.push({
         jeonhyeong,
         campus: clean(r[iCampus >= 0 ? iCampus : ui - 1]) || null,
@@ -127,7 +144,7 @@ export function parseRatioPage(html) {
         ratio: ratioOf(r[iRatio]),
       });
     }
-  });
+  }
 
   // 이 숫자가 언제 것인지 — 접수 중에는 갱신시각이, 끝난 뒤에는 '최종'이 적혀 있다.
   const asOf = (bodyText.match(/(\d{4}[.\-/]\s?\d{1,2}[.\-/]\s?\d{1,2}[^)\n]{0,20}\d{1,2}\s*:\s*\d{2})/) || [])[1] || null;
