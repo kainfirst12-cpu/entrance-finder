@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchHtml } from './fetchHtml.mjs';
+import { loadSources } from './sources.mjs';
 import { parseRatioPage } from './parse.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -18,16 +19,11 @@ export const OUT_DIR = path.join(HERE, '..', '..', 'data', 'ratio');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function loadSources() {
-  const raw = JSON.parse(await fs.readFile(SOURCES_FILE, 'utf8'));
-  return raw.list || [];
-}
-
 /** 대학 한 곳 */
 export async function collectOne(src) {
   const t0 = Date.now();
   try {
-    const { html } = await fetchHtml(src.url, { timeoutMs: 25000 });
+    const { html } = await fetchHtml(src.ratioUrl, { timeoutMs: 25000 });
     const parsed = parseRatioPage(html);
     const real = parsed.units.filter((u) => !u.isTotal);
     if (!parsed.summary.length && !real.length) {
@@ -60,6 +56,7 @@ export async function collectOne(src) {
 export async function collectAll({ concurrency = 4, gapMs = 800, only = null, kinds = ['jinhak', 'uway'], onProgress } = {}) {
   let list = await loadSources();
   if (kinds) list = list.filter((s) => kinds.includes(s.kind));
+  list = list.filter((s) => !!s.ratioUrl);      // 주소가 없으면 읽을 것이 없다
   if (only && only.length) list = list.filter((s) => only.includes(s.univ));
 
   const results = [];

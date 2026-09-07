@@ -224,6 +224,54 @@ export async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_adm_univ ON ef_admissions(univ);`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_adm_dept ON ef_admissions(dept);`);
 
+    // ── 실시간 경쟁률 (수시 원서접수 기간) ──────────────────
+    // 대학 한 줄 = 어디서 읽고 언제 닫는지. 마감 '시각'까지 담는다 — 경쟁률은 마감 직전에
+    // 폭발하는데 마감이 17시인 대학과 23시인 대학을 같은 시각으로 비교하면 뜻이 없다.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_ratio_univ (
+        univ        TEXT PRIMARY KEY,
+        region      TEXT DEFAULT '',
+        kind        TEXT DEFAULT '',          -- uway | jinhak | own
+        ratio_url   TEXT DEFAULT '',
+        apply_url   TEXT DEFAULT '',
+        period_start DATE,
+        period_end   DATE,
+        opens_at    TIMESTAMPTZ,
+        closes_at   TIMESTAMPTZ,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    // 모집단위별 관측점. **값이 바뀐 순간만** 넣는다 — 매 시각 33,000줄을 그대로 쌓으면
+    // 닷새 만에 400만 줄이 된다. 바뀔 때만 넣으면 접수 초반엔 거의 안 늘고, 마감 직전
+    // 급증하는 구간만 촘촘해진다(그 구간이 정확히 우리가 보고 싶은 곳이다).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_ratio_point (
+        id          BIGSERIAL PRIMARY KEY,
+        univ        TEXT NOT NULL,
+        jeonhyeong  TEXT DEFAULT '',
+        campus      TEXT DEFAULT '',
+        unit        TEXT NOT NULL,
+        capacity    INTEGER,
+        applicants  INTEGER,
+        ratio       NUMERIC,
+        captured_at TIMESTAMPTZ NOT NULL
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_ratio_point_key ON ef_ratio_point(univ, jeonhyeong, unit, captured_at DESC);`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_ratio_point_time ON ef_ratio_point(captured_at DESC);`);
+    // 한 바퀴 돌 때마다 남기는 기록 — 몇 곳이 되고 몇 곳이 실패했는지 나중에 따질 수 있어야 한다.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_ratio_run (
+        id          SERIAL PRIMARY KEY,
+        started_at  TIMESTAMPTZ NOT NULL,
+        finished_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        ok_count    INTEGER DEFAULT 0,
+        fail_count  INTEGER DEFAULT 0,
+        point_count INTEGER DEFAULT 0,
+        note        TEXT DEFAULT ''
+      );
+    `);
+
     ready = true;
     console.log('[DB] Postgres 연결 및 인증/보드 스키마 준비 완료');
 

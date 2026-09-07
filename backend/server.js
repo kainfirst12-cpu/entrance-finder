@@ -37,6 +37,8 @@ import {
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
 } from './services/db.js';
+import { startRatioCron, runOnce as ratioRunOnce, refreshSources as ratioRefreshSources, ratioStatus, upcomingDeadlines } from './services/ratioCron.js';
+import { listUnivs as ratioListUnivs, currentOf as ratioCurrentOf, seriesOf as ratioSeriesOf } from './services/ratioStore.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { runFullAnalysisGemini, testGeminiConnection } from './services/geminiService.js';
 import { runFullAnalysisGPT, testGPTConnection } from './services/gptService.js';
@@ -2751,6 +2753,72 @@ function getIpgyeolIndex() {
   return _ipgyeolIndex;
 }
 // 대학 목록 (검색어 q로 필터)
+// ── 📈 실시간 경쟁률 ─────────────────────────────────
+// 접수 기간에만 값이 찬다. 마감 시각이 대학마다 다르므로(16시~자정) 남은 시간을 함께 준다.
+
+/** 대학 목록 + 마감까지 남은 시간 */
+app.get('/api/ratio/univs', requireAuth, async (req, res) => {
+  try {
+    res.json({ success: true, univs: await upcomingDeadlines() });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+/** 한 대학의 지금 경쟁률(모집단위별 최신) */
+app.get('/api/ratio/univ/:univ', requireAuth, async (req, res) => {
+  try {
+    const rows = await ratioCurrentOf(req.params.univ);
+    res.json({ success: true, univ: req.params.univ, units: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+/** 한 모집단위의 시간별 흐름 — 마감 직전 곡선 */
+app.get('/api/ratio/series', requireAuth, async (req, res) => {
+  const { univ, jeonhyeong = '', unit } = req.query;
+  if (!univ || !unit) return res.status(400).json({ success: false, message: 'univ, unit 필요' });
+  try {
+    res.json({ success: true, points: await ratioSeriesOf(univ, jeonhyeong, unit) });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+/** 지금 상태 — 마지막 수집이 언제였는지 */
+app.get('/api/ratio/status', requireAuth, async (req, res) => {
+  try {
+    const univs = await ratioListUnivs();
+    res.json({
+      success: true,
+      ...ratioStatus(),
+      univCount: univs.length,
+      withDeadline: univs.filter((u) => u.closes_at).length,
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+/** 손으로 한 바퀴 돌리기 — 접수 기간이 아니어도 강제로(원장 전용) */
+app.post('/api/ratio/run', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, ...(await ratioRunOnce({ force: !!req.body?.force })) });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+/** 주소록 새로 받기 — 해마다 주소가 바뀐다(원장 전용) */
+app.post('/api/ratio/refresh-sources', requireAdmin, async (req, res) => {
+  try {
+    res.json({ success: true, count: await ratioRefreshSources() });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 app.get('/api/ipgyeol/list', requireAuth, (req, res) => {
   try {
     const data = getIpgyeolIndex();
@@ -3633,6 +3701,8 @@ app.delete('/api/admin/admissions', requireAdmin, async (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
   await initDb();
+  // 📈 실시간 경쟁률 자동 수집 — 접수 기간에만 실제로 돈다(스스로 판단한다).
+  startRatioCron().catch((e) => console.warn('[ratio] 예약 실패:', e.message));
   await refreshKbCount();
   const hasAdmin = !!(process.env.ADMIN_CODE || process.env.APP_PASSWORD);
   console.log(`🔐 인증: 관리자코드=${hasAdmin ? '설정됨' : '미설정!'}, DB=${dbEnabled() ? 'ON' : 'OFF'}, pgvector=${vectorEnabled() ? 'ON' : 'OFF'}, RAG=${ragAvailable() ? 'ON' : 'OFF'}`);
