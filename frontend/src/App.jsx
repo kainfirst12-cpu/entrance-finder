@@ -11,6 +11,7 @@ import Board from './components/Board';
 import Admissions from './components/Admissions';
 import UnivInfo from './components/UnivInfo';
 import IpgyeolConsole from './components/IpgyeolConsole';
+import RatioLive from './components/RatioLive';
 import SuhaengArchive from './components/SuhaengArchive';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -442,6 +443,9 @@ export default function App() {
         )}
         {view === 'ipgyeol' && (
           <IpgyeolConsole onAuthError={handleLogout} />
+        )}
+        {view === 'ratio' && (
+          <RatioLive onAuthError={handleLogout} />
         )}
         {view === 'suharchive' && (
           <SuhaengArchive
