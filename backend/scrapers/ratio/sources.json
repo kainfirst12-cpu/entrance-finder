@@ -1,0 +1,1127 @@
+{
+  "fetchedAt": "2026-09-07T08:16:17.733Z",
+  "list": [
+    {
+      "univ": "가톨릭대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10030311.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "감리교신대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KJjBNSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "강서대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10360681.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "건국대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10080311.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "경희대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/SmZKOnw5SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "고려대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KOGB9YTlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "광운대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KTjlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "국민대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KVyVNOWFhOUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "덕성여대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10530541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동국대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10550451.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동덕여대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KOTpWcldhVkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "명지대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10650631.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "삼육대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10760611.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "상명대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KOk0mSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "서강대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio12050421.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "서경대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10810601.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "서울과학기술대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KMDpXJkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "서울교대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KYDpXJkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "서울기독대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10520511.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "서울대",
+      "region": "서울",
+      "url": "https://admission.snu.ac.kr/undergraduate/notice?md=v&bbsidx=157356",
+      "kind": "own"
+    },
+    {
+      "univ": "서울시립대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KJmE6SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "서울여대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10860591.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "서울한영대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11660391.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "성공회대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10910441.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "성균관대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10920451.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "성신여대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10930101.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "세종대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10950621.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "숙명여대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10981151.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "숭실대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11010661.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "연세대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11080671.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "이화여대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11201541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "장로회신대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KJjBMaUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "중앙대",
+      "region": "서울",
+      "url": "https://ratio.uwayapply.com/Sl5KOjhMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "총신대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KVyV8JnJXYXxMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "추계예대",
+      "region": "서울",
+      "url": "http://ratio.uwayapply.com/Sl5KYGJyOnxMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "한국성서대",
+      "region": "서울",
+      "url": "https://ipsi.bible.ac.kr/summary/Summarys.aspx",
+      "kind": "own"
+    },
+    {
+      "univ": "한국외대",
+      "region": "서울",
+      "url": "https://ratio.uwayapply.com/Sl5KJmg6fEpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "한국체대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11530371.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한성대",
+      "region": "서울",
+      "url": "https://ratio.uwayapply.com/Sl5Kclc6Jlc4fEpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "한양대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11640461.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "홍익대",
+      "region": "서울",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11720711.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "경인교대",
+      "region": "인천",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio20060231.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "인천가톨릭대",
+      "region": "인천",
+      "url": "http://ratio.uwayapply.com/Sl5KOkxMJUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "인천대",
+      "region": "인천",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11230591.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "인하대",
+      "region": "인천",
+      "url": "http://ratio.uwayapply.com/Sl5KOHxXJUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "가천대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10190551.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "강남대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KTThXclc4OUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "경기대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KJXJyV2FiOUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "단국대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10420391.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "대진대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KVyUvYDhWSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "루터대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KOjBDSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "서울신대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KOjAmSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "서울장신대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KVyUmclc4L0M6YWAmSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "성결대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10900671.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "수원대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10970401.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "신한대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11870641.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "아신대",
+      "region": "경기",
+      "url": "https://www.acts.ac.kr/admission/design/admission08.asp?&left=occa4&cry=2026&crs=susi&mode=view",
+      "kind": "own"
+    },
+    {
+      "univ": "아주대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11040601.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "안양대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5Kclc4Ylc4SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "용인대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KVyVyV2FiSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "을지대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11190571.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "차의과학대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KOHxMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "칼빈대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KVyVEQzhMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "평택대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KOjBpSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "한경국립대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30160991.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한국공학대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30170591.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한국외대(글로벌)",
+      "region": "경기",
+      "url": "https://ratio.uwayapply.com/Sl5KJmg6fEpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "한국항공대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11540841.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한세대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5KJWAmVzh8SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "한신대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11630391.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한양대(ERICA)",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11650631.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "협성대",
+      "region": "경기",
+      "url": "http://ratio.uwayapply.com/Sl5Kclc6Jmk6YnxKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "화성의과학대",
+      "region": "경기",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11880401.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "가톨릭관동대",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KOjlMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "강릉원주대",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KOldOckpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "강원대",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KV2FOclc4OUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "강원대(삼척)",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KV2FOclc4OUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "경동대",
+      "region": "강원",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10140361.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "상지대",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KJS9yVzgmSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "연세대(미래)",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KZiVgJldhYkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "춘천교대",
+      "region": "강원",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio20110281.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한라대",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KOENDOHxKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "한림대",
+      "region": "강원",
+      "url": "http://ratio.uwayapply.com/Sl5KTWJDQzh8SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "가톨릭꽃동네대",
+      "region": "충북",
+      "url": "http://ratio.uwayapply.com/Sl5KMGE5OUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "건국대(글로컬)",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10091041.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "극동대",
+      "region": "충북",
+      "url": "http://ratio.uwayapply.com/Sl5KOlY5SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "서원대",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10880521.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "세명대",
+      "region": "충북",
+      "url": "https://ratio.uwayapply.com/Sl5Kclc6Yk1gJkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "유원대",
+      "region": "충북",
+      "url": "https://ipsi.u1.ac.kr/ipsi/competition/type01-ratio.do",
+      "kind": "own"
+    },
+    {
+      "univ": "중원대",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11920221.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "청주교대",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio20100291.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "청주대",
+      "region": "충북",
+      "url": "http://ratio.uwayapply.com/Sl5KOi9yV2FgfExKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "충북대",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11410781.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한국교원대",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11480351.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한국교통대",
+      "region": "충북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30150561.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "건양대",
+      "region": "충남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10100701.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "고려대(세종)",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KcldhL2AmOzhgfWE5SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "공주교대",
+      "region": "충남",
+      "url": "https://ratio.uwayapply.com/Sl5KYDY6L3JXYTlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "공주대",
+      "region": "충남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10280871.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "금강대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KOnJySmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "나사렛대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KOld9YTlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "남서울대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KQzphYCZNOFdKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "단국대(천안)",
+      "region": "충남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10420391.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "백석대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KOkJKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "상명대(천안)",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KZjpNJkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "선문대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KV2FhTVc6JkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "순천향대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KfEwmSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "중부대",
+      "region": "충남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11310831.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "청운대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KV2FhTnJXOnxMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "한국기술교대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KfExgMDhgfWE5SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "한서대",
+      "region": "충남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11600791.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "호서대",
+      "region": "충남",
+      "url": "http://ratio.uwayapply.com/Sl5KYWAmYXxKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "홍익대(세종)",
+      "region": "충남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11720712.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "대전대",
+      "region": "대전",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10500891.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "목원대",
+      "region": "대전",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10670681.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "배재대",
+      "region": "대전",
+      "url": "http://ratio.uwayapply.com/Sl5KOkxpSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "우송대",
+      "region": "대전",
+      "url": "http://ratio.uwayapply.com/Sl5KcldhJmFhTkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "충남대",
+      "region": "대전",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11400411.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한국침례신대",
+      "region": "대전",
+      "url": "http://ratio.uwayapply.com/Sl5KJjowQjlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "한남대",
+      "region": "대전",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11560771.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한밭대",
+      "region": "대전",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30040731.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "군산대",
+      "region": "전북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10350541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "예수대",
+      "region": "전북",
+      "url": "http://ratio.uwayapply.com/Sl5KOmlNSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "예원예대",
+      "region": "전북",
+      "url": "https://admission.yewon.ac.kr/main/?menu=293",
+      "kind": "own"
+    },
+    {
+      "univ": "우석대",
+      "region": "전북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11150541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "원광대",
+      "region": "전북",
+      "url": "http://ratio.uwayapply.com/Sl5Kclc4TjlXYU5KZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "전북대",
+      "region": "전북",
+      "url": "http://ratio.uwayapply.com/Sl5KOldCL0pmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "전주교대",
+      "region": "전북",
+      "url": "http://ratio.uwayapply.com/Sl5KYDpXL0pmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "전주대",
+      "region": "전북",
+      "url": "http://ratio.uwayapply.com/Sl5KOi9XYWAvSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "한일장신대",
+      "region": "전북",
+      "url": "http://ratio.uwayapply.com/Sl5KQyVXOHxKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "호원대",
+      "region": "전북",
+      "url": "https://intra.howon.ac.kr/IPSI/WEB_SUSI/_acceptrate/index.html?smenu=rate&v=c06d1d39a01e9205ba6f7b65df278952c70ea014fa2e6259aed7d78eef41b911",
+      "kind": "own"
+    },
+    {
+      "univ": "동신대",
+      "region": "전남",
+      "url": "http://ratio.uwayapply.com/Sl5KOlclfCZyV2FWSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "목포가톨릭대",
+      "region": "전남",
+      "url": "https://ratio.uwayapply.com/Sl5KOkxNSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "목포대",
+      "region": "전남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10690211.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "목포해양대",
+      "region": "전남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10700471.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "세한대",
+      "region": "전남",
+      "url": "https://apply.sehan.ac.kr/apply/resource/jsp/ssoindex.jsp?gnb=9&pgId=SADASEAM11",
+      "kind": "own"
+    },
+    {
+      "univ": "순천대",
+      "region": "전남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10990421.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "초당대",
+      "region": "전남",
+      "url": "http://ratio.uwayapply.com/Sl5Kclc4VmF8TEpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "광주교대",
+      "region": "광주",
+      "url": "http://ratio.uwayapply.com/Sl5KYDY6L3JXOE45SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "광주대",
+      "region": "광주",
+      "url": "http://ratio.uwayapply.com/Sl5KOi9yVzhOckpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "광주여대",
+      "region": "광주",
+      "url": "http://ratio.uwayapply.com/Sl5KOk45SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "남부대",
+      "region": "광주",
+      "url": "http://ratio.uwayapply.com/Sl5KOkJNOFdKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "송원대",
+      "region": "광주",
+      "url": "http://ratio.uwayapply.com/Sl5KV2FOcldhJkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "전남대",
+      "region": "광주",
+      "url": "http://ratio.uwayapply.com/Sl5KOlcvSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "조선대",
+      "region": "광주",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11300471.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "호남대",
+      "region": "광주",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11690551.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "가야대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10010651.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "경국대",
+      "region": "경북",
+      "url": "http://ratio.uwayapply.com/Sl5KcldhVlc4SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "경운대",
+      "region": "경북",
+      "url": "https://www.ikw.ac.kr/ipsi/board/detail.tc?mn=2412&viewType=sub&mngNo=183&pageIndex=1&boardName=EARLYDECISIONSUPPORT&boardNo=326770&boardCategory=&pageSeq=1607",
+      "kind": "own"
+    },
+    {
+      "univ": "경일대",
+      "region": "경북",
+      "url": "https://ibsi.kiu.ac.kr/ipsi_rate/rate_susi_real_new_20250808.htm",
+      "kind": "own"
+    },
+    {
+      "univ": "금오공대",
+      "region": "경북",
+      "url": "http://ratio.uwayapply.com/Sl5KfGFNOjlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "김천대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio40330551.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "대구가톨릭대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10460911.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "대구대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10440731.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "대구예대",
+      "region": "경북",
+      "url": "http://ratio.uwayapply.com/Sl5KOjgwSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "대구한의대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10160641.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "대신대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10480221.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동국대(WISE)",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10540571.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동양대",
+      "region": "경북",
+      "url": "https://haksa.dyu.ac.kr/manager/m_ibsi/ib_inweon/m_susi_inweon.jsp?nyeondo=2026",
+      "kind": "own"
+    },
+    {
+      "univ": "영남대",
+      "region": "경북",
+      "url": "http://ratio.uwayapply.com/Sl5KOmJKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "위덕대",
+      "region": "경북",
+      "url": "https://portal.uu.ac.kr/ext/competition.jsp",
+      "kind": "own"
+    },
+    {
+      "univ": "한동대",
+      "region": "경북",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11570661.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "경남대",
+      "region": "경남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10130521.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "경상국립대",
+      "region": "경남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10170831.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "인제대",
+      "region": "경남",
+      "url": "http://ratio.uwayapply.com/Sl5KYC9XJUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "진주교대",
+      "region": "경남",
+      "url": "http://ratio.uwayapply.com/Sl5KYDpMSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "창신대",
+      "region": "경남",
+      "url": "https://ipsi.cs.ac.kr/ratio/2026/1.do",
+      "kind": "own"
+    },
+    {
+      "univ": "창원대",
+      "region": "경남",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11350541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "경북대",
+      "region": "대구",
+      "url": "http://ratio.uwayapply.com/Sl5KOlc5SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "계명대",
+      "region": "대구",
+      "url": "http://ratio.uwayapply.com/Sl5KOk05SmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "대구교대",
+      "region": "대구",
+      "url": "http://ratio.uwayapply.com/Sl5KYDpXVkpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "경성대",
+      "region": "부산",
+      "url": "http://ratio.uwayapply.com/Sl5KJjlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "고신대",
+      "region": "부산",
+      "url": "http://ratio.uwayapply.com/Sl5KVyUmYTlKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "동명대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30050601.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동서대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10570621.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동아대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10591111.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "동의대",
+      "region": "부산",
+      "url": "http://ratio.uwayapply.com/Sl5KOmBWSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    },
+    {
+      "univ": "부경대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10720321.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "부산가톨릭대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10730511.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "부산교대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio20040241.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "부산대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio12100541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "부산외대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio10750451.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "신라대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio11020541.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "영산대",
+      "region": "부산",
+      "url": "https://addon.jinhakapply.com/RatioV1/RatioH/Ratio30100251.html",
+      "kind": "jinhak"
+    },
+    {
+      "univ": "한국해양대",
+      "region": "부산",
+      "url": "http://ratio.uwayapply.com/Sl5KOmFNOUpmJSY6JkotZlRm",
+      "kind": "uway"
+    },
+    {
+      "univ": "울산대",
+      "region": "울산",
+      "url": "http://ratio.uwayapply.com/Sl5KVzgmQzpKZiUmOiZKLWZUZg==",
+      "kind": "uway"
+    },
+    {
+      "univ": "제주대",
+      "region": "제주",
+      "url": "http://ratio.uwayapply.com/Sl5KOlc6L2AvSmYlJjomSi1mVGY=",
+      "kind": "uway"
+    }
+  ]
+}
