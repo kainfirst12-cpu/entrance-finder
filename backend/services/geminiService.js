@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import pdfParse from 'pdf-parse';
-import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt } from './reportUtils.js';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt, caseMatchGuide } from './reportUtils.js';
 
 // 2026-08 기준 최신. 최신 모델 우선, 안정 모델로 폴백 (3.5 Pro는 아직 미공개 — 3.1 Pro preview 유지)
 const GEMINI_MODELS = {
@@ -187,6 +187,8 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 3. 사례가 없으면 솔직히 밝혀라.
 4. 매칭 우선순위: 전공 학과 일치(50점), 대학 일치(20점), 내신 갭(20점), 전형(10점)
 5. 전공 불일치 시 유사도 최대 20%.
+
+${caseMatchGuide(studentData)}
 
 [출력 형식]
 매칭된 유사 합격 사례 TOP 3

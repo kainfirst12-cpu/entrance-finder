@@ -26,7 +26,7 @@ import {
 } from './services/roadmapStore.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
-import { placementJudgeRules } from './services/reportUtils.js';
+import { placementJudgeRules, caseMatchGuide } from './services/reportUtils.js';
 import { reviewOnce, buildConsensus, applyFixes, VERIFY_KINDS } from './services/crossVerify.js';
 import { generateAnalysisPDF, generateRoadmapPDF } from './services/pdfService.js';
 import jwt from 'jsonwebtoken';
@@ -441,6 +441,11 @@ app.post('/api/refine', async (req, res) => {
 7. 유사합격사례(0단계) 관련 지적이 있으면 아래 [합격자 사례]를 다시 참조하여 매칭을 재수행하라.
 8. 세특 개선안(6단계) 관련 지적이 있으면 아래 [합격자 사례]의 세특 수준을 참고하여 Before/After를 재작성하라.
 9. **각 섹션의 분량은 기존 분석과 동일하거나 더 많아야 한다.** 기존보다 짧아지면 안 된다.
+10. 0단계 사례 표의 **내신·격차·유사도·주의 문구는 절대 지우지 마라.** 검증이 "면책성 문구를 빼라"고 하더라도
+    성적 격차 경고는 면책이 아니라 사실이다. 지우면 그 표가 "여기 지원해도 된다"로 읽힌다.
+    (실제로 유사도 열과 "내신 격차가 큽니다" 단서가 검증 반영 뒤 사라진 적이 있다 — 2026-09-07 원장 제보)
+
+${caseMatchGuide(studentData || {})}
 
 [메타 표현 절대 금지 — 위반 시 분석 무효]
 당신의 출력은 처음부터 그렇게 작성된 "정식 컨설팅 보고서"여야 한다. 검증 과정이 있었다는 흔적을 남기면 전문성이 무너진다.

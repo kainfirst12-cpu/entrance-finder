@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import pdfParse from 'pdf-parse';
-import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt } from './reportUtils.js';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths, strategyStepPrompt, caseMatchGuide } from './reportUtils.js';
 
 // 2026-08 기준 최신 GPT 모델 매핑 (frontend 키는 호환을 위해 유지)
 // GPT-5.6부터 Sol(플래그십)/Terra(균형)/Luna(저비용) 티어 체계. pro는 5.6에 없어 5.5-pro 유지.
@@ -172,6 +172,8 @@ ${knowledgeBase.합격자사례 || '(자료 없음)'}
 3. 사례가 없으면 솔직히 밝혀라.
 4. 매칭 우선순위: 전공 학과 일치(50점), 대학 일치(20점), 내신 갭(20점), 전형(10점)
 5. 전공 불일치 시 유사도 최대 20%.
+
+${caseMatchGuide(studentData)}
 
 [출력 형식]
 매칭된 유사 합격 사례 TOP 3

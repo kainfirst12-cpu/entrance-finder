@@ -1,7 +1,7 @@
 // services/claudeService.js
 import Anthropic from '@anthropic-ai/sdk';
 import pdfParse from 'pdf-parse';
-import { stripBoldMarkers, studentContextBlock, buildPlanMonths } from './reportUtils.js';
+import { stripBoldMarkers, studentContextBlock, buildPlanMonths, caseMatchGuide } from './reportUtils.js';
 
 // ── System Prompt 생성 ─────────────────────────────────
 const buildSystemPrompt = (knowledgeBase, studentDriveFiles, studentData = {}) => `${studentContextBlock(studentData)}
@@ -254,6 +254,8 @@ ${pdfDocuments.length ? `첨부된 PDF(${pdfDocuments.map(p=>p.label).join(', ')
 4. 동일 전공 사례가 DB에 없더라도, 가장 인접한 계열의 사례를 활용하여 유의미한 비교 분석을 반드시 제공하라. "사례가 없다", "DB에 부족하다", "매칭 제한" 등의 면책 문구는 절대 쓰지 마라. 전문 컨설턴트처럼 보유한 데이터 내에서 최선의 분석을 제공하라.
 5. 매칭 우선순위: 1순위-전공 학과 일치(50점), 2순위-대학 일치(20점), 3순위-내신 갭(20점), 4순위-전형 유형(10점)
 6. 전공 불일치 시 유사도는 최대 20%를 넘을 수 없다.
+
+${caseMatchGuide(studentData)}
 
 [출력 형식]
 
