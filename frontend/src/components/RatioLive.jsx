@@ -164,7 +164,12 @@ export default function RatioLive({ onAuthError }) {
         if (st.success) setStatus(st);
         const u = await api('/api/ratio/univs');
         if (u.success) setUnivs(u.univs || []);
-        if (st.success && !st.running) { setBusy(false); if (sel) await openUniv(sel); return; }
+        // 보고 있는 대학도 같이 갱신한다 — 수집이 끝날 때까지 빈 화면을 보고 있을 이유가 없다.
+        if (sel) {
+          const r = await api(`/api/ratio/univ/${encodeURIComponent(sel.univ)}`);
+          if (r.success && (r.units || []).length) setUnits(r.units);
+        }
+        if (st.success && !st.running) { setBusy(false); return; }
       } catch { /* 한 번 실패해도 다음에 다시 묻는다 */ }
       if (Date.now() - started > 15 * 60 * 1000) { setBusy(false); return; }   // 15분이면 그만 묻는다
       setTimeout(poll, 3000);

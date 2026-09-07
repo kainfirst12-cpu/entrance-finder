@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-07T10:29:08.521Z",
+  "fetchedAt": "2026-09-07T10:34:17.199Z",
   "list": [
     {
       "univ": "가야대학교",
@@ -12,7 +12,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/kaya/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/kaya/?CHA=1",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "가천대학교",
@@ -25,7 +28,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.gachon.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "가톨릭관동대학교",
@@ -38,7 +44,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/cku/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/cku/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T14:30:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "가톨릭꽃동네대학교",
@@ -51,7 +60,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kkot/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kkot/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "가톨릭대학교",
@@ -64,7 +76,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.catholic.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "감리교신학대학교",
@@ -73,11 +88,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KJjBNSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fmts%2F%3FCHA%3D1&ratioNM=감리교신학대학교&univURL=https://www.mtu.ac.kr/mtu/main/main.do?mId=1",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KJjBNSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/mts/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/mts/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "강남대학교",
@@ -90,7 +108,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/kangnam/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/kangnam/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "강서대학교",
@@ -103,7 +124,10 @@
       "applyUrl": null,
       "homeUrl": "http://kcu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "강원대학교",
@@ -112,11 +136,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KV2FOclc4OUpmJSY6Jko3ZlRm&applyURL=http%3A%2F%2Fipsi2.uwayapply.com%2F2027%2Fsusi2%2Fkangwon%2F%3FCHA%3D1&ratioNM=강원대학교&univURL=http://www.kangwon.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KV2FOclc4OUpmJSY6Jko3ZlRm",
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/kangwon/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/kangwon/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "건국대학교(글로컬)",
@@ -129,7 +156,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.konkuk.ac.kr ",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "건양대학교",
@@ -142,7 +172,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.konyang.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "경기대학교",
@@ -155,7 +188,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kyonggi/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kyonggi/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "경남대학교",
@@ -168,7 +204,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.kyungnam.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "경동대학교",
@@ -181,7 +220,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kduniv/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kduniv/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T14:59:59.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "경북대학교",
@@ -194,7 +236,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/knu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/knu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "경상국립대학교",
@@ -207,7 +252,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.gsnu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "경성대학교",
@@ -220,7 +268,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/ks/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/ks/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "경운대학교",
@@ -233,7 +284,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/ikw/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/ikw/?CHA=1",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "경인교육대학교",
@@ -246,7 +300,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.ginue.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "경일대학교",
@@ -259,7 +316,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/kiu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/kiu/?CHA=1",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "계명대학교",
@@ -272,7 +332,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/kmu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/kmu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "고려대학교(서울)",
@@ -281,11 +344,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-09",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOGB9YTlKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fkorea%2F%3FCHA%3D1&ratioNM=고려대학교(서울)&univURL=http://www.korea.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOGB9YTlKZiUmOiZKN2ZUZg==",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/korea/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/korea/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-09T08:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "고려대학교(세종)",
@@ -298,7 +364,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/korea_sejong/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/korea_sejong/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "고신대학교",
@@ -307,11 +376,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KVyUmYTlKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fkosin%2F%3FCHA%3D1&ratioNM=고신대학교&univURL=http://www.kosin.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KVyUmYTlKZiUmOiZKN2ZUZg==",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kosin/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kosin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "광신대학교",
@@ -324,7 +396,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/kwangshin/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/kwangshin/?CHA=1",
       "kind": "own",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "광주교육대학교",
@@ -333,11 +408,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KYDY6L3JXOE45SmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fkwangju-e%2F%3FCHA%3D1&ratioNM=광주교육대학교&univURL=http://www.gnue.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KYDY6L3JXOE45SmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/kwangju-e/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/kwangju-e/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "광주대학교",
@@ -350,7 +428,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/gwangju/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/gwangju/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "광주여자대학교",
@@ -359,11 +440,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOk45SmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fkwu%2F%3FCHA%3D1&ratioNM=광주여자대학교&univURL=http://www.kwu.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOk45SmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kwu/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kwu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "국립경국대학교",
@@ -376,7 +460,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/andong/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/andong/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "국립공주대학교",
@@ -389,7 +476,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.kongju.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립군산대학교",
@@ -402,7 +492,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.kunsan.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립금오공과대학교",
@@ -415,7 +508,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/kumoh/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/kumoh/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "국립목포대학교",
@@ -428,7 +524,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.mokpo.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립목포해양대학교",
@@ -441,7 +540,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.mmu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립부경대학교",
@@ -454,7 +556,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.pknu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립순천대학교",
@@ -467,7 +572,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.sunchon.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립창원대학교",
@@ -480,7 +588,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.changwon.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립한국교통대학교",
@@ -493,7 +604,10 @@
       "applyUrl": null,
       "homeUrl": "https://www.ut.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국립한국해양대학교",
@@ -506,7 +620,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kmou/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kmou/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "국립한밭대학교",
@@ -519,7 +636,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hanbat.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "국민대학교",
@@ -532,7 +652,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/kookmin/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/kookmin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "극동대학교",
@@ -541,11 +664,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOlY5SmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fkdu%2F%3FCHA%3D1&ratioNM=극동대학교&univURL=http://www.kdu.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOlY5SmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/kdu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/kdu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "금강대학교",
@@ -558,7 +684,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/ggu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/ggu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "김천대학교",
@@ -571,7 +700,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/gimcheon/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/gimcheon/?CHA=1",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "나사렛대학교",
@@ -584,7 +716,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/kornu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/kornu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "남부대학교",
@@ -597,7 +732,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/nambu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/nambu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "남서울대학교",
@@ -610,7 +748,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/namseoul/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/namseoul/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "대구가톨릭대학교",
@@ -623,7 +764,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.cataegu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "대구교육대학교",
@@ -636,7 +780,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/dnue/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/dnue/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "대구대학교",
@@ -649,7 +796,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.daegu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "대구예술대학교",
@@ -658,11 +808,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOjgwSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Ftau%2F%3FCHA%3D1&ratioNM=대구예술대학교&univURL=https://www.dgau.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOjgwSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/tau/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/tau/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "대구한의대학교",
@@ -675,7 +828,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.dhu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "대신대학교",
@@ -688,7 +844,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.daeshin.ac.kr/ ",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "대전대학교",
@@ -701,7 +860,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.dju.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "대진대학교",
@@ -714,7 +876,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/daejin/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/daejin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "덕성여자대학교",
@@ -727,7 +892,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.duksung.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "동국대학교(WISE)",
@@ -740,7 +908,10 @@
       "applyUrl": null,
       "homeUrl": "https://ipsi.dongguk.ac.kr/main",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": null,
+      "opensAt": null,
+      "deadlineVia": null
     },
     {
       "univ": "동덕여자대학교",
@@ -749,11 +920,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOTpWcldhVkpmJSY6Jko3ZlRm&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fdongduk%2F%3FCHA%3D1&ratioNM=동덕여자대학교&univURL=https://www.dongduk.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOTpWcldhVkpmJSY6Jko3ZlRm",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/dongduk/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/dongduk/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T02:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "동명대학교",
@@ -766,7 +940,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.tu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "동서대학교",
@@ -779,7 +956,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.dongseo.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "동신대학교",
@@ -792,7 +972,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/dongshinu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/dongshinu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "동아대학교",
@@ -805,7 +988,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.donga.ac.kr ",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "동양대학교",
@@ -818,7 +1004,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/dyu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/dyu/?CHA=1",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "동의대학교",
@@ -831,7 +1020,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/deu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/deu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "루터대학교",
@@ -844,7 +1036,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/ltu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/ltu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T13:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "명지대학교",
@@ -857,7 +1052,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.mju.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "목원대학교",
@@ -870,7 +1068,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.mokwon.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "목포가톨릭대학교",
@@ -883,7 +1084,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/mcu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/mcu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "배재대학교",
@@ -896,7 +1100,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/pcu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/pcu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "백석대학교",
@@ -909,7 +1116,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/bu/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/bu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "부산가톨릭대학교",
@@ -922,7 +1132,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.cup.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "부산교육대학교",
@@ -935,7 +1148,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.bnue.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "부산외국어대학교",
@@ -948,7 +1164,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.bufs.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "부산장신대학교",
@@ -961,7 +1180,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/bjc/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/bjc/?CHA=1",
       "kind": "own",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "삼육대학교",
@@ -974,7 +1196,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.syu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "상명대학교",
@@ -987,7 +1212,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/smuintro/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/smuintro/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "상지대학교",
@@ -1000,7 +1228,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/sangji/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/sangji/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T13:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "서경대학교",
@@ -1013,7 +1244,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.skuniv.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "서울과학기술대학교",
@@ -1026,7 +1260,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/snut/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/snut/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "서울기독대학교",
@@ -1039,7 +1276,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.scu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "서울대학교",
@@ -1052,7 +1292,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/snu/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/snu/?CHA=1",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-09T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "서울시립대학교",
@@ -1061,11 +1304,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-10",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KJmE6SmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fuos%2F%3FCHA%3D1&ratioNM=서울시립대학교&univURL=https://www.uos.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KJmE6SmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/uos/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/uos/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-10T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "서울신학대학교",
@@ -1078,7 +1324,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/stu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/stu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "서울장신대학교",
@@ -1091,7 +1340,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/seouljangsin/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/seouljangsin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T14:59:59.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "서울한영대학교",
@@ -1104,7 +1356,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hytu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "서원대학교",
@@ -1117,7 +1372,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.seowon.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "선문대학교",
@@ -1130,7 +1388,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/sunmoon/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/sunmoon/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "성결대학교",
@@ -1143,7 +1404,10 @@
       "applyUrl": null,
       "homeUrl": "https://www.sungkyul.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "성공회대학교",
@@ -1156,7 +1420,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.skhu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "세명대학교",
@@ -1169,7 +1436,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/semyung/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/semyung/?CHA=1",
       "kind": "uway",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T13:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "세한대학교",
@@ -1182,7 +1452,10 @@
       "applyUrl": null,
       "homeUrl": "https://apply.sehan.ac.kr/apply/",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": null,
+      "opensAt": null,
+      "deadlineVia": null
     },
     {
       "univ": "송원대학교",
@@ -1195,7 +1468,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/songwon/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/songwon/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "수원대학교",
@@ -1208,7 +1484,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.suwon.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "순천향대학교",
@@ -1221,7 +1500,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/sch/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/sch/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "신경주대학교",
@@ -1234,7 +1516,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/singyeongju/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/singyeongju/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "신라대학교",
@@ -1247,7 +1532,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.silla.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "신한대학교",
@@ -1260,7 +1548,10 @@
       "applyUrl": null,
       "homeUrl": "http://ipsi.shinhan.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T15:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "아신대학교",
@@ -1273,7 +1564,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/acts/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/acts/?CHA=1",
       "kind": "own",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "아주대학교",
@@ -1286,7 +1580,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.ajou.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "안양대학교",
@@ -1299,7 +1596,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/anyang/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/anyang/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "연세대학교(미래)",
@@ -1312,7 +1612,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/yonsei2/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/yonsei2/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "연세대학교(서울)",
@@ -1325,7 +1628,10 @@
       "applyUrl": null,
       "homeUrl": "http://admission.yonsei.ac.kr/seoul/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-09T08:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "영남대학교",
@@ -1334,11 +1640,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOmJKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fyu%2F%3FCHA%3D1&ratioNM=영남대학교&univURL=http://enter.yu.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOmJKZiUmOiZKN2ZUZg==",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/yu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/yu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "영산대학교",
@@ -1351,7 +1660,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.ysu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "예수대학교",
@@ -1360,11 +1672,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOmlNSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fmpu%2F%3FCHA%3D1&ratioNM=예수대학교&univURL=http://www.mpu.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOmlNSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/mpu/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/mpu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "예원예술대학교",
@@ -1377,7 +1692,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.yewon.ac.kr",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": null,
+      "opensAt": null,
+      "deadlineVia": null
     },
     {
       "univ": "용인대학교",
@@ -1390,7 +1708,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/yongin/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/yongin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "우석대학교",
@@ -1403,7 +1724,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.woosuk.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "우송대학교",
@@ -1412,11 +1736,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KcldhJmFhTkpmJSY6Jko3ZlRm&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fwoosong%2F%3FCHA%3D1&ratioNM=우송대학교&univURL=https://www.wsu.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KcldhJmFhTkpmJSY6Jko3ZlRm",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/woosong/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/woosong/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "울산대학교",
@@ -1425,11 +1752,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KVzgmQzpKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fulsan%2F%3FCHA%3D1&ratioNM=울산대학교&univURL=http://www.ulsan.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KVzgmQzpKZiUmOiZKN2ZUZg==",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/ulsan/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/ulsan/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "원광대학교",
@@ -1442,7 +1772,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/wonkwang/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/wonkwang/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "위덕대학교",
@@ -1455,7 +1788,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.uiduk.ac.kr",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": null,
+      "opensAt": null,
+      "deadlineVia": null
     },
     {
       "univ": "유원대학교",
@@ -1468,7 +1804,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.u1.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T13:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "을지대학교",
@@ -1481,7 +1820,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.eulji.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "인제대학교",
@@ -1494,7 +1836,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/inje/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/inje/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "인천가톨릭대학교",
@@ -1507,7 +1852,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.iccu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T07:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "인천대학교",
@@ -1520,7 +1868,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.incheon.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "인하대학교",
@@ -1533,7 +1884,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/inha/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/inha/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "장로회신학대학교",
@@ -1542,11 +1896,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KJjBMaUpmJSY6Jko3ZlRm&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fpcts%2F%3FCHA%3D1&ratioNM=장로회신학대학교&univURL=http://www.pcts.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KJjBMaUpmJSY6Jko3ZlRm",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/pcts/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/pcts/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "전남대학교",
@@ -1559,7 +1916,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/jnu/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/jnu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "전북대학교",
@@ -1568,11 +1928,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOldCL0pmJSY6Jko3ZlRm&applyURL=http%3A%2F%2Fipsi2.uwayapply.com%2F2027%2Fsusi2%2Fjbnu%2F%3FCHA%3D1&ratioNM=전북대학교&univURL=https://www.jbnu.ac.kr/kor/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOldCL0pmJSY6Jko3ZlRm",
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/jbnu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/jbnu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "전주교육대학교",
@@ -1585,7 +1948,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/jnue/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/jnue/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "전주대학교",
@@ -1594,11 +1960,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOi9XYWAvSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi2.uwayapply.com%2F2027%2Fsusi2%2Fjeonju%2F%3FCHA%3D1&ratioNM=전주대학교&univURL=https://www.jj.ac.kr/",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOi9XYWAvSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/jeonju/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/jeonju/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "제주국제대학교",
@@ -1611,7 +1980,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/tnu/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/tnu/?CHA=1",
       "kind": "own",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "제주대학교",
@@ -1624,7 +1996,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/jejunu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/jejunu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "조선대학교",
@@ -1637,7 +2012,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.chosun.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "중부대학교",
@@ -1650,7 +2028,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.joongbu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T15:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "중원대학교",
@@ -1663,7 +2044,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.jwu.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "진주교육대학교",
@@ -1676,7 +2060,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/cue/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/cue/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "차 의과학대학교",
@@ -1685,11 +2072,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KOHxMSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fcha%2F%3FCHA%3D1&ratioNM=차 의과학대학교&univURL=http://www.cha.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KOHxMSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/cha/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/cha/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "창신대학교",
@@ -1702,7 +2092,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.cs.ac.kr/ ",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": null,
+      "opensAt": null,
+      "deadlineVia": null
     },
     {
       "univ": "청운대학교",
@@ -1715,7 +2108,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/chungwoon/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/chungwoon/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "청주교육대학교",
@@ -1728,7 +2124,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.cje.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "청주대학교",
@@ -1741,7 +2140,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/cheongju/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/cheongju/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T12:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "초당대학교",
@@ -1754,7 +2156,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/chodang/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/chodang/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "총신대학교",
@@ -1763,11 +2168,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KVyV8JnJXYXxMSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi2.uwayapply.com%2F2027%2Fsusi2%2Fchongshin%2F%3FCHA%3D1&ratioNM=총신대학교&univURL=http://www.chongshin.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KVyV8JnJXYXxMSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/chongshin/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/chongshin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "추계예술대학교",
@@ -1776,11 +2184,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KYGJyOnxMSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fchugye%2F%3FCHA%3D1&ratioNM=추계예술대학교&univURL=http://www.chugye.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KYGJyOnxMSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/chugye/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/chugye/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "춘천교육대학교",
@@ -1793,7 +2204,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.cnue.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "충남대학교",
@@ -1806,7 +2220,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.cnu.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "충북대학교",
@@ -1819,7 +2236,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.chungbuk.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "칼빈대학교",
@@ -1828,11 +2248,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KVyVEQzhMSmYlJjomSjdmVGY%3D&applyURL=http%3A%2F%2Fipsi3.uwayapply.com%2F2027%2Fsusi2%2Fcalvin%2F%3FCHA%3D1&ratioNM=칼빈대학교&univURL=http://www.calvin.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KVyVEQzhMSmYlJjomSjdmVGY=",
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/calvin/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/calvin/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T07:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "평택대학교",
@@ -1845,7 +2268,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/ptu/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/ptu/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "포항공과대학교",
@@ -1858,7 +2284,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/postech/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/postech/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-09T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한경국립대학교",
@@ -1871,7 +2300,10 @@
       "applyUrl": null,
       "homeUrl": "https://www.hknu.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한국공학대학교",
@@ -1884,7 +2316,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.tukorea.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한국기술교육대학교",
@@ -1897,7 +2332,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/koreatech/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/koreatech/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한국성서대학교",
@@ -1910,7 +2348,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.bible.ac.kr",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": null,
+      "opensAt": null,
+      "deadlineVia": null
     },
     {
       "univ": "한국침례신학대학교",
@@ -1919,11 +2360,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5KJjowQjlKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi1.uwayapply.com%2F2027%2Fsusi2%2Fkbtus%2F%3FCHA%3D1&ratioNM=한국침례신학대학교&univURL=http://www.kbtus.ac.kr",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5KJjowQjlKZiUmOiZKN2ZUZg==",
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/kbtus/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/kbtus/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한국항공대학교",
@@ -1936,7 +2380,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hangkong.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한남대학교",
@@ -1949,7 +2396,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hannam.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한동대학교",
@@ -1962,7 +2412,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.handong.edu",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한라대학교(원주)",
@@ -1975,7 +2428,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/halla/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/halla/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T14:59:59.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한림대학교",
@@ -1988,7 +2444,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/hallym/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/hallym/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T11:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한서대학교",
@@ -2001,7 +2460,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hanseo.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한성대학교",
@@ -2014,7 +2476,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/hansung/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/hansung/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한세대학교",
@@ -2027,7 +2492,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/hansei/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/hansei/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "한신대학교",
@@ -2040,7 +2508,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hanshin.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "한일장신대학교",
@@ -2053,7 +2524,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/hanil/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/hanil/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "협성대학교",
@@ -2062,11 +2536,14 @@
       "status": "접수중",
       "periodStart": "2026-09-07",
       "periodEnd": "2026-09-11",
-      "ratioUrl": "http://ratio.uwayapply.com/power/?ratioURL=%2F%2Fratio.uwayapply.com%2FSl5Kclc6Jmk6YnxKZiUmOiZKN2ZUZg%3D%3D&applyURL=http%3A%2F%2Fipsi2.uwayapply.com%2F2027%2Fsusi2%2Fhyupsung%2F%3FCHA%3D1&ratioNM=협성대학교&univURL=https://iphak.uhs.ac.kr/intro.jsp",
+      "ratioUrl": "http://ratio.uwayapply.com/Sl5Kclc6Jmk6YnxKZiUmOiZKN2ZUZg==",
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/hyupsung/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/hyupsung/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "호남대학교",
@@ -2079,7 +2556,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.honam.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "호남신학대학교",
@@ -2092,7 +2572,10 @@
       "applyUrl": "http://ipsi3.uwayapply.com/2027/susi2/htus/?CHA=1",
       "homeUrl": "http://ipsi3.uwayapply.com/2027/susi2/htus/?CHA=1",
       "kind": "own",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T08:00:00.000Z",
+      "opensAt": "2026-09-06T15:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "호서대학교",
@@ -2105,7 +2588,10 @@
       "applyUrl": "http://ipsi1.uwayapply.com/2027/susi2/hoseo/?CHA=1",
       "homeUrl": "http://ipsi1.uwayapply.com/2027/susi2/hoseo/?CHA=1",
       "kind": "uway",
-      "uwaySolo": true
+      "uwaySolo": true,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "호원대학교",
@@ -2118,7 +2604,10 @@
       "applyUrl": "http://ipsi2.uwayapply.com/2027/susi2/howon/?CHA=1",
       "homeUrl": "http://ipsi2.uwayapply.com/2027/susi2/howon/?CHA=1",
       "kind": "own",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T00:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "홍익대학교",
@@ -2131,7 +2620,10 @@
       "applyUrl": null,
       "homeUrl": "http://www.hongik.ac.kr",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     },
     {
       "univ": "홍익대학교(세종)",
@@ -2144,7 +2636,10 @@
       "applyUrl": "http://ta.uwayapply.com/2027/susi2/hongik1/?CHA=1",
       "homeUrl": "http://ta.uwayapply.com/2027/susi2/hongik1/?CHA=1",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T09:00:00.000Z",
+      "opensAt": "2026-09-07T01:00:00.000Z",
+      "deadlineVia": "uway-frame"
     },
     {
       "univ": "화성의과학대학교",
@@ -2157,7 +2652,11 @@
       "applyUrl": null,
       "homeUrl": "http://www.hsmu.ac.kr/",
       "kind": "jinhak",
-      "uwaySolo": false
+      "uwaySolo": false,
+      "closesAt": "2026-09-11T10:00:00.000Z",
+      "opensAt": null,
+      "deadlineVia": "jinhak-timer"
     }
-  ]
+  ],
+  "deadlinesAt": "2026-09-07T10:34:48.647Z"
 }

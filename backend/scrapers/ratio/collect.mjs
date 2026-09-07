@@ -10,7 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchHtml } from './fetchHtml.mjs';
-import { loadSources } from './sources.mjs';
+import { loadSources, unwrapRatioUrl } from './sources.mjs';
 import { parseRatioPage } from './parse.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -24,15 +24,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *  로컬 실패 26곳이 서버에서 94곳이었다. 그래서 끊긴 것은 한 번 더, 더 길게 기다려 본다. */
 export async function collectOne(src, { timeoutMs = 30000, retry = true } = {}) {
   const t0 = Date.now();
+  // 옛 주소록이 DB 에 남아 있을 수 있으니 여기서도 한 번 더 푼다.
+  const url = unwrapRatioUrl(src.ratioUrl);
   try {
     let html;
     try {
-      ({ html } = await fetchHtml(src.ratioUrl, { timeoutMs }));
+      ({ html } = await fetchHtml(url, { timeoutMs }));
     } catch (e) {
       const netish = /abort|timeout|fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|socket/i.test(String(e?.message || e));
       if (!retry || !netish) throw e;
       await new Promise((r) => setTimeout(r, 1500));
-      ({ html } = await fetchHtml(src.ratioUrl, { timeoutMs: timeoutMs * 2 }));
+      ({ html } = await fetchHtml(url, { timeoutMs: timeoutMs * 2 }));
     }
     const parsed = parseRatioPage(html);
     const real = parsed.units.filter((u) => !u.isTotal);

@@ -49,6 +49,19 @@ const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 /** '가톨릭관동대학교 U' 처럼 뒤에 붙는 단독·모집군 표시를 떼어 이름만 남긴다 */
 const univName = (s) => clean(s).replace(/\s*[UMㅤ]$/u, '').replace(/\s*(가|나|다|산)군?$/, '').trim();
 
+/** 유웨이가 한 겹 감싸 둔 주소를 푼다.
+ *  목록에 `ratio.uwayapply.com/power/?ratioURL=<진짜주소>&...` 로 실려 오는 대학이 있는데(23곳),
+ *  그 겉장에는 표가 없어서 그대로 읽으면 전부 '표를 찾지 못함'이 된다 —
+ *  고려대(서울)가 그래서 계속 비어 있었다. */
+export function unwrapRatioUrl(url) {
+  if (!url) return url;
+  const m = String(url).match(/[?&]ratioURL=([^&]+)/i);
+  if (!m) return url;
+  let inner = decodeURIComponent(m[1]);
+  if (inner.startsWith('//')) inner = `http:${inner}`;
+  return /^https?:\/\//i.test(inner) ? inner : url;
+}
+
 export function hostKind(url) {
   if (/ratio\.uwayapply\.com/i.test(url)) return 'uway';
   if (/addon\.jinhakapply\.com/i.test(url)) return 'jinhak';
@@ -76,7 +89,7 @@ async function fromUway() {
     // '준비중' 은 링크가 javascript:void(0) 로 온다 — 주소가 아니므로 없는 것으로 본다.
     const isUrl = (h) => /^https?:\/\//i.test(h || '');
     const rawRatio = links.find((a2) => /경쟁률/.test(a2.text))?.href || null;
-    const ratioUrl = isUrl(rawRatio) ? rawRatio : null;
+    const ratioUrl = isUrl(rawRatio) ? unwrapRatioUrl(rawRatio) : null;
     const applyUrl = links[0]?.href || null;
     // 자동으로 못 가져오는 대학이라도 **어디서 보는지는 알려줘야 한다** — 대학 쪽 주소를 남긴다.
     const homeUrl = isUrl(applyUrl) ? applyUrl : null;
