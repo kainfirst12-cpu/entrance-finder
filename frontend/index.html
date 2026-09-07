@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>입시-Finder | 패스파인더 에듀</title>
+
+    <!-- 📱 홈 화면에 추가했을 때 학원 로고로 보이게.
+         · manifest 는 안드로이드(크롬)가 읽고, apple-touch-icon 은 iOS 사파리가 읽는다.
+           iOS 는 manifest 의 icons 를 쓰지 않으므로 apple-touch-icon 이 없으면 화면을 캡처해
+           흐릿한 그림으로 만든다 — 둘 다 있어야 한다.
+         · 파일 이름을 manifest.json 으로 두면 .gitignore 의 `*.json` 에 걸려 배포에서 빠진다.
+           그래서 .webmanifest 다. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="theme-color" content="#0e1620" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="입시-Finder" />
   </head>
   <body>
     <div id="root"></div>
