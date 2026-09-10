@@ -1,0 +1,168 @@
+/* AssistantPanel — 떠 있는 AI 선생님. App.css 의 색 변수를 그대로 쓴다.
+   클래스는 전부 ef-as- 로 시작한다 — 12,000줄짜리 App.css 와 이름이 부딪히지 않게. */
+
+.ef-as-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 9000;
+  padding: 11px 18px;
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--surface2), var(--surface));
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+}
+.ef-as-fab:hover { box-shadow: var(--neon), var(--shadow-md); }
+
+.ef-as-win {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+/* 좁은 화면에서는 끌 자리가 없다 — 아래에 붙는 시트로 바꾼다. */
+.ef-as-win.compact {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  width: auto;
+  height: 62vh;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* ── 모서리 손잡이 ─────────────────────── */
+.ef-as-grip { position: absolute; width: 14px; height: 14px; z-index: 2; }
+.ef-as-grip.nw { left: 0; top: 0; cursor: nwse-resize; }
+.ef-as-grip.ne { right: 0; top: 0; cursor: nesw-resize; }
+.ef-as-grip.sw { left: 0; bottom: 0; cursor: nesw-resize; }
+.ef-as-grip.se { right: 0; bottom: 0; cursor: nwse-resize; }
+
+/* ── 머리줄 (여기를 끌어 옮긴다) ─────────── */
+.ef-as-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: linear-gradient(180deg, var(--navy-2), var(--navy));
+  border-bottom: 1px solid var(--border);
+  cursor: move;
+  user-select: none;
+  flex: none;
+}
+.ef-as-title { font-size: 13px; font-weight: 800; color: var(--accent); }
+.ef-as-sub { font-size: 11px; color: var(--text3); }
+.ef-as-spacer { flex: 1; }
+.ef-as-icon {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+  border-radius: 7px;
+  width: 24px;
+  height: 22px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ef-as-icon:hover { color: var(--accent); border-color: var(--accent-2); }
+
+/* ── 학생·모델 줄 ─────────────────────── */
+.ef-as-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  flex: none;
+}
+.ef-as-bar select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.ef-as-model { font-size: 11px; color: var(--text3); white-space: nowrap; }
+
+/* ── 대화 ──────────────────────────────── */
+.ef-as-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.ef-as-hint { font-size: 12px; color: var(--text3); line-height: 1.7; }
+.ef-as-hint ul { margin: 6px 0 6px 16px; }
+.ef-as-hint li { margin: 2px 0; color: var(--text2); }
+
+.ef-as-msg { font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+.ef-as-msg.user {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: 7px 11px;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--accent-bg);
+  color: var(--text);
+}
+.ef-as-msg.ai { color: var(--text); }
+.ef-as-msg.trace { display: flex; gap: 6px; font-size: 12px; color: var(--text3); }
+.ef-as-msg.error { color: var(--red); font-size: 12px; }
+.ef-as-arrow { color: var(--accent-2); flex: none; }
+
+/* ── 입력 ──────────────────────────────── */
+.ef-as-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+  flex: none;
+}
+.ef-as-input textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.ef-as-input textarea:focus { outline: none; border-color: var(--accent-2); }
+.ef-as-mic, .ef-as-send {
+  flex: none;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text2);
+  cursor: pointer;
+}
+.ef-as-mic.on { border-color: var(--red); color: var(--red); }
+.ef-as-send { background: var(--accent-2); border-color: var(--accent-2); color: #04201d; }
+.ef-as-send:disabled { opacity: 0.45; cursor: default; }

@@ -93,13 +93,16 @@ export const CONSULT_TOOLS = [
   },
 ];
 
+/** 서버가 직접 실행하는 도구 이름 — 조교 라우트가 화면 조작 도구와 갈라내는 기준. */
+export const CONSULT_TOOL_NAMES = CONSULT_TOOLS.map((t) => t.function.name);
+
 // ── 제공사별 도구 규격 변환 ───────────────────────────
 // 도구 정의는 위 CONSULT_TOOLS(OpenAI 형태) 하나만 두고, 나머지는 거기서 파생시킨다.
 // 세 벌을 따로 관리하면 도구를 하나 고칠 때마다 어긋난다.
 
 // Gemini 는 JSON Schema 전체가 아니라 OpenAPI 부분집합만 받는다.
 // 모르는 키가 섞이면 400 이 나므로 허용된 키만 남긴다.
-function toGeminiSchema(s) {
+export function toGeminiSchema(s) {
   if (!s || typeof s !== 'object') return s;
   const out = {};
   if (s.type) out.type = s.type;

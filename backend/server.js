@@ -18,6 +18,7 @@ import { searchEntries as searchIpgyeolEntries, univLabel as ipgUnivLabel, REGIO
 import { fieldOf } from './services/deptField.js';
 import { attachSkypassNotes, hasScaleWarning, skypassLoaded } from './services/skypassNotes.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
+import { runAssistantStep } from './services/assistantAgent.js';
 import {
   listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
   addItem as addRoadmapItem, updateItem as updateRoadmapItem, deleteItem as deleteRoadmapItem,
@@ -3354,6 +3355,46 @@ app.post('/api/ipgyeol/recommend', requireAuth, async (req, res) => {
   }
 });
 
+// 학생 한 명의 자료를 프롬프트에 넣을 한 덩어리 글로 만든다.
+// 상담 에이전트(/api/chat/agent)와 떠 있는 조교(/api/assistant)가 같은 자료를 봐야 해서 한 곳에 둔다.
+// 반환 { section, sid, defaultGrade } — 권한/존재 문제는 { error, status } 로 돌려준다.
+async function pickStudentContext(req, studentId) {
+  const NONE = '(학생이 선택되지 않았습니다. 일반 상담으로 답하고, 학생별 자료가 필요하면 선택을 요청하십시오.)';
+  if (!studentId) return { section: NONE, sid: null, defaultGrade: null };
+  const sid = Number(studentId);
+  if (!(await canEditStudent(req, sid))) return { error: '권한 없음', status: 403 };
+  const d = await getStudentDossier(sid);
+  if (!d) return { error: '학생 없음', status: 404 };
+  const s = d.student;
+  const grades = (d.grades || []).map((g) => `${g.term}:${g.gpa ?? '-'}`).join(', ') || '미입력';
+  const recs = (d.records || []).filter((r) => r.content)
+    .map((r) => `[${r.type}] ${r.title} (${String(r.created_at).slice(0, 10)})\n${String(r.content).slice(0, 5000)}`)
+    .join('\n\n---\n\n').slice(0, 32000);
+  const pls = (d.placements || []).map((p) => {
+    const sn = p.snapshot || {};
+    return `- ${ipgUnivLabel(p.univ_name)} ${p.dept} ${p.track}(${p.type_name || '-'}) · 판정 ${p.verdict || '-'}`
+      + ` · 70%컷 ${sn.cut70 ?? '-'}${sn.cutYear ? `(${sn.cutYear})` : ''} · 저장당시 내신 ${p.grade ?? '-'}`;
+  }).join('\n') || '(저장된 배치 없음)';
+  const rms = (d.roadmaps || []).map((m) => {
+    const items = m.items || [];
+    const pending = items.filter((i) => !i.done).map((i) => i.title).slice(0, 15).join(' / ');
+    return `- ${m.title} — ${items.filter((i) => i.done).length}/${items.length} 완료${pending ? ` · 남은 것: ${pending}` : ''}`;
+  }).join('\n') || '(로드맵 없음)';
+  const section = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
+[대표 내신] ${s.gpa != null ? `${s.gpa}등급` : '미입력'}   [학기별] ${grades}
+[메모] ${s.notes || '없음'}
+
+[저장된 입결 배치]
+${pls}
+
+[로드맵]
+${rms}
+
+[기록 — 생기부 분석·수행평가·상담]
+${recs || '(기록 없음)'}`;
+  return { section, sid, defaultGrade: s.gpa != null ? Number(s.gpa) : null };
+}
+
 // ── 상담 에이전트 — 학생 자료를 알고, 입결·지식베이스를 스스로 조회하는 다중 턴 상담 ──
 //
 // 기존 /api/chat 과 나눈 이유: 이 라우트는 서버가 직접 학생 DB를 읽고 쓰므로 인증이 필수다.
@@ -3374,42 +3415,9 @@ app.post('/api/chat/agent', requireAuth, async (req, res) => {
   }
 
   // 학생 컨텍스트 — 유한한 자료라 프롬프트에 직접 넣는다(입결과 달리).
-  let studentSection = '(학생이 선택되지 않았습니다. 일반 상담으로 답하고, 학생별 자료가 필요하면 선택을 요청하십시오.)';
-  let sid = null, defaultGrade = null;
-  if (studentId) {
-    sid = Number(studentId);
-    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '권한 없음' });
-    const d = await getStudentDossier(sid);
-    if (!d) return res.status(404).json({ success: false, message: '학생 없음' });
-    const s = d.student;
-    defaultGrade = s.gpa != null ? Number(s.gpa) : null;
-    const grades = (d.grades || []).map((g) => `${g.term}:${g.gpa ?? '-'}`).join(', ') || '미입력';
-    const recs = (d.records || []).filter((r) => r.content)
-      .map((r) => `[${r.type}] ${r.title} (${String(r.created_at).slice(0, 10)})\n${String(r.content).slice(0, 5000)}`)
-      .join('\n\n---\n\n').slice(0, 32000);
-    const pls = (d.placements || []).map((p) => {
-      const sn = p.snapshot || {};
-      return `- ${ipgUnivLabel(p.univ_name)} ${p.dept} ${p.track}(${p.type_name || '-'}) · 판정 ${p.verdict || '-'}`
-        + ` · 70%컷 ${sn.cut70 ?? '-'}${sn.cutYear ? `(${sn.cutYear})` : ''} · 저장당시 내신 ${p.grade ?? '-'}`;
-    }).join('\n') || '(저장된 배치 없음)';
-    const rms = (d.roadmaps || []).map((m) => {
-      const items = m.items || [];
-      const pending = items.filter((i) => !i.done).map((i) => i.title).slice(0, 15).join(' / ');
-      return `- ${m.title} — ${items.filter((i) => i.done).length}/${items.length} 완료${pending ? ` · 남은 것: ${pending}` : ''}`;
-    }).join('\n') || '(로드맵 없음)';
-    studentSection = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
-[대표 내신] ${s.gpa != null ? `${s.gpa}등급` : '미입력'}   [학기별] ${grades}
-[메모] ${s.notes || '없음'}
-
-[저장된 입결 배치]
-${pls}
-
-[로드맵]
-${rms}
-
-[기록 — 생기부 분석·수행평가·상담]
-${recs || '(기록 없음)'}`;
-  }
+  const picked = await pickStudentContext(req, studentId);
+  if (picked.error) return res.status(picked.status).json({ success: false, message: picked.error });
+  const { section: studentSection, sid, defaultGrade } = picked;
 
   const systemPrompt = `당신은 학원 원장을 보좌하는 수시 컨설팅 수석 조교입니다.
 아래 학생 자료를 이미 읽은 상태로 대화합니다. 필요한 자료는 도구로 직접 조회하십시오.
@@ -3461,6 +3469,76 @@ ${studentSection}
   } catch (err) {
     console.error('[chat/agent] 오류:', err.message);
     sendDone({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
+  }
+});
+
+// ── 떠 있는 조교(AI 선생님) — 화면을 대신 조작하는 도구 루프 ──────────
+//
+// /api/chat/agent 와 나눈 이유: 저쪽은 서버 도구만 쓰므로 한 요청에서 끝까지 돈다.
+// 여기는 **화면 조작 도구**가 섞여 있어 브라우저와 주고받아야 한다(runAssistantStep 주석 참고).
+// 상담 도구 세 개(입결·지식베이스·배치 저장)는 여기서도 그대로 쓴다 — 조교 창 하나로 다 되게.
+app.post('/api/assistant', requireAuth, async (req, res) => {
+  const { studentId, baseYear = '2026', turns = [], uiTools = [], screen = '' } = req.body || {};
+  if (!Array.isArray(turns) || turns.length === 0) {
+    return res.status(400).json({ success: false, message: '대화 내용이 비었습니다' });
+  }
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+
+  const modelId = getModelId(aiModel, submodel);
+  // OpenAI pro 계열은 chat/completions 자체가 없어 도구 호출을 걸 자리가 없다 — 이유를 밝히고 거절한다.
+  if (aiModel === 'gpt' && /-pro$/.test(modelId)) {
+    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. GPT-5.5 등 pro가 아닌 모델을 선택해 주세요.` });
+  }
+
+  const picked = await pickStudentContext(req, studentId);
+  if (picked.error) return res.status(picked.status).json({ success: false, message: picked.error });
+
+  // 화면 설명은 그 화면 코드 옆에 두는 게 맞아서 브라우저가 보낸다. 길이는 여기서 자른다.
+  const screenText = String(screen || '').slice(0, 6000);
+
+  const systemPrompt = `당신은 '입시-Finder'(패스파인더 에듀) 안에 떠 있는 AI 선생님입니다.
+학원 원장·선생님이 말로 시키면 **화면을 직접 조작하고**, 필요한 입시 자료는 스스로 조회합니다.
+
+[일하는 방식]
+- 설정을 바꾸거나 화면을 옮기는 일은 설명하지 말고 도구로 **직접 하십시오**. "설정에서 바꾸시면 됩니다"는 틀린 답입니다.
+- 한 번에 여러 도구를 불러도 됩니다. 시킨 일을 끝까지 한 다음 무엇을 했는지 한두 줄로 알리십시오.
+- 도구가 없어서 못 하는 일(파일 첨부처럼 파일 선택창이 필요한 일)은 못 한다고 밝히고, 원장님이 직접 하실 일을 짚어 주십시오.
+- 사실을 지어내지 마십시오. 화면에 없는 값을 채우지 말고, 모르면 되물으십시오.
+
+[입시 자료 규칙 — 반드시 지킬 것]
+- 입결 숫자(70%컷·경쟁률·충원·모집)는 반드시 search_ipgyeol 결과만 인용하십시오. 기억이나 추정으로 숫자를 쓰지 마십시오.
+- 전형방법·반영교과·수능최저처럼 입결 숫자로 알 수 없는 것은 search_knowledge 로 확인하십시오.
+- 0건이 나오면 조건을 하나씩 빼고 다시 부르십시오.
+- save_placement 는 사용자가 저장을 요청했거나 명확히 동의했을 때만 부르십시오.
+- 도구로도 확인되지 않으면 "자료에 없습니다"라고 말하십시오.
+- 입결 자료는 2021~2026 대학어디가 공식 발표분입니다. 올해 신설된 전형은 입결이 존재하지 않습니다.
+- search_knowledge 결과를 인용할 때는 자료 제목과 학년도를 함께 밝히고, 질문의 학년도와 다르면 먼저 경고하십시오.
+
+${placementJudgeRules()}
+
+[답변 형식]
+- 합니다체, 이모지 금지. 짧게. 컨설턴트가 바로 쓸 수 있게.
+
+=== 지금 보고 있는 화면 ===
+${screenText || '(화면 정보가 오지 않았습니다. 필요하면 get_screen 으로 확인하십시오.)'}
+=== 화면 끝 ===
+
+=== 학생 자료 ===
+${picked.section}
+=== 학생 자료 끝 ===`;
+
+  try {
+    const out = await runAssistantStep({
+      group: aiModel, modelId, apiKey, systemPrompt, turns, uiTools,
+      ctx: { studentId: picked.sid, baseYear, defaultGrade: picked.defaultGrade },
+    });
+    res.json({ success: true, ...out });
+  } catch (err) {
+    console.error('[assistant] 오류:', err.message);
+    res.status(502).json({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
   }
 });
 

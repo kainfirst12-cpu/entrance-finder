@@ -15,10 +15,26 @@ import RatioLive from './components/RatioLive';
 import SuhaengArchive from './components/SuhaengArchive';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
+import AssistantPanel from './components/AssistantPanel';
+import { useAppAgent } from './assistant/useAppAgent';
 import { API_BASE } from './apiBase';
 import './App.css';
 
 const INPROGRESS_KEY = 'ef_inprogress';
+
+// 모듈 최상단에 둔다 — 렌더마다 새로 만들 이유가 없고, 로그인 전 조기 return 위에서
+// 조교 훅이 이 값을 쓴다(훅은 조건부로 부를 수 없다).
+const modelConfig = {
+  claude:       { icon: '🔵', label: 'Claude Sonnet 5',   color: '#7c6af7', group: 'claude' },
+  'claude-opus':{ icon: '🔷', label: 'Claude Opus 5',     color: '#5b21b6', group: 'claude' },
+  gemini:       { icon: '🟢', label: 'Gemini 3.7 Flash',  color: '#4caf50', group: 'gemini' },
+  'gemini-pro': { icon: '🟩', label: 'Gemini 3.1 Pro',    color: '#166534', group: 'gemini' },
+  gpt:          { icon: '🟡', label: 'GPT-5.6 Sol',       color: '#f0a500', group: 'gpt' },
+  'gpt-mini':   { icon: '🟠', label: 'GPT-5.6 Terra',     color: '#ea580c', group: 'gpt' },
+  'gpt-4.1':    { icon: '🟤', label: 'GPT-5.5',           color: '#78350f', group: 'gpt' },
+  'o3':         { icon: '⚪', label: 'GPT-5.5 Pro',       color: '#374151', group: 'gpt' },
+  'o4-mini':    { icon: '🔘', label: 'GPT-5.6 Luna',      color: '#6b7280', group: 'gpt' },
+};
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn]   = useState(!!localStorage.getItem('ef_token'));
@@ -302,21 +318,16 @@ export default function App() {
     setView('result');
   };
 
+  // 조교(AI 선생님)에게 '어디로든 갈 수 있는' 도구를 등록한다.
+  // ⚠ 조기 return 위에서 불러야 한다 — 훅은 조건부로 부를 수 없다.
+  useAppAgent({
+    view, setView, selectedModel, setModel: handleModelChange,
+    modelConfig, role, hasResult: !!analysisData,
+  });
+
   if (!isLoggedIn) {
     return <Login onLogin={() => { setIsLoggedIn(true); setRole(localStorage.getItem('ef_role') || 'user'); }} />;
   }
-
-  const modelConfig = {
-    claude:       { icon: '🔵', label: 'Claude Sonnet 5',   color: '#7c6af7', group: 'claude' },
-    'claude-opus':{ icon: '🔷', label: 'Claude Opus 5',     color: '#5b21b6', group: 'claude' },
-    gemini:       { icon: '🟢', label: 'Gemini 3.7 Flash',  color: '#4caf50', group: 'gemini' },
-    'gemini-pro': { icon: '🟩', label: 'Gemini 3.1 Pro',    color: '#166534', group: 'gemini' },
-    gpt:          { icon: '🟡', label: 'GPT-5.6 Sol',       color: '#f0a500', group: 'gpt' },
-    'gpt-mini':   { icon: '🟠', label: 'GPT-5.6 Terra',     color: '#ea580c', group: 'gpt' },
-    'gpt-4.1':    { icon: '🟤', label: 'GPT-5.5',           color: '#78350f', group: 'gpt' },
-    'o3':         { icon: '⚪', label: 'GPT-5.5 Pro',       color: '#374151', group: 'gpt' },
-    'o4-mini':    { icon: '🔘', label: 'GPT-5.6 Luna',      color: '#6b7280', group: 'gpt' },
-  };
 
   return (
     <div className="app">
@@ -466,6 +477,13 @@ export default function App() {
           <AdminDashboard onAuthError={handleLogout} />
         )}
       </main>
+
+      <AssistantPanel
+        getActiveKey={getActiveKey}
+        selectedModel={selectedModel}
+        aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+        onAuthError={handleLogout}
+      />
     </div>
   );
 }

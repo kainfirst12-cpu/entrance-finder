@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { useFormAgent } from '../assistant/useFormAgent';
 
 const GRADES = ['고1','고2','고3'];
 // 희망 전공 계열 최대 선택 수
-const MAX_MAJORS = 6;
+export const MAX_MAJORS = 6;
 
 // 희망 전형 — 지원 카드 6장을 이 전형 위주로 구성한다(복수 선택).
-const TRACKS = [
+export const TRACKS = [
   '학생부종합', '학생부교과', '논술', '정시(수능)',
   '지역균형/추천', '고른기회/기회균형', '특기자/실기', '재외국민/특례',
 ];
@@ -58,7 +59,7 @@ const buildMockRows = (gradeSystem) => {
   }
   return out;
 };
-const MAJORS = [
+export const MAJORS = [
   '컴퓨터공학/SW', '전기/전자공학', '반도체공학', '기계/로봇공학',
   '화학/신소재공학', '산업/시스템공학', '건축/토목공학',
   '에너지/환경공학', '생명공학/바이오', '스마트보안/사이버보안',
@@ -377,6 +378,17 @@ export default function StudentForm({ onSubmit, onCancel, prefill, onClearPrefil
     if (pdfPassword.trim()) extras.pdfPassword = pdfPassword.trim();
     onSubmit(studentData, files, extras);
   };
+
+  // 조교(AI 선생님)에게 이 화면의 도구를 넘긴다.
+  // 목록(MAJORS/TRACKS)까지 함께 주는 이유 — 조교가 목록에 없는 전공을 지어내지 못하게 하려는 것.
+  useFormAgent({
+    form, setField: set,
+    majors: selectedMajors, setMajors: setSelectedMajors,
+    tracks: selectedTracks, setTracks: setSelectedTracks,
+    tab, setTab, tabs, submit: handleSubmit,
+    uploadedCount, reuseMode,
+    MAJORS, TRACKS, MAX_MAJORS,
+  });
 
   // ── UI 헬퍼: 재분석 모드 배너 ───────────────────────
   const missingCount = reuseMode && reusedResults
