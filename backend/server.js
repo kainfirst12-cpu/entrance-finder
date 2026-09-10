@@ -3411,7 +3411,7 @@ app.post('/api/chat/agent', requireAuth, async (req, res) => {
   // OpenAI pro 계열만 예외 — chat/completions 를 아예 지원하지 않아 도구 호출을 걸 자리가 없다.
   // 조용히 다른 모델로 바꾸지 않고 이유를 밝히고 거절한다.
   if (aiModel === 'gpt' && /-pro$/.test(modelId)) {
-    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. GPT-5.5 등 pro가 아닌 모델을 선택해 주세요.` });
+    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. 왼쪽 목록에서 'Pro'가 아닌 GPT 모델(Sol·Terra·Luna·GPT-5.5)이나 Claude·Gemini 를 골라 주세요.` });
   }
 
   // 학생 컨텍스트 — 유한한 자료라 프롬프트에 직접 넣는다(입결과 달리).
@@ -3490,7 +3490,7 @@ app.post('/api/assistant', requireAuth, async (req, res) => {
   const modelId = getModelId(aiModel, submodel);
   // OpenAI pro 계열은 chat/completions 자체가 없어 도구 호출을 걸 자리가 없다 — 이유를 밝히고 거절한다.
   if (aiModel === 'gpt' && /-pro$/.test(modelId)) {
-    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. GPT-5.5 등 pro가 아닌 모델을 선택해 주세요.` });
+    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. 왼쪽 목록에서 'Pro'가 아닌 GPT 모델(Sol·Terra·Luna·GPT-5.5)이나 Claude·Gemini 를 골라 주세요.` });
   }
 
   const picked = await pickStudentContext(req, studentId);

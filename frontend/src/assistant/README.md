@@ -71,6 +71,19 @@ export function useMyScreenAgent({ state, setState }) {
 - **못 하는 일은 도구를 만들지 말고 `describe()` 에 못 한다고 적는다.** 파일 첨부가 그렇다 —
   파일 선택창은 사용자 제스처가 있어야 열려서 조교가 대신 하지 못한다.
 
+## 제공사별 함정 (실제로 밟은 것들)
+
+세 회사 규격이 다 다르고, 틀리면 **진짜 키를 넣었을 때만** 400 으로 드러난다. 그래서
+`backend/scripts/test-assistant.mjs` 가 `fetch` 를 흉내 내 요청 본문을 직접 본다.
+
+| 증상 | 원인 | 어디서 막나 |
+|---|---|---|
+| OpenAI 400 | `tool_calls: []` 빈 배열을 보냈다 | `toOpenAiMessages` — 비면 아예 넣지 않는다 |
+| Gemini 400 | 인자 없는 도구에 `parameters: {properties:{}}` 를 줬다 | `toolsForProvider` — 비면 `parameters` 자체를 뺀다 |
+| `Function call is missing a thought_sig` | 제미나이 3.x 사고 모델이 붙여 준 `thoughtSignature` 를 되돌려 보내지 않았다 | `assistantTurn.providerParts.gemini` 에 받은 parts 를 통째로 담아 그대로 재생 |
+| `Function tools with reasoning_effort are not supported … in /v1/chat/completions` | 새 추론 모델은 이 엔드포인트에서 추론과 도구를 같이 못 쓴다 | `callGptWithTools` — 거절당하면 `reasoning_effort: 'none'` 으로 한 번 더 |
+| `-pro` 모델 | chat/completions 자체가 없다 | 라우트가 처음부터 거절하고 쓸 수 있는 모델을 알려 준다 |
+
 ## 다른 대화 화면(`view === 'chat'`)과의 관계
 
 `ChatInterface.jsx` 는 분석 리포트를 놓고 길게 상담하고 **섹션 본문을 직접 고치는** 큰 화면이다.

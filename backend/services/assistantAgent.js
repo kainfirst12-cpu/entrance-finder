@@ -10,7 +10,7 @@
 // 대화 상태(turns)는 **브라우저가 들고 있고 매 요청 통째로 보낸다**. 제공사별 메시지 모양은
 // 여기서 그때그때 만든다 — 서버에 세션을 두면 탭을 두 개 열었을 때 서로를 덮어쓴다.
 import {
-  CONSULT_TOOLS, CONSULT_TOOL_NAMES, runConsultTool, toGeminiSchema,
+  CONSULT_TOOLS, CONSULT_TOOL_NAMES, runConsultTool, toGeminiSchema, callGptWithTools,
 } from './consultAgent.js';
 
 // 화면 도구까지 합쳐도 한 요청 안에서 서버 도구만으로 도는 횟수 상한.
@@ -147,6 +147,15 @@ function toGeminiContents(turns) {
   for (const t of turns) {
     if (t.role === 'user') { out.push({ role: 'user', parts: [{ text: String(t.content || '') }] }); continue; }
     if (t.role === 'assistant') {
+      // ⚠ 제미나이는 자기가 만든 parts 를 **그대로** 돌려받아야 한다.
+      //   3.x 사고 모델은 functionCall 마다 thoughtSignature 를 붙여 보내고, 다음 요청에 그게
+      //   빠져 있으면 "400 Function call is missing a thought_sig" 로 거절한다. name·args 만
+      //   재조립하면 서명이 사라지므로, 받은 parts 를 통째로 들고 다닌다.
+      //   (2026-09-10 원장 제보 — Gemini 3.1 Pro 로 조교를 부르자 바로 이 400 이 떴다)
+      if (Array.isArray(t.providerParts?.gemini) && t.providerParts.gemini.length) {
+        out.push({ role: 'model', parts: t.providerParts.gemini });
+        continue;
+      }
       const parts = [];
       if (String(t.content || '').trim()) parts.push({ text: t.content });
       for (const c of t.toolCalls || []) parts.push({ functionCall: { name: c.name, args: c.input || {} } });
@@ -183,7 +192,7 @@ async function askClaude({ modelId, apiKey, systemPrompt, turns, tools }) {
 async function askGpt({ modelId, apiKey, systemPrompt, turns, tools }) {
   const OpenAI = (await import('openai')).default;
   const openai = new OpenAI({ apiKey });
-  const r = await openai.chat.completions.create({
+  const r = await callGptWithTools(openai, {
     model: modelId,
     messages: [{ role: 'system', content: systemPrompt }, ...toOpenAiMessages(turns)],
     tools, max_completion_tokens: 8000,
@@ -214,7 +223,9 @@ async function askGemini({ modelId, apiKey, systemPrompt, turns, tools }) {
   // 도구를 부르는 응답에서 text() 를 읽으면 SDK 가 던지는 판이 있다 — 본문은 없어도 되므로 삼킨다.
   let text = '';
   try { text = r.response.text() || ''; } catch { text = ''; }
-  return { text, calls };
+  // 받은 parts 원본 — thoughtSignature 가 여기 붙어 온다. 다음 요청에 그대로 되돌려 보내야 한다.
+  const rawParts = r.response.candidates?.[0]?.content?.parts;
+  return { text, calls, rawParts };
 }
 
 const ASK = { claude: askClaude, gpt: askGpt, gemini: askGemini };
@@ -240,12 +251,14 @@ export async function runAssistantStep({ group, modelId, apiKey, systemPrompt, t
   const work = [...turns];
 
   for (let hop = 0; hop < MAX_SERVER_HOPS; hop++) {
-    const { text, calls } = await ask({ modelId, apiKey, systemPrompt, turns: work, tools });
+    const { text, calls, rawParts } = await ask({ modelId, apiKey, systemPrompt, turns: work, tools });
     if (!calls.length) {
       return { text, done: true, toolCalls: [], assistantTurn: null, serverResults: [], toolLog, truncated: false };
     }
 
     const assistantTurn = { role: 'assistant', content: text, toolCalls: calls };
+    // 제공사가 준 원본을 함께 들고 다닌다(제미나이 thoughtSignature). 다른 제공사는 이 칸을 무시한다.
+    if (Array.isArray(rawParts) && rawParts.length) assistantTurn.providerParts = { gemini: rawParts };
     const serverCalls = calls.filter((c) => CONSULT_TOOL_NAMES.includes(c.name));
     const uiCalls = calls.filter((c) => !CONSULT_TOOL_NAMES.includes(c.name));
 
