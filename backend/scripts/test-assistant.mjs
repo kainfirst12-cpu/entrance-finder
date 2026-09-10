@@ -253,5 +253,108 @@ console.log('\n[서버 도구는 한 요청 안에서 스스로 돈다]');
   });
 }
 
+console.log('\n[Gemini — thoughtSignature 를 그대로 되돌려 보낸다]');
+// 3.x 사고 모델은 functionCall 마다 서명을 붙여 주고, 다음 요청에 그게 없으면
+// "400 Function call is missing a thought_sig" 로 거절한다(2026-09-10 원장 제보).
+{
+  const SIG = 'CvEBAdHtim9-TEST-SIGNATURE';
+  let call = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    call++;
+    seen = { url: String(url), body: init.body ? JSON.parse(init.body) : null };
+    const body = call === 1
+      ? {
+        candidates: [{
+          content: {
+            role: 'model',
+            parts: [{ functionCall: { name: 'set_view', args: { view: 'ipgyeol' } }, thoughtSignature: SIG }],
+          },
+          finishReason: 'STOP', index: 0,
+        }],
+      }
+      : { candidates: [{ content: { role: 'model', parts: [{ text: '옮겼습니다.' }] }, finishReason: 'STOP', index: 0 }] };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  const uiTools = [{ name: 'set_view', schema: { type: 'object', properties: { view: { type: 'string' } } } }];
+  const first = await runAssistantStep({
+    group: 'gemini', modelId: 'gemini-3.1-pro-preview', apiKey: 'AIzaTest',
+    systemPrompt: '테스트', turns: [{ role: 'user', content: '입결 콘솔 열어줘' }], uiTools,
+  });
+  ok('받은 parts 를 assistantTurn 에 통째로 담는다', () => {
+    assert.equal(first.assistantTurn.providerParts.gemini[0].thoughtSignature, SIG);
+  });
+
+  // 브라우저가 turns 에 붙여 되보내는 상황을 그대로 흉내 낸다(JSON 왕복 포함).
+  const turns = JSON.parse(JSON.stringify([
+    { role: 'user', content: '입결 콘솔 열어줘' },
+    first.assistantTurn,
+    { role: 'toolResults', results: [{ id: first.toolCalls[0].id, name: 'set_view', result: '옮겼습니다' }] },
+  ]));
+  const second = await runAssistantStep({
+    group: 'gemini', modelId: 'gemini-3.1-pro-preview', apiKey: 'AIzaTest',
+    systemPrompt: '테스트', turns, uiTools,
+  });
+  ok('다음 요청 본문에 서명이 그대로 실려 나간다', () => {
+    const modelTurn = seen.body.contents.find((c) => c.role === 'model');
+    assert.equal(modelTurn.parts[0].thoughtSignature, SIG, 'SDK 가 모르는 필드를 지우면 여기서 걸린다');
+    assert.equal(modelTurn.parts[0].functionCall.name, 'set_view');
+  });
+  ok('서명 없는 옛 대화도 그대로 돈다(되돌아가기 호환)', () => {
+    const built = toGeminiContents([
+      { role: 'assistant', content: '', toolCalls: [{ id: 'x', name: 'set_view', input: { view: 'form' } }] },
+    ]);
+    assert.equal(built[0].parts[0].functionCall.name, 'set_view');
+  });
+  ok('두 번째 응답은 도구 없이 끝난다', () => assert.equal(second.done, true));
+}
+
+console.log('\n[GPT — 추론 모델이 도구를 거절하면 추론을 끄고 한 번 더]');
+{
+  // "400 Function tools with reasoning_effort are not supported for gpt-5.6-luna
+  //  in /v1/chat/completions. To use function tools, use /v1/responses or set
+  //  reasoning_effort to 'none'." (2026-09-10 원장 제보)
+  let bodies = [];
+  let n = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    bodies.push(init.body ? JSON.parse(init.body) : null);
+    if (++n === 1) {
+      return new Response(JSON.stringify({
+        error: { message: "Function tools with reasoning_effort are not supported for gpt-5.6-luna in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", type: 'invalid_request_error' },
+      }), { status: 400, headers: { 'content-type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      id: 'c1', object: 'chat.completion', model: 'gpt-5.6-luna',
+      choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content: '됐습니다.' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const out = await runAssistantStep({
+    group: 'gpt', modelId: 'gpt-5.6-luna', apiKey: 'sk-test',
+    systemPrompt: '테스트', turns: [{ role: 'user', content: '안녕' }],
+    uiTools: [{ name: 'set_view', schema: { type: 'object', properties: { view: { type: 'string' } } } }],
+  });
+  ok('첫 요청에는 reasoning_effort 를 넣지 않는다(되는 모델은 추론을 살린다)', () => {
+    assert.equal('reasoning_effort' in bodies[0], false);
+  });
+  ok('거절당하면 reasoning_effort:none 으로 다시 부른다', () => {
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[1].reasoning_effort, 'none');
+    assert.equal(out.text, '됐습니다.');
+  });
+
+  // 다른 400 까지 삼키면 진짜 문제를 감춘다.
+  bodies = []; n = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    bodies.push(init.body ? JSON.parse(init.body) : null);
+    return new Response(JSON.stringify({ error: { message: 'Incorrect API key provided', type: 'invalid_request_error' } }),
+      { status: 401, headers: { 'content-type': 'application/json' } });
+  };
+  await assert.rejects(() => runAssistantStep({
+    group: 'gpt', modelId: 'gpt-5.6-luna', apiKey: 'sk-bad',
+    systemPrompt: '테스트', turns: [{ role: 'user', content: '안녕' }], uiTools: [],
+  }));
+  ok('상관없는 오류는 다시 부르지 않고 그대로 올린다', () => assert.equal(bodies.length, 1));
+}
+
 globalThis.fetch = realFetch;
 console.log(`\n통과 ${pass}개\n`);

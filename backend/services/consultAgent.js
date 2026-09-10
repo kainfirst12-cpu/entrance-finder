@@ -245,6 +245,26 @@ export async function runConsultTool(name, args = {}, ctx = {}) {
 //   · Anthropic: content[].tool_use → user 메시지 안 tool_result 블록으로 회신
 //   · Gemini  : response.functionCalls() → functionResponse 파트로 회신
 
+/**
+ * 도구를 실은 OpenAI chat/completions 호출 — 상담 에이전트와 떠 있는 조교가 함께 쓴다.
+ *
+ * 왜 감싸는가: 새 추론 모델(gpt-5.6-luna 등)은 이 엔드포인트에서 **추론과 도구를 같이 못 쓴다**.
+ *   "400 Function tools with reasoning_effort are not supported for … in /v1/chat/completions.
+ *    To use function tools, use /v1/responses or set reasoning_effort to 'none'."
+ * 모델 이름으로 미리 갈라내면 새 모델이 나올 때마다 또 막히므로, **거절당하면 그때 추론을 끄고
+ * 한 번 더** 부른다. 추론이 되는 모델은 그대로 두고, 안 되는 모델만 손해를 본다.
+ * (2026-09-10 원장 제보 — GPT-5.6 Luna 로 조교를 부르니 이 400 이 그대로 화면에 떴다)
+ */
+export async function callGptWithTools(openai, params) {
+  try {
+    return await openai.chat.completions.create(params);
+  } catch (err) {
+    const msg = String(err?.message || '');
+    if (!/reasoning_effort/i.test(msg) || !/function tools/i.test(msg)) throw err;
+    return openai.chat.completions.create({ ...params, reasoning_effort: 'none' });
+  }
+}
+
 const MAX_TURNS = 8;   // 도구 호출이 끝없이 이어지는 것을 막는 상한
 
 function summarize(out) {
@@ -278,7 +298,7 @@ export async function runAgentLoop({ group, modelId, apiKey, systemPrompt, histo
       { role: 'user', content: String(message).slice(0, 8000) },
     ];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const r = await openai.chat.completions.create({
+      const r = await callGptWithTools(openai, {
         model: modelId, messages: msgs, tools: toolsForProvider('gpt'), max_completion_tokens: 8000,
       });
       const m = r.choices[0].message;
