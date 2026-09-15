@@ -138,13 +138,13 @@ async function convertPdfToImages(pdfBuffer, maxPages = 16, password = '') {
 }
 // ── 범용 파일 텍스트 추출 (아카이브·수행평가 공용) ──────────
 // poppler pdftotext — pdf-parse가 못 읽는 PDF(폰트 매핑 깨짐 등)의 2차 시도.
-function popplerPdfText(pdfBuffer, password = '') {
+function popplerPdfText(pdfBuffer, password = '', timeout = 30000) {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const tmpPdf = join(tmpdir(), `xt-${stamp}.pdf`);
   const tmpTxt = join(tmpdir(), `xt-${stamp}.txt`);
   try {
     writeFileSync(tmpPdf, pdfBuffer);
-    execFileSync('pdftotext', ['-enc', 'UTF-8', ...upwArgs(password), tmpPdf, tmpTxt], { timeout: 30000 });
+    execFileSync('pdftotext', ['-enc', 'UTF-8', ...upwArgs(password), tmpPdf, tmpTxt], { timeout });
     return readFileSync(tmpTxt, 'utf-8');
   } catch {
     return '';
@@ -4025,39 +4025,73 @@ app.get('/api/admin/ingest/status', requireAdmin, async (req, res) => {
   }
 });
 
-// 관리자: 파일 업로드로 지식베이스 추가
-const kbUpload = upload.array('files', 20);
+// 관리자: 파일 업로드로 지식베이스 추가 (백그라운드 처리)
+//   자료집 PDF는 100MB가 넘기도 한다(면접자료집_최종.pdf 117MB). 예전엔 한 요청에서 추출·임베딩까지 마치고
+//   응답했는데, ① multer 50MB 한도에 걸리면 express 기본 HTML 오류가 내려가 화면이 "<!DOCTYPE ... not valid JSON"을
+//   띄웠고 ② 큰 PDF는 처리 중 연결이 끊겼다. 이제 받자마자 응답하고 Drive 인제스트와 같은 ingestState 로 진행을 알린다.
+const kbUploadRaw = multer({ storage: multer.memoryStorage(), limits: { fileSize: 300 * 1024 * 1024, files: 20 } }).array('files', 20);
+const kbUpload = (req, res, next) => kbUploadRaw(req, res, (err) => {
+  if (!err) return next();
+  const msg = err.code === 'LIMIT_FILE_SIZE' ? '파일이 300MB를 넘습니다 — 나눠서 올려 주세요' : `업로드 오류: ${err.message}`;
+  res.status(413).json({ success: false, message: msg });
+});
+
+// 업로드 파일 → 텍스트. PDF는 pdftotext(poppler) 먼저, 안 되면 pdf-parse.
+async function kbFileText(f) {
+  const name = fixFilename(f.originalname);
+  if (f.mimetype === 'application/pdf' || /\.pdf$/i.test(name)) {
+    // 117MB 자료집은 pdftotext 로 32초가 걸렸다 — 기본 30초 한도면 헛되이 pdf-parse 로 떨어진다.
+    let text = popplerPdfText(f.buffer, '', 5 * 60 * 1000);
+    if (!hasRealText(text)) { try { text = (await pdfParse(f.buffer)).text || ''; } catch { text = ''; } }
+    return text;
+  }
+  if (f.mimetype.includes('wordprocessingml') || /\.docx$/i.test(name)) {
+    const mammoth = await import('mammoth');
+    return (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
+  }
+  if (f.mimetype.includes('html') || /\.html?$/i.test(name)) return htmlToText(f.buffer.toString('utf-8'));
+  return f.buffer.toString('utf-8');
+}
+
 app.post('/api/admin/ingest/upload', requireAdmin, kbUpload, async (req, res) => {
   if (!vectorEnabled()) return res.status(400).json({ success: false, message: 'pgvector 비활성 상태입니다' });
   if (!process.env.OPENAI_API_KEY) return res.status(400).json({ success: false, message: 'OPENAI_API_KEY 미설정' });
   const type = (req.body.type || '').trim();
-  const validTypes = KB_TYPES;
-  if (!validTypes.includes(type)) return res.status(400).json({ success: false, message: `type은 ${validTypes.join('/')} 중 하나여야 합니다` });
-  try {
-    const files = req.files || [];
-    const docs = [];
-    for (const f of files) {
-      let text = '';
-      if (f.mimetype === 'application/pdf') {
-        try { text = (await pdfParse(f.buffer)).text || ''; } catch (e) { text = ''; }
-      } else if (f.mimetype.includes('wordprocessingml')) {
-        const mammoth = await import('mammoth');
-        text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
-      } else if (f.mimetype.includes('html') || /\.html?$/i.test(f.originalname)) {
-        text = htmlToText(f.buffer.toString('utf-8'));
-      } else {
-        text = f.buffer.toString('utf-8');
+  if (!KB_TYPES.includes(type)) return res.status(400).json({ success: false, message: `type은 ${KB_TYPES.join('/')} 중 하나여야 합니다` });
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ success: false, message: '파일이 없습니다' });
+  if (ingestState.running) return res.status(409).json({ success: false, message: '다른 인제스트가 진행 중입니다. 끝난 뒤 다시 올려 주세요.', state: ingestState });
+
+  ingestState = { running: true, phase: 'upload-extract', docs: files.length, docsDone: 0, chunks: 0, error: null, finishedAt: null, skipped: [] };
+  const ip = getIp(req);
+  res.json({ success: true, started: true, files: files.map(f => fixFilename(f.originalname)) });
+
+  (async () => {
+    try {
+      const docs = [];
+      for (const f of files) {
+        const title = fixFilename(f.originalname);
+        let text = '';
+        try { text = await kbFileText(f); } catch (e) { console.warn(`[ingest/upload] 추출 실패 ${title}:`, e.message); }
+        if (hasRealText(text)) docs.push({ type, title, text });
+        else ingestState.skipped.push(title);
+        console.log(`[ingest/upload] ${title}: ${text.length}자${hasRealText(text) ? '' : ' (텍스트 없음 — 건너뜀)'}`);
       }
-      if (text.trim()) docs.push({ type, title: fixFilename(f.originalname), text });
+      if (!docs.length) {
+        ingestState = { ...ingestState, running: false, phase: 'error', error: '텍스트를 추출할 수 있는 파일이 없습니다 (스캔 PDF는 지원하지 않습니다)', finishedAt: Date.now() };
+        return;
+      }
+      ingestState.phase = 'embedding';
+      ingestState.docs = docs.length; ingestState.docsDone = 0;
+      const inserted = await ingestDocuments(docs, (p) => { ingestState.docsDone = p.doc; ingestState.chunks = p.chunks; });
+      ingestState = { ...ingestState, running: false, phase: 'done', docsDone: docs.length, chunks: inserted, error: null, finishedAt: Date.now() };
+      logEvent({ userId: null, type: 'ingest', detail: `업로드 ${docs.length}문서 → ${inserted}청크 (${type})`, ip });
+      console.log(`[ingest/upload] 완료: ${docs.length}문서 → ${inserted}청크 (${type})`);
+    } catch (e) {
+      console.error('[ingest/upload] 오류:', e.message);
+      ingestState = { ...ingestState, running: false, phase: 'error', error: e.message, finishedAt: Date.now() };
     }
-    if (docs.length === 0) return res.status(400).json({ success: false, message: '텍스트를 추출할 수 있는 파일이 없습니다' });
-    const inserted = await ingestDocuments(docs);
-    logEvent({ userId: null, type: 'ingest', detail: `업로드 ${docs.length}문서 → ${inserted}청크 (${type})`, ip: getIp(req) });
-    res.json({ success: true, documents: docs.length, chunks: inserted, counts: await countByType() });
-  } catch (e) {
-    console.error('[ingest/upload] 오류:', e.message);
-    res.status(500).json({ success: false, message: e.message });
-  }
+  })();
 });
 
 // 관리자: 지식베이스 전체 삭제 (재인제스트용)

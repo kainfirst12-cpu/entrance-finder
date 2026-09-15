@@ -80,6 +80,25 @@ export default function AdminDashboard({ onAuthError }) {
     finally { setLoading(false); }
   }, [handleErr]);
 
+  // 백그라운드 인제스트(Drive·업로드 공용) 진행 상태를 끝날 때까지 폴링한다. 끝나면 state 를 돌려준다.
+  const pollIngest = (label = '') => new Promise((resolve) => {
+    const poll = async () => {
+      try {
+        const s = await api('/api/admin/ingest/status');
+        if (s.counts) setKb(k => ({ ...k, counts: s.counts }));
+        const st = s.state || {};
+        if (st.running) {
+          setKbProgress({ state: 'running', phase: st.phase, docsDone: st.docsDone || 0, docs: st.docs || 0, chunks: st.chunks || 0, label });
+          setTimeout(poll, 2500);
+        } else resolve(st);
+      } catch (e) {
+        if (e.auth) { onAuthError?.(); resolve({ phase: 'error', error: '인증 만료' }); return; }
+        setTimeout(poll, 4000); // 일시적 네트워크 흔들림이면 재시도
+      }
+    };
+    setTimeout(poll, 1500);
+  });
+
   const ingestDrive = async () => {
     if (!confirm('Google Drive의 지식베이스를 Supabase로 가져옵니다.\n기존 지식베이스는 교체되며, 백그라운드로 처리됩니다(1~3분). 진행할까요?')) return;
     setKbBusy('drive'); setKbMsg('');
@@ -87,45 +106,54 @@ export default function AdminDashboard({ onAuthError }) {
     try {
       const r = await api('/api/admin/ingest/drive', { method: 'POST', body: JSON.stringify({ replace: true }) });
       if (!r.success) { setKbProgress({ state: 'error', error: r.message || '시작 실패' }); setKbBusy(''); return; }
-      // 백그라운드 진행 상태를 폴링 (요청이 즉시 끝나므로 Failed to fetch 없음)
-      const poll = async () => {
-        try {
-          const s = await api('/api/admin/ingest/status');
-          if (s.counts) setKb(k => ({ ...k, counts: s.counts }));
-          const st = s.state || {};
-          if (st.running) {
-            setKbProgress({ state: 'running', phase: st.phase, docsDone: st.docsDone || 0, docs: st.docs || 0, chunks: st.chunks || 0 });
-            setTimeout(poll, 2500);
-          } else if (st.phase === 'done') {
-            setKbProgress({ state: 'done', docs: st.docs, chunks: st.chunks }); setKbBusy('');
-          } else if (st.phase === 'error') {
-            setKbProgress({ state: 'error', error: st.error || '알 수 없는 오류' }); setKbBusy('');
-          } else { setKbProgress(null); setKbBusy(''); }
-        } catch (e) {
-          if (e.auth) { onAuthError?.(); return; }
-          setTimeout(poll, 4000); // 일시적 네트워크 흔들림이면 재시도
-        }
-      };
-      setTimeout(poll, 2000);
-    } catch (e) { handleErr(e); setKbProgress({ state: 'error', error: e.message || '' }); setKbBusy(''); }
+      const st = await pollIngest();
+      if (st.phase === 'done') setKbProgress({ state: 'done', docs: st.docs, chunks: st.chunks, label: 'Drive 가져오기' });
+      else if (st.phase === 'error') setKbProgress({ state: 'error', error: st.error || '알 수 없는 오류' });
+      else setKbProgress(null);
+    } catch (e) { handleErr(e); setKbProgress({ state: 'error', error: e.message || '' }); }
+    finally { setKbBusy(''); }
   };
 
+  // 파일 업로드 인제스트 — 파일을 한 개씩 보낸다.
+  // 자료집 PDF는 100MB가 넘기도 해서(면접자료집 117MB) 한 번에 다 보내면 프록시·메모리에서 막힌다.
+  // 서버는 받자마자 응답하고 백그라운드로 추출·임베딩하므로, 끝나길 폴링한 뒤 다음 파일을 보낸다.
   const ingestUpload = async (fileList) => {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
     setKbBusy('upload'); setKbMsg('');
+    const done = [], skipped = [], failed = [];
+    let chunksTotal = 0;
     try {
-      const fd = new FormData();
-      fd.append('type', uploadType);
-      files.forEach(f => fd.append('files', f));
-      const res = await fetch(`${API_BASE}/api/admin/ingest/upload`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd,
-      });
-      const r = await res.json();
-      if (r.success) { setKbMsg(`완료: 문서 ${r.documents}건 → ${r.chunks}청크 (${uploadType})`); setKb(k => ({ ...k, counts: r.counts || {} })); }
-      else setKbMsg('실패: ' + (r.message || ''));
-    } catch (e) { setKbMsg('실패: ' + (e.message || '')); }
-    finally { setKbBusy(''); if (uploadRef.current) uploadRef.current.value = ''; }
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const label = `${i + 1}/${files.length} · ${f.name}`;
+        setKbProgress({ state: 'running', phase: 'upload-send', docsDone: 0, docs: 1, chunks: 0, label });
+        if (f.size > 300 * 1024 * 1024) { failed.push(`${f.name} (300MB 초과)`); continue; }
+        const fd = new FormData();
+        fd.append('type', uploadType);
+        fd.append('files', f);
+        let r;
+        try {
+          const res = await fetch(`${API_BASE}/api/admin/ingest/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token()}` }, body: fd });
+          if (res.status === 401 || res.status === 403) { onAuthError?.(); return; }
+          const ct = res.headers.get('content-type') || '';
+          // 프록시가 큰 요청을 막으면 JSON이 아니라 HTML 오류 페이지가 온다 — 그 문장을 그대로 보이지 말고 원인을 말해 준다.
+          if (!ct.includes('application/json')) throw new Error(`서버가 파일을 받지 못했습니다 (HTTP ${res.status}${res.status === 413 ? ', 용량 초과' : ''}) — 파일을 나누거나 더 작은 PDF로 올려 주세요`);
+          r = await res.json();
+        } catch (e) { failed.push(`${f.name} — ${e.message}`); continue; }
+        if (!r.success) { failed.push(`${f.name} — ${r.message || '실패'}`); continue; }
+        const st = await pollIngest(label);
+        if (st.phase === 'done') { done.push(f.name); chunksTotal += Number(st.chunks) || 0; }
+        else failed.push(`${f.name} — ${st.error || '실패'}`);
+        for (const s of st.skipped || []) skipped.push(s);
+      }
+      const parts = [];
+      if (done.length) parts.push(`완료 ${done.length}건 → ${chunksTotal.toLocaleString()}청크 (${uploadType})`);
+      if (skipped.length) parts.push(`텍스트 없음(스캔 PDF) 건너뜀: ${skipped.join(', ')}`);
+      if (failed.length) parts.push(`실패: ${failed.join(' / ')}`);
+      setKbProgress(done.length ? { state: 'done', docs: done.length, chunks: chunksTotal, label: '업로드' } : null);
+      setKbMsg((failed.length && !done.length ? '실패: ' : '') + parts.join(' · '));
+    } finally { setKbBusy(''); if (uploadRef.current) uploadRef.current.value = ''; }
   };
 
   const clearKb = async () => {
@@ -357,9 +385,9 @@ export default function AdminDashboard({ onAuthError }) {
                   <div style={S.progressBox}>
                     <div style={{ ...S.progressHead, color: '#14b8a6' }}>
                       <span style={S.spinner} />
-                      {p.phase === 'drive-read' ? 'Drive에서 문서 읽는 중...' : `자료 가져오는 중 ${pct != null ? `(${pct}%)` : ''}`}
+                      {p.phase === 'drive-read' ? 'Drive에서 문서 읽는 중...' : p.phase === 'upload-send' ? `올리는 중 ${p.label || ''}` : p.phase === 'upload-extract' ? `텍스트 추출 중 ${p.label || ''}` : `자료 가져오는 중 ${p.label ? p.label + ' ' : ''}${pct != null ? `(${pct}%)` : ''}`}
                     </div>
-                    {p.phase !== 'drive-read' && (
+                    {p.phase === 'embedding' && (
                       <>
                         <div style={S.progressBarOuter}>
                           <div style={{ ...S.progressBarInner, width: `${pct ?? 5}%` }} />
@@ -374,7 +402,7 @@ export default function AdminDashboard({ onAuthError }) {
               if (p.state === 'done') {
                 return (
                   <div style={{ ...S.progressBox, background: 'rgba(52,211,153,0.14)', borderColor: 'rgba(52,211,153,0.45)' }}>
-                    <div style={{ ...S.progressHead, color: '#34d399', marginBottom: 4 }}>✅ 가져오기 완료</div>
+                    <div style={{ ...S.progressHead, color: '#34d399', marginBottom: 4 }}>✅ {p.label || '가져오기'} 완료</div>
                     <div style={S.progressSub}>문서 {p.docs}건 → {Number(p.chunks).toLocaleString()}청크 저장됨. 이제 분석에 이 자료가 활용됩니다.</div>
                   </div>
                 );
