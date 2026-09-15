@@ -13,7 +13,7 @@ export const VIEWS = [
   { key: 'chat', label: '상담 대화', desc: '분석 결과를 놓고 길게 상담하고 섹션 본문을 고치는 큰 화면.' },
   { key: 'assessment', label: '수행평가 출제', desc: '수행평가 문항을 만들고 워드로 내려받는다.' },
   { key: 'suharchive', label: '수행평가 보관함', desc: '만들어 둔 수행평가를 모아 보고 학생에게 배정한다.' },
-  { key: 'interview', label: '면접 전략', desc: '학생부와 지원 대학·전형으로 대학별 면접 문항·예시 답안 리포트를 만든다. 사용설명서·예시 리포트도 여기.' },
+  { key: 'interview', label: '면접 전략', desc: '학생부와 지원 대학·전형으로 대학별 면접 문항·예시 답안 리포트를 만든다. 사용설명서·예시 리포트도 여기. 관리자만.', adminOnly: true },
   { key: 'board', label: '학생 보드', desc: '학생별 성적·기록·배치·로드맵을 관리한다.' },
   { key: 'ipgyeol', label: '입결 콘솔', desc: '대학어디가 입시결과(70%컷·경쟁률·충원)를 조건으로 뒤진다.' },
   { key: 'ratio', label: '실시간 경쟁률', desc: '원서 접수 기간 경쟁률을 따라간다.' },

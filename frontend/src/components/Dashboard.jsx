@@ -8,19 +8,21 @@ const ACTIONS = [
   { key: 'ipgyeol', icon: '📈', label: '입결 콘솔', desc: 'AI 검색·다개년 추이·배치 판정', color: '#3f6fe0', bg: 'rgba(63,111,224,0.16)' },
   { key: 'ratio', icon: '⏱️', label: '실시간 경쟁률', desc: '마감 남은 시간·전형별 현황·흐름', color: '#e05b7a', bg: 'rgba(224,91,122,0.16)' },
   { key: 'suharchive', icon: '🗂️', label: '수행평가 아카이브', desc: '자료 분석·분류 보관·재활용 배정', color: '#c46ad6', bg: 'rgba(196,106,214,0.16)' },
-  { key: 'interview', icon: '🎤', label: '면접 전략', desc: '대학별 문항·예시 답안·평가표 매핑', color: '#d6a24a', bg: 'rgba(214,162,74,0.16)' },
+  { key: 'interview', icon: '🎤', label: '면접 전략', desc: '대학별 문항·예시 답안·평가표 매핑 (관리자)', color: '#d6a24a', bg: 'rgba(214,162,74,0.16)', adminOnly: true },
   { key: 'list', icon: '👥', label: '학생 목록', desc: '저장된 분석 목록', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];
 
-export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis, onAnalyzeFile }) {
+export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis, onAnalyzeFile, role }) {
+  // 관리자 전용 카드(면접 전략)는 일반 학원 계정에는 보이지 않는다 — 서버도 requireAdmin 으로 막혀 있다
+  const actions = ACTIONS.filter(a => !a.adminOnly || role === 'admin');
   return (
     <div style={S.page}>
       <h2 style={S.h2}>대시보드</h2>
       <p style={S.lead}>분석·수행평가·상담·입결·실시간 경쟁률을 한 곳에서.</p>
 
       <div style={S.actions}>
-        {ACTIONS.map(a => (
+        {actions.map(a => (
           <button key={a.key} style={{ ...S.actionCard, background: a.bg }}
             onClick={() => (a.key === 'import' ? onImport?.() : onNav?.(a.key))}>
             <span style={{ ...S.actionIcon, color: a.color }}>{a.icon}</span>

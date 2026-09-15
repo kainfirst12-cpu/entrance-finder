@@ -400,7 +400,7 @@ export default function App() {
       <main className="main">
         {view === 'dashboard' && (
           <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout}
-            onOpenAnalysis={openSavedAnalysis} onAnalyzeFile={analyzeBoardFile} />
+            onOpenAnalysis={openSavedAnalysis} onAnalyzeFile={analyzeBoardFile} role={role} />
         )}
         {view === 'list'      && (
           <StudentsPage
@@ -474,7 +474,7 @@ export default function App() {
             onAuthError={handleLogout}
           />
         )}
-        {view === 'interview' && (
+        {view === 'interview' && role === 'admin' && (
           <InterviewStrategy
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}

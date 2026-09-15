@@ -1172,6 +1172,7 @@ app.post('/api/suhaeng/:id/assign', requireAuth, async (req, res) => {
 
 // ══════════════════════════════════════════════════════
 // 면접 전략 — 학생부 + 지원 카드(대학·학과·전형) → 대학별 면접 문항·예시 답안·평가표 매핑 리포트
+//   ⚠ 관리자 전용(원장 요청 2026-09-15). 화면 카드도 role==='admin' 일 때만 보인다.
 //   흐름: ① 전형 구조·학생부 소재·평가 매핑·연습 계획(개요) → ② 면접 있는 카드마다 문항 N개 + 예시 답안 N개
 //   화면(frontend/src/interviewReport.js)이 이 JSON을 A4 가로 HTML(사용설명서·예시와 같은 디자인)로 그린다.
 // ══════════════════════════════════════════════════════
@@ -1326,7 +1327,7 @@ function cleanupInterviewJobs() {
   for (const [id, j] of interviewJobs) if (j.updatedAt < cutoff) interviewJobs.delete(id);
 }
 
-app.post('/api/interview/generate', requireAuth, async (req, res) => {
+app.post('/api/interview/generate', requireAdmin, async (req, res) => {
   const { student = {}, cards = [], recordText = '', options = {} } = req.body || {};
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -1453,7 +1454,7 @@ ${recordBlock}
 });
 
 // 작업 상태 — 화면이 3초마다 묻는다. 진행 중이면 stage·message, 끝나면 data(+savedId), 실패면 error(+partial)
-app.get('/api/interview/jobs/:id', requireAuth, (req, res) => {
+app.get('/api/interview/jobs/:id', requireAdmin, (req, res) => {
   const job = interviewJobs.get(req.params.id);
   if (!job) return res.status(404).json({ success: false, message: '작업을 찾을 수 없습니다 (서버가 재시작됐을 수 있습니다). 보관함에 저장된 리포트가 있는지 확인해 주세요.' });
   if (req.user.role !== 'admin' && job.ownerId !== (req.user.userId ?? null)) return res.status(403).json({ success: false, message: '권한 없음' });
@@ -1464,14 +1465,14 @@ app.get('/api/interview/jobs/:id', requireAuth, (req, res) => {
 });
 
 // 보관 CRUD (선생님별 분리)
-app.get('/api/interview', requireAuth, async (req, res) => {
+app.get('/api/interview', requireAdmin, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
     if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
     res.json({ success: true, items: await listInterviews(req.user.userId, { q: req.query.q }) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-app.post('/api/interview', requireAuth, async (req, res) => {
+app.post('/api/interview', requireAdmin, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
     if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
@@ -1479,7 +1480,7 @@ app.post('/api/interview', requireAuth, async (req, res) => {
     res.json({ success: true, item: await createInterview(req.user.userId, req.body) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-app.get('/api/interview/:id', requireAuth, async (req, res) => {
+app.get('/api/interview/:id', requireAdmin, async (req, res) => {
   try {
     const item = await getInterview(Number(req.params.id));
     if (!item) return res.status(404).json({ success: false, message: '리포트 없음' });
@@ -1487,7 +1488,7 @@ app.get('/api/interview/:id', requireAuth, async (req, res) => {
     res.json({ success: true, item });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-app.delete('/api/interview/:id', requireAuth, async (req, res) => {
+app.delete('/api/interview/:id', requireAdmin, async (req, res) => {
   try {
     const owner = await getInterviewOwner(Number(req.params.id));
     if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
@@ -1496,7 +1497,7 @@ app.delete('/api/interview/:id', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 // 리포트 요약을 학생 기록으로 남긴다 — 학생 보드·학생 열람 페이지에서 문항을 볼 수 있게
-app.post('/api/interview/:id/assign', requireAuth, async (req, res) => {
+app.post('/api/interview/:id/assign', requireAdmin, async (req, res) => {
   try {
     const item = await getInterview(Number(req.params.id));
     if (!item) return res.status(404).json({ success: false, message: '리포트 없음' });
