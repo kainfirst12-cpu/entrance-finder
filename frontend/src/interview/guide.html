@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>학생부 기반 대학 면접 통합 시스템 · 사용설명서 v3.0</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap');
+:root{--n:#12233a;--b:#245ca8;--s:#eaf3ff;--g:#c79a4a;--c:#fbf7ee;--i:#172131;--m:#657184;--l:#dde4ed;--ok:#24756c;--no:#af4653}
+*{box-sizing:border-box}body{margin:0;background:#e9edf2;color:var(--i);font-family:'Noto Sans KR','Malgun Gothic',sans-serif;word-break:keep-all}.page{position:relative;width:297mm;min-height:210mm;margin:14px auto;background:#fff;padding:14mm 16mm 13mm;overflow:hidden;box-shadow:0 12px 36px #18263d1f;page-break-after:always}.page:last-child{page-break-after:auto}.top{position:absolute;inset:0 0 auto;height:6px;background:linear-gradient(90deg,var(--n),var(--b) 62%,var(--g))}.eye{font-size:10px;font-weight:900;letter-spacing:.16em;color:var(--b)}h1{font-size:34px;line-height:1.2;letter-spacing:-.05em;margin:8px 0 12px}h2{font-size:23px;letter-spacing:-.04em;margin:0 0 12px}h3{font-size:14px;margin:0 0 7px}p{margin:0;line-height:1.62}.lead{font-size:14px;color:var(--m)}.small{font-size:9.5px;line-height:1.55;color:var(--m)}.grid{display:grid;gap:10px}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.card{border:1px solid var(--l);border-radius:13px;padding:12px 14px;background:#fff}.blue{background:var(--s);border-color:#cadcff}.cream{background:var(--c)}.green{background:#eaf6f3;border-color:#cbe5df}.red{background:#fff0f2;border-color:#f0ccd1}.dark{background:var(--n);color:#fff;border:0}.tag{display:inline-flex;border-radius:99px;padding:4px 9px;font-size:8px;font-weight:900;background:#edf1f6;color:#445169}.tag.ok{background:#dff3ed;color:#17655c}.tag.gold{background:#f7ecd8;color:#765619}.tag.red{background:#f6dfe3;color:#913744}.list{margin:6px 0 0;padding-left:17px;font-size:10px;line-height:1.65}.list li+li{margin-top:2px}.flow{display:flex;align-items:center;gap:7px}.node{flex:1;background:#f1f5f9;border-radius:11px;padding:11px 7px;text-align:center;font-size:10px;font-weight:800}.arr{font-size:19px;font-weight:900;color:var(--g)}.step{display:grid;grid-template-columns:34px 1fr;gap:9px;padding:8px 0;border-bottom:1px solid var(--l)}.step:last-child{border:0}.numx{width:31px;height:31px;border-radius:9px;background:var(--n);color:#fff;display:grid;place-items:center;font-size:9px;font-weight:900}.step b{font-size:11px}.step p{font-size:9px;color:var(--m);margin-top:2px}.quote{border-left:4px solid var(--g);border-radius:0 11px 11px 0;background:var(--c);padding:11px 14px;font-size:11px;line-height:1.65}table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid var(--l);border-radius:11px;overflow:hidden;font-size:9.3px;line-height:1.45}th{background:var(--n);color:#fff;text-align:left;padding:8px}td{padding:8px;border-top:1px solid var(--l);vertical-align:top}tr:nth-child(even) td{background:#fafbfd}.code{background:#101f34;color:#e8f0fb;border-radius:12px;padding:12px 14px;font-size:9.5px;line-height:1.6;white-space:pre-wrap}.footer{position:absolute;bottom:7mm;left:16mm;right:16mm;display:flex;justify-content:space-between;font-size:8px;color:#8b95a4}.pn{font-weight:900;color:var(--n)}.hero{display:grid;grid-template-columns:1.1fr .9fr;gap:24px;align-items:center;min-height:157mm}.art{height:142mm;border-radius:24px;overflow:hidden;background:linear-gradient(145deg,#12233a,#285f9d)}.art svg{width:100%;height:100%}.check div{font-size:10px;padding:6px 0;border-bottom:1px solid var(--l)}@media print{@page{size:A4 landscape;margin:0}body{background:#fff}.page{margin:0;box-shadow:none;width:297mm;height:210mm;min-height:210mm}}@media(max-width:900px){.page{width:100%;min-height:auto;margin:0 0 10px;padding:28px 20px 55px}.hero,.g2,.g3,.g4{grid-template-columns:1fr}.art{height:350px}.footer{left:20px;right:20px}.flow{flex-wrap:wrap}}
+</style>
+</head><body>
+
+<section class="page">
+<div class="top"></div><div class="hero">
+<div><div class="eye">USER GUIDE v3.0 · 2027 ADMISSIONS</div><h1>학생부 기반<br>대학 면접 통합 시스템</h1><p class="lead">대학·전형 분석과 문항·답안 생성에서 시작해 자기주도 말하기 연습, 교사 피드백, 학생별 기록과 실제 면접 후기까지 연결하는 통합 사용설명서</p>
+<div class="grid g3" style="margin-top:24px"><div class="card blue"><span class="tag ok">간편</span><h3 style="margin-top:8px">학생부 없이</h3><p class="small">대학·학과·전형 기반 공통 문항</p></div><div class="card cream"><span class="tag gold">정밀</span><h3 style="margin-top:8px">학생부 포함</h3><p class="small">원문 기반 진위·심층 질문</p></div><div class="card"><span class="tag">실전</span><h3 style="margin-top:8px">답안과 평가</h3><p class="small">30·60·90초 답안과 모의면접</p></div></div></div>
+<div class="art"><svg viewBox="0 0 500 600" role="img" aria-label="면접 평가와 답변"><defs><linearGradient id="x" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#58a3ee"/><stop offset="1" stop-color="#d6b36c"/></linearGradient></defs><circle cx="395" cy="105" r="155" fill="#fff" opacity=".05"/><path d="M250 100v340" stroke="url(#x)" stroke-width="12" stroke-linecap="round"/><path d="M110 190h280" stroke="#fff" stroke-width="8" stroke-linecap="round"/><path d="M145 190L85 310h120zM355 190l-60 120h120z" fill="none" stroke="#d6b36c" stroke-width="8"/><path d="M190 445h120M155 485h190" stroke="#fff" stroke-width="12" stroke-linecap="round"/><rect x="80" y="340" width="340" height="55" rx="16" fill="#fff" opacity=".12"/></svg></div></div>
+<div class="footer"><span>대학 면접 LAB · 운영자·학생 공용</span><span class="pn">01</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">QUICK START</div><h2>무엇을 입력하면 무엇이 나오는가</h2>
+<div class="flow" style="margin:18px 0"><div class="node">대학명</div><div class="arr">›</div><div class="node">학과명</div><div class="arr">›</div><div class="node">전형명</div><div class="arr">›</div><div class="node">학생부 선택</div><div class="arr">›</div><div class="node">출력 옵션</div></div>
+<div class="grid g2"><div class="card"><h3>최소 입력 3가지</h3><div class="step"><span class="numx">1</span><div><b>대학명·학과명</b><p>학과 교육과정과 전공 질문의 기준</p></div></div><div class="step"><span class="numx">2</span><div><b>전형명</b><p>면접 유무·반영비율·평가요소·진행방식 확인</p></div></div><div class="step"><span class="numx">3</span><div><b>원하는 결과</b><p>문항 수·답변 시간·난이도·파일 형식</p></div></div></div>
+<div class="card blue"><h3>복사하여 사용하는 기본 요청문</h3><div class="code">2027학년도 [대학명] [학과명] [전형명]을 준비합니다.
+학생부: [첨부함 / 없음]
+예상 문항: [10 / 20 / 30]개
+예시 답안: [30초 / 60초 / 90초]
+꼬리질문: [1 / 2 / 3]단계
+유형: [기본 / 심층 / 압박 / 제시문]
+추가: [평가표 / 모의면접표 / 연습계획]
+결과물: SVG 방식 A4 가로 HTML</div></div></div>
+<div class="quote" style="margin-top:12px"><b>전형명이 핵심입니다.</b> 같은 대학·학과도 전형에 따라 면접이 없거나, 공통문항·서류기반·제시문 면접으로 달라질 수 있습니다.</div>
+<div class="footer"><span>학교·학과만으로 가능 / 전형명까지 입력하면 정밀</span><span class="pn">02</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">TWO MODES</div><h2>학생부 없는 간편 모드와 학생부 정밀 모드</h2>
+<table><thead><tr><th>구분</th><th>간편 모드 · 학생부 없음</th><th>정밀 모드 · 학생부 있음</th></tr></thead><tbody><tr><td><b>근거</b></td><td>모집요강·평가요소·학과 교육과정·공개 문항</td><td>간편 근거 + 학생부 교과·세특·창체·진로·행동특성</td></tr><tr><td><b>질문</b></td><td>지원동기·전공 이해·시사·학업계획·일반 공동체 경험</td><td>기록 진위·전문개념·탐구 과정·본인 역할·판단 변화</td></tr><tr><td><b>답안</b></td><td>[학생 경험] 교체 표시가 있는 범용 설계도</td><td>확인된 사실만 사용하고 세부 장면은 학생이 직접 보완</td></tr><tr><td><b>활용</b></td><td>지원 검토·다수 대학 비교·초기 연습</td><td>서류기반 면접·개인 꼬리질문·최종 모의면접</td></tr></tbody></table>
+<div class="grid g3" style="margin-top:14px"><div class="card blue"><span class="tag ok">대학·전형</span><h3 style="margin-top:8px">공통 기반</h3><ul class="list"><li>면접 유형·시간</li><li>평가요소·배점</li><li>기출 질문 문법</li></ul></div><div class="card cream"><span class="tag gold">학과</span><h3 style="margin-top:8px">전공 기반</h3><ul class="list"><li>기초 교과 개념</li><li>교육과정·진로</li><li>관련 최신 쟁점</li></ul></div><div class="card green"><span class="tag ok">학생부</span><h3 style="margin-top:8px">개인 기반</h3><ul class="list"><li>문장별 진위</li><li>탐구의 깊이</li><li>활동 간 발전</li></ul></div></div>
+<div class="card red" style="margin-top:12px"><h3>개인정보 보호</h3><p class="small">외부 서비스에 자료를 입력할 때는 주민등록번호·주소·연락처 등 불필요한 개인정보를 가리고, 가능하면 질문 생성에 필요한 세특·활동 부분만 사용합니다.</p></div>
+<div class="footer"><span>학생부 없음 = 범용 / 학생부 있음 = 개인화</span><span class="pn">03</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">EVALUATION-FIRST</div><h2>대학 평가표를 거꾸로 읽어 답변을 설계합니다</h2>
+<div class="flow" style="margin:16px 0"><div class="node">평가요소 확인</div><div class="arr">›</div><div class="node">배점 순서화</div><div class="arr">›</div><div class="node">학생부 활동 배치</div><div class="arr">›</div><div class="node">빈칸·위험 발견</div><div class="arr">›</div><div class="node">답변 보완</div></div>
+<div class="grid g3"><div class="card blue"><h3>학업역량</h3><ul class="list"><li>개념 정의와 원리</li><li>과목 선택 이유</li><li>탐구 설계·자료 분석</li><li>어려움과 극복</li></ul><p class="small" style="margin-top:7px"><b>감점:</b> 개념 이름만 말하고 설명하지 못함</p></div><div class="card cream"><h3>진로·전공역량</h3><ul class="list"><li>관심의 결정적 계기</li><li>학년별 심화 활동</li><li>지원 전공 선택 이유</li><li>대학에서의 확장</li></ul><p class="small" style="margin-top:7px"><b>감점:</b> 활동 나열만 있고 연결이 없음</p></div><div class="card green"><h3>공동체·소통</h3><ul class="list"><li>갈등 상황과 역할</li><li>내가 취한 행동</li><li>조정 기준과 결과</li><li>질문 경청·태도</li></ul><p class="small" style="margin-top:7px"><b>감점:</b> “제가 다 했습니다” 또는 역할 없는 “함께”</p></div></div>
+<div class="quote" style="margin-top:13px"><b>같은 활동도 대학에 따라 답의 초점이 달라집니다.</b> 자기평가력을 보는 대학에는 판단 변화와 한계를, 발전가능성을 보는 대학에는 탐구의 심화와 후속 계획을, 공동체 비중이 큰 대학에는 본인의 구체적인 행동을 강조합니다.</div>
+<div class="grid g2" style="margin-top:11px"><div class="card"><h3>면접 영향력 자료 사용법</h3><p class="small">면접 반영률·역전률·배수별 합격률은 서로 다른 지표입니다. 대학·연도·모집단위·산식이 같지 않으면 직접 비교하지 않습니다.</p></div><div class="card red"><h3>최종 확인</h3><p class="small">가이드북과 사례집은 방향을 잡는 자료이며, 면접 유무·일정·반영비율은 해당 연도 최종 모집요강과 입학처 공지를 우선합니다.</p></div></div>
+<div class="footer"><span>지금 이 답은 평가표의 어느 칸에 들어가는가?</span><span class="pn">04</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">STUDENT RECORD ENGINE</div><h2>학생부 한 문장에서 질문을 7단계로 확장합니다</h2>
+<div class="grid g2"><div class="card"><div class="step"><span class="numx">01</span><div><b>사실 확인</b><p>무엇을 했고 어떤 결과를 얻었는가?</p></div></div><div class="step"><span class="numx">02</span><div><b>동기</b><p>왜 이 주제·책·실험을 선택했는가?</p></div></div><div class="step"><span class="numx">03</span><div><b>과정과 역할</b><p>자료·방법·분담·어려움은 무엇인가?</p></div></div><div class="step"><span class="numx">04</span><div><b>전문개념</b><p>기록된 이론·법칙·용어를 설명하고 적용할 수 있는가?</p></div></div></div>
+<div class="card blue"><div class="step"><span class="numx">05</span><div><b>비판적 검증</b><p>반대 사례·오차·다른 해석·결론의 한계는?</p></div></div><div class="step"><span class="numx">06</span><div><b>성장과 변화</b><p>처음 생각과 최종 판단은 어떻게 달라졌는가?</p></div></div><div class="step"><span class="numx">07</span><div><b>전공 확장</b><p>대학에서 어떤 과목·방법으로 발전시킬 것인가?</p></div></div><div class="card red" style="margin-top:9px"><h3>위험 문장</h3><p class="small">기억나지 않는 활동, 전문용어를 설명하지 못하는 기록, 모둠 내 개인 역할이 없는 활동, 출처·표본·실험 조건이 불명확한 탐구는 우선 검증합니다.</p></div></div></div>
+<div class="quote" style="margin-top:12px"><b>서류기반 면접의 출발점은 진위 확인입니다.</b> 어려운 표현을 더 만드는 것보다 학생이 자신의 기록을 정확하게 설명할 수 있도록 질문을 설계합니다.</div>
+<div class="footer"><span>무엇을 했는가보다 어떻게 생각하고 검증했는가</span><span class="pn">05</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">FOLLOW-UP MATRIX</div><h2>꼬리질문은 5개 영역으로 생성합니다</h2>
+<table><thead><tr><th style="width:18%">영역</th><th>확인 내용</th><th>대표 꼬리질문</th></tr></thead><tbody><tr><td><b>① 탐구 과정</b></td><td>자료 수집·선정 기준·신뢰도·방법·어려움</td><td>자료는 어디에서 수집했고 신뢰도를 어떻게 확인했습니까?</td></tr><tr><td><b>② 학문적 호기심</b></td><td>흥미로운 발견·예상 밖 결과·후속 연구</td><td>예상과 달랐던 결과는 무엇이며 다시 탐구한다면 무엇을 바꾸겠습니까?</td></tr><tr><td><b>③ 비판적 사고</b></td><td>반대 의견·다른 해석·주장의 한계</td><td>반대 입장에서는 어떻게 설명할 수 있으며 본인 결론의 한계는 무엇입니까?</td></tr><tr><td><b>④ 전공 적합성</b></td><td>진로 연결·전공 이해·대학 확장 계획</td><td>이 탐구가 지원 전공과 어떻게 연결되고 대학에서는 어떻게 발전합니까?</td></tr><tr><td><b>⑤ 데이터·윤리</b></td><td>일반화·오차·가설 불일치·연구윤리</td><td>이 결과를 다른 집단에도 적용할 수 있습니까? 일반화의 조건은 무엇입니까?</td></tr></tbody></table>
+<div class="grid g3" style="margin-top:14px"><div class="card"><span class="tag">1단계</span><h3 style="margin-top:8px">확인</h3><p class="small">학생부 내용과 개념을 정확하게 설명</p></div><div class="card blue"><span class="tag ok">2단계</span><h3 style="margin-top:8px">검증</h3><p class="small">근거·자료·반대 사례·한계를 점검</p></div><div class="card red"><span class="tag red">3단계</span><h3 style="margin-top:8px">압박</h3><p class="small">반론을 수용하고 결론의 조건을 재설정</p></div></div>
+<div class="quote" style="margin-top:13px"><b>반론 대응 공식:</b> 지적을 수용할 부분 → 유지할 판단 기준 → 적용 범위를 좁힌 수정 결론. 처음 답을 무조건 방어하지 않습니다.</div>
+<div class="footer"><span>활동 하나당 최대 3단계 꼬리질문</span><span class="pn">06</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">ANSWER LEVELS</div><h2>예시 답안은 시간과 사고 수준을 함께 조절합니다</h2>
+<div class="grid g4"><div class="card"><span class="tag">30초</span><h3 style="margin-top:8px">압축형</h3><p class="small">결론 → 대표 사례 → 배운 점</p></div><div class="card blue"><span class="tag ok">60초</span><h3 style="margin-top:8px">표준형</h3><p class="small">결론 → 근거 → 학생부 사례 → 전공 연결</p></div><div class="card cream"><span class="tag gold">90초</span><h3 style="margin-top:8px">심층형</h3><p class="small">표준형 + 반대 관점 → 한계 → 후속 탐구</p></div><div class="card red"><span class="tag red">압박형</span><h3 style="margin-top:8px">재판단</h3><p class="small">반론 수용 → 기준 유지 → 수정 결론</p></div></div>
+<table style="margin-top:13px"><thead><tr><th>답안 수준</th><th>핵심 특징</th><th>주의할 점</th></tr></thead><tbody><tr><td><b>기본</b></td><td>학생이 직접 한 활동과 결과를 명확하게 설명</td><td>일반적인 소감과 활동 나열로 끝내지 않기</td></tr><tr><td><b>심화</b></td><td>교과 개념·전공 원리를 정확히 적용하고 근거 제시</td><td>학생부에 없는 전문용어를 과도하게 추가하지 않기</td></tr><tr><td><b>최상위</b></td><td>딜레마·반대 관점·이론의 맹점과 적용 조건까지 분석</td><td>제시문형과 일반 서류면접의 수준을 무조건 동일시하지 않기</td></tr></tbody></table>
+<div class="grid g2" style="margin-top:12px"><div class="card green"><h3>경험 질문</h3><p class="small">상황 → 과제 → <b>본인 행동</b> → 결과 → 성장. 결과보다 행동과 판단 과정을 더 길게 말합니다.</p></div><div class="card blue"><h3>개념 질문</h3><p class="small">정의 → 원리 → 활동 속 적용 → 한계. 개념 이름만 외우는 답변은 피합니다.</p></div></div>
+<div class="footer"><span>좋은 답변은 정답이 아니라 성실한 사고 설명</span><span class="pn">07</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">INTERVIEW TYPES</div><h2>면접 유형에 따라 생성 규칙을 바꿉니다</h2>
+<div class="grid g3"><div class="card blue"><h3>서류기반 면접</h3><ul class="list"><li>학생부 원문별 진위 질문</li><li>전문개념·본인 역할 검증</li><li>활동 간 연계와 심화</li><li>꼬리질문 3단계</li></ul></div><div class="card cream"><h3>공통문항·교과면접</h3><ul class="list"><li>지원동기·장단점·학업계획</li><li>진로·공동체 사례</li><li>사전 기초자료 작성</li><li>30~40초 압축 답변</li></ul></div><div class="card green"><h3>제시문 면접</h3><ul class="list"><li>핵심어와 논점 표시</li><li>공통점·차이점 분석</li><li>두괄식–근거–결론</li><li>메모와 시간 배분 연습</li></ul></div></div>
+<div class="grid g2" style="margin-top:12px"><div class="card"><h3>제시문 답변 순서</h3><div class="flow" style="margin-top:10px"><div class="node">핵심어</div><div class="arr">›</div><div class="node">논점</div><div class="arr">›</div><div class="node">결론</div><div class="arr">›</div><div class="node">근거</div></div><p class="small" style="margin-top:10px">제시문 문장을 그대로 읽지 말고 자신의 문장으로 재구성합니다. 논술 기출은 유사 길이의 제시문과 논리 전개를 연습하는 보조자료로 활용할 수 있습니다.</p></div><div class="card red"><h3>기출자료 사용 원칙</h3><ul class="list"><li>대학 선행학습영향평가보고서 우선</li><li>최근 2개년도와 교육청 후기 비교</li><li>문항의 내용보다 반복되는 질문 구조 파악</li><li>최종 전형 방식은 모집요강으로 재확인</li></ul></div></div>
+<div class="quote" style="margin-top:12px">학생부 질문과 제시문 질문을 한 문항집에 무분별하게 섞지 않고, 실제 대학의 면접 유형에 맞는 문제만 생성합니다.</div>
+<div class="footer"><span>서류기반 · 공통문항 · 제시문을 분리</span><span class="pn">08</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">SELF-DIRECTED PRACTICE</div><h2>생성된 문항을 실제 말하기 연습으로 전환합니다</h2>
+<div class="flow" style="margin:16px 0"><div class="node">문항 선택</div><div class="arr">›</div><div class="node">질문 듣기</div><div class="arr">›</div><div class="node">생각시간</div><div class="arr">›</div><div class="node">소리 내어 답변</div><div class="arr">›</div><div class="node">기록·피드백</div></div>
+<div class="grid g3"><div class="card blue"><h3>연습 설정</h3><ul class="list"><li>대학·학과·질문 유형 선택</li><li>연습 문항만 체크</li><li>문항 수 조절</li><li>생각시간·답변시간 설정</li><li>질문 읽기 속도 조절</li></ul></div><div class="card cream"><h3>말하기 점검</h3><ul class="list"><li>첫 문장에 결론이 있는가</li><li>학생부의 한 장면이 있는가</li><li>질문의 모든 조건에 답했는가</li><li>제한시간 안에 마쳤는가</li><li>외운 답처럼 들리지 않는가</li></ul></div><div class="card green"><h3>비언어 점검</h3><ul class="list"><li>말하기 속도와 성량</li><li>시선과 자세 유지</li><li>불필요한 손·어깨 움직임</li><li>표정과 경청 태도</li><li>영상 녹화 후 자기평가</li></ul></div></div>
+<div class="grid g2" style="margin-top:12px"><div class="card"><h3>권장 연습 순서</h3><div class="step"><span class="numx">1</span><div><b>답안 보며 말하기</b><p>내용과 구조를 이해하는 단계</p></div></div><div class="step"><span class="numx">2</span><div><b>핵심어만 보고 말하기</b><p>문장 암기에서 벗어나는 단계</p></div></div><div class="step"><span class="numx">3</span><div><b>무작위 질문에 답하기</b><p>실전 경청과 순발력을 기르는 단계</p></div></div></div><div class="card red"><h3>분석 결과의 한계</h3><p class="small">카메라·마이크로 확인하는 표정·시선·자세·성량은 연습을 돕는 참고자료이며 실제 대학의 평가점수가 아닙니다. 기기와 브라우저 환경에 따라 측정 차이가 생길 수 있습니다.</p><div class="quote" style="margin-top:10px">영상·음성·받아쓰기 자료의 저장 위치와 처리 방식을 확인하고, 학생에게 고지한 뒤 사용합니다.</div></div></div>
+<div class="footer"><span>문항 생성이 끝이 아니라 소리 내어 답할 때 준비가 시작</span><span class="pn">09</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">STUDENT RECORD</div><h2>학생별 준비 과정을 하나의 기록으로 누적합니다</h2>
+<div class="grid g3"><div class="card blue"><span class="tag ok">지원 정보</span><h3 style="margin-top:8px">대학·전형 일정</h3><ul class="list"><li>대학·학과·전형명</li><li>면접일·시간·장소</li><li>면접 방식·반영비율</li><li>평가요소·준비물</li></ul></div><div class="card cream"><span class="tag gold">질문 준비</span><h3 style="margin-top:8px">학생부 영역별</h3><ul class="list"><li>공통 질문</li><li>자율·진로·동아리·행특</li><li>주요교과 세특</li><li>기타교과 직접 추가</li></ul></div><div class="card green"><span class="tag ok">사후 기록</span><h3 style="margin-top:8px">피드백·후기</h3><ul class="list"><li>회차별 받은 질문</li><li>잘한 점·부족한 점</li><li>평가자 피드백</li><li>실제 면접 질문·분위기</li></ul></div></div>
+<table style="margin-top:13px"><thead><tr><th>단계</th><th>학생이 기록할 내용</th><th>교사가 확인할 내용</th></tr></thead><tbody><tr><td><b>준비 전</b></td><td>지원 대학·일정·자신 있는 활동</td><td>전형 사실·평가요소·학생부 위험 문장</td></tr><tr><td><b>답안 작성</b></td><td>문항별 핵심어와 실제 경험</td><td>허구 여부·전공 개념·답변 구조</td></tr><tr><td><b>모의면접</b></td><td>어려웠던 질문과 자기평가</td><td>내용·태도·시간·다음 목표</td></tr><tr><td><b>실제 면접 후</b></td><td>실제 문항·꼬리질문·분위기·아쉬움</td><td>다음 대학 대비와 후배용 문항 축적</td></tr></tbody></table>
+<div class="grid g2" style="margin-top:12px"><div class="card"><h3>저장·복원</h3><p class="small">학생별 데이터를 파일로 백업하고 다시 불러올 수 있도록 구성합니다. 인쇄할 때는 전체가 아니라 일정·공통질문·세특·피드백·후기 등 필요한 영역만 선택합니다.</p></div><div class="card red"><h3>관리 원칙</h3><p class="small">학생 이름과 학교 정보가 포함된 기록은 공개 문항 데이터와 분리합니다. 다른 학생의 사례를 예시로 활용할 때는 개인을 특정할 수 있는 정보를 제거합니다.</p></div></div>
+<div class="footer"><span>질문 → 답변 → 피드백 → 실제 후기의 순환 기록</span><span class="pn">10</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">TEACHER & STUDENT PACK</div><h2>학생용 문제편과 교사용 해설편을 분리합니다</h2>
+<div class="grid g2"><div class="card blue"><span class="tag ok">학생용</span><h3 style="margin-top:8px">문제·연습지</h3><ul class="list"><li>대학·전형의 핵심 유의사항</li><li>질문 또는 제시문과 문항</li><li>메모란과 제한시간</li><li>학생 답변 핵심어 작성란</li><li>자기점검 체크리스트</li></ul><p class="small" style="margin-top:8px">제시문 면접에서는 출제 의도·핵심 개념·예시 답안을 미리 보여 주지 않습니다.</p></div><div class="card cream"><span class="tag gold">교사용</span><h3 style="margin-top:8px">해설·평가표</h3><ul class="list"><li>문항 생성 근거와 학생부 출처</li><li>질문 의도와 평가요소</li><li>핵심 개념·가능한 답변 축</li><li>예시 답안과 3단계 꼬리질문</li><li>감점 신호와 피드백 기준</li></ul><p class="small" style="margin-top:8px">예시 답안은 유일한 정답이 아니라 평가기준을 충족하는 한 가지 답변 경로입니다.</p></div></div>
+<div class="grid g2" style="margin-top:12px"><div class="card green"><h3>고려대 계열적합 인문 · 21/7</h3><div class="flow" style="margin:9px 0"><div class="node">읽기 8분</div><div class="arr">›</div><div class="node">골격 9분</div><div class="arr">›</div><div class="node">순서 4분</div></div><p class="small">21분 준비 후 7분 답변. 비교·분석 → 관점 적용·평가 → 종합·제안 순으로 연습하고 마지막 문항에 시간을 남깁니다.</p></div><div class="card red"><h3>명지대 교과면접 · 20/5</h3><div class="flow" style="margin:9px 0"><div class="node">배분 5분</div><div class="arr">›</div><div class="node">작성 12분</div><div class="arr">›</div><div class="node">점검 3분</div></div><p class="small">기초자료에 주장·이유·학교생활 장면·배운 점을 적어 질문을 유도하고, 5분 면접에서는 결론부터 압축해 답합니다.</p></div></div>
+<div class="quote" style="margin-top:12px"><b>교사 운영:</b> 학생에게 문제편 배부 → 실제 시간 적용 → 소리 내어 답변·녹음 → 자기점검 → 교사용 해설 대조 → 피드백 → 며칠 뒤 재연습</div>
+<div class="footer"><span>힌트를 먼저 주지 않고 답변 후 해설</span><span class="pn">11</span></div>
+</section>
+
+<section class="page">
+<div class="top"></div><div class="eye">PRACTICE & FINAL REQUEST</div><h2>결과물을 실전 면접으로 전환하는 운영법</h2>
+<div class="grid g3"><div class="card blue"><span class="tag ok">1단계</span><h3 style="margin-top:8px">학생부 복기</h3><div class="check"><div>□ 모든 활동 설명</div><div>□ 전문용어 정의</div><div>□ 본인 역할 확인</div><div>□ 자료·수치 출처</div></div></div><div class="card cream"><span class="tag gold">2단계</span><h3 style="margin-top:8px">키워드 연습</h3><div class="check"><div>□ 답변별 핵심어 2~3개</div><div>□ 대본 전체 암기 금지</div><div>□ 30·60초 말하기</div><div>□ 돌발·반론 대응</div></div></div><div class="card"><span class="tag">3단계</span><h3 style="margin-top:8px">모의면접</h3><div class="check"><div>□ 영상 녹화</div><div>□ 속도·시선·말버릇</div><div>□ 교사 피드백</div><div>□ 최종 답안 수정</div></div></div></div>
+<div class="grid g2" style="margin-top:12px"><div class="card"><h3>완성형 요청문</h3><div class="code">[학생명] 학생부와 [대학·학과·전형]을 분석해 주세요.
+대학별 평가요소에 학생부 활동을 매핑하고,
+핵심 문항·전문개념 검증·5영역 꼬리질문을 만드세요.
+문항마다 질문 의도, 60초 예시 답안, 주의점을 넣고
+기본·심화·압박 질문을 구분해 주세요.
+학생부에 없는 사실은 만들지 말고 확인 필요로 표시하세요.
+학생용 문제편과 교사용 해설편을 분리하고,
+교사용 평가표·2주 연습계획·회차별 기록표를 포함해
+SVG 방식 A4 가로 HTML로 제작해 주세요.</div></div><div class="card green"><h3>학생부가 없을 때</h3><div class="code">2027학년도 [대학·학과·전형] 면접을 준비합니다.
+학생부는 없습니다. 공식 전형 기준과 학과 교육과정,
+공개 문항의 질문 구조를 바탕으로 기본 10문항,
+60초 범용 답안과 2단계 꼬리질문을 만들어 주세요.
+개인 경험은 임의로 만들지 말고 [학생 경험]으로 표시하세요.</div><p class="small" style="margin-top:8px">면접 일정·비율·평가요소는 기준일을 표시하고 최종 공지를 다시 확인합니다.</p></div></div>
+<div class="quote" style="margin-top:10px"><b>최종 원칙:</b> 전형 사실은 공식 자료로, 개인 질문은 학생부 원문으로, 답안은 학생 본인의 경험과 언어로 완성합니다.</div>
+<div class="footer"><span>학생부 기반 대학 면접 통합 시스템 · 사용설명서 v3.0</span><span class="pn">12</span></div>
+</section>
+
+</body></html>

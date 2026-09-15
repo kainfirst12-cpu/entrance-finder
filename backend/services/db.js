@@ -161,6 +161,20 @@ export async function initDb() {
       );
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_suhaeng_owner ON ef_suhaeng(owner_id);`);
+    // 면접 전략 — 학생부 + 지원 카드(대학·학과·전형)로 만든 대학별 면접 문항·예시 답안 리포트
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_interviews (
+        id           SERIAL PRIMARY KEY,
+        owner_id     INTEGER REFERENCES app_users(id) ON DELETE CASCADE,
+        student_id   INTEGER REFERENCES ef_students(id) ON DELETE SET NULL,
+        student_name TEXT DEFAULT '',
+        title        TEXT NOT NULL,
+        cards        JSONB DEFAULT '[]'::jsonb,
+        data         JSONB DEFAULT '{}'::jsonb,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_interviews_owner ON ef_interviews(owner_id);`);
     // 생기부 로드맵 — 컨설팅 로드맵 문서를 학생이 체크할 실행 항목으로 보관
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ef_roadmaps (

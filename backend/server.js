@@ -18,6 +18,7 @@ import { searchEntries as searchIpgyeolEntries, univLabel as ipgUnivLabel, REGIO
 import { fieldOf } from './services/deptField.js';
 import { attachSkypassNotes, hasScaleWarning, skypassLoaded } from './services/skypassNotes.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
+import { listInterviews, getInterview, createInterview, deleteInterview, getInterviewOwner, univFacts } from './services/interviewStore.js';
 import { runAssistantStep } from './services/assistantAgent.js';
 import {
   listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
@@ -1168,6 +1169,307 @@ app.post('/api/suhaeng/:id/assign', requireAuth, async (req, res) => {
     res.json({ success: true, record });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
+
+// ══════════════════════════════════════════════════════
+// 면접 전략 — 학생부 + 지원 카드(대학·학과·전형) → 대학별 면접 문항·예시 답안·평가표 매핑 리포트
+//   흐름: ① 전형 구조·학생부 소재·평가 매핑·연습 계획(개요) → ② 면접 있는 카드마다 문항 N개 + 예시 답안 N개
+//   화면(frontend/src/interviewReport.js)이 이 JSON을 A4 가로 HTML(사용설명서·예시와 같은 디자인)로 그린다.
+// ══════════════════════════════════════════════════════
+
+// 사용설명서(v3.0)의 원칙을 그대로 프롬프트 규칙으로 옮겼다 — 여기 문장을 바꾸면 리포트의 성격이 바뀐다.
+const INTERVIEW_RULES = `[면접 설계 원칙 — 학생부 기반 대학 면접 통합 시스템 v3.0]
+1. 전형 사실은 공식 자료(모집요강·입시가이드·지식베이스 발췌)로, 개인 질문은 학생부 원문으로, 답안은 학생 본인의 경험과 언어로 완성한다.
+2. 면접이 없는 전형(서류 100%)에는 면접 문항을 만들지 않고 서류평가 관점(학생부 안에서 동기·과정·결과·성장이 읽히는지)으로 관리한다.
+3. 평가표를 거꾸로 읽는다: 평가요소·배점을 먼저 확인하고, 그 칸에 들어갈 학생부 활동을 배치한 뒤 빈칸·위험을 찾는다. 같은 활동도 대학의 평가축(자기평가력/발전가능성/공동체/사고력/전달력)에 따라 답의 초점을 바꾼다.
+4. 학생부 한 문장에서 질문을 7단계로 확장한다: 사실 확인 → 동기 → 과정과 역할 → 전문개념 → 비판적 검증 → 성장과 변화 → 전공 확장.
+5. 꼬리질문은 5영역(탐구 과정 / 학문적 호기심 / 비판적 사고 / 전공 적합성 / 데이터·윤리)에서 만들고, 대학 유형에 따라 '꼬리'(심층 확인)·'반론'(논리형)·'검증'·'선택'으로 표시한다. 반론 대응 공식: 수용할 부분 → 유지할 판단 기준 → 적용 범위를 좁힌 수정 결론.
+6. 예시 답안은 암기본이 아니라 답변 설계도다. 서류기반 심층형은 60초(230~280자: 결론 → 근거 → 학생부 사례 → 판단 변화·한계 → 전공 연결), 논리형은 45초(200~240자: 결론 → 학생부 사례 → 판단 근거 → 반대 가능성·한계), 교과면접·공통문항 압축형은 30~40초(150~190자: 결론 → 한 장면 → 배운 점). 개념 질문은 정의 → 원리 → 활동 속 적용 → 한계.
+7. 학생부에 없는 사실·경험·판례·수치를 만들지 않는다. 확인이 필요한 사실은 '재확인'으로 표시하고, 학생부가 없거나 빈약하면 [학생 경험]이라고 자리 표시를 남긴다.
+8. 서류기반 면접의 출발점은 진위 확인이다 — 어려운 표현보다 학생이 자신의 기록을 정확히 설명하도록 설계한다. 경험 질문은 상황 → 과제 → 본인 행동 → 결과 → 성장, 결과보다 행동과 판단 과정을 길게.
+9. 감점 신호: 개념 이름만 말하고 설명 못함 / 활동 나열만 있고 연결이 없음 / "제가 다 했습니다" 또는 역할 없는 "함께" / 학생부에 없는 전문용어 남발.
+10. 교과면접(사전 기초자료 작성형)은 기초자료 예상 문항을 따로 주고 30~40초 압축 답변으로, 제시문 면접은 핵심어 → 논점 → 결론 → 근거 순으로 설계한다.
+11. 면접 일정·반영비율·평가요소는 기준일을 표시하고 최종 모집요강·입학처 공지를 다시 확인하라고 적는다. 지원 카드에 적힌 전형 사실(면접 유무·시간·비율)이 자료와 다르면 자료를 따르되 '재확인'을 남긴다.
+12. 문체: 합니다체, 이모지 금지, 한 문장은 짧고 구체적으로. 학부모를 부를 일이 있으면 '학부모님'.`;
+
+const INTERVIEW_OVERVIEW_SYSTEM = `당신은 학생부 기반 대학 면접 전략을 설계하는 입시 컨설턴트입니다. 학생부 자료와 지원 카드(대학·학과·전형)를 읽고, 대학별 면접 전략 리포트의 '개요' 부분을 JSON으로 작성합니다.
+
+${INTERVIEW_RULES}
+
+[출력 — 반드시 JSON 객체 하나만. 코드펜스·설명·주석 금지. 모든 문자열은 한국어 평문(HTML 태그 금지)]
+{
+  "eyebrow": "2027 LAW ADMISSIONS · INTERVIEW LAB v3.0 형식의 영문 소제목(학년도·전공 영문)",
+  "subtitle": "표지 부제 — 어떤 대학·전형을 위해 무엇을 하나로 연결한 보고서인지 한 문장(60~90자)",
+  "themes": ["학생부를 관통하는 주제 흐름 4단계(각 6~10자, 시간순·발전순)"],
+  "quote": "표지 인용문 — 학생의 관심이 어떻게 확장되어 지원 전공으로 구체화되었는지 한 문장(70~110자, 따옴표 없이)",
+  "artText": "표지 그래픽 문구(영문 대문자 3단어를 ×로 연결, 예: LAW × MEDIA × AI)",
+  "recordNote": "표지·소재 페이지 하단에 쓸 자료 기준(예: 학교생활기록부 18쪽 분석 기반 / 학생부 없음 · 전형·학과 기준 범용 설계)",
+  "cards": [
+    {
+      "univ": "대학 약칭(예: 숭실대, 성신여대)", "track": "전형명", "dept": "학과", "quota": "모집인원(예: 3명, 모르면 빈 문자열)",
+      "interview": true,
+      "kind": "서류기반 | 교과면접 | 제시문 | 공통문항 | 없음",
+      "minutes": 12,
+      "format": "면접 형식 한 줄(예: 2:1 서류기반 / 기초자료 20분 작성 / 서류 종합평가)",
+      "stage": "전형 구조 한 줄(예: 1단계 서류100 → 2단계 1단계50+면접50)",
+      "weights": [{ "name": "평가요소", "pct": 50, "detail": "세부 항목(예: 전공준비도 · 전공탐구노력)" }],
+      "style": "심층형 | 논리형 | 압축형 | 제시문형 | 서류형",
+      "styleChar": "한자 한 글자(深·論·短·讀·書 등)", "styleTitle": "대학 약칭 = 한 단어 (예: 숭실대 = 깊이, 광운대 = 논리, 명지대 = 압축)", "styleDesc": "그 대학 면접에서 요구하는 것 한 문장(30~45자)",
+      "answerSeconds": 60,
+      "formula": "그 대학 답변 공식(화살표 → 로 4~5단계)",
+      "formatNote": "면접 진행 방식 한 줄(면접위원 수·지원자 수·블라인드 여부 등, 모르면 빈 문자열)",
+      "prep": ["교과면접이면 사전 기초자료 예상 문항 3~4개, 아니면 빈 배열"],
+      "prepTitle": "기초자료 카드 제목(예: 20분 면접기초자료 예상, 없으면 빈 문자열)",
+      "prepHow": "기초자료 작성법 2문장(교과면접만, 아니면 빈 문자열)",
+      "docPoints": ["면접 없는 전형이면 서류평가 점검 포인트 5개, 아니면 빈 배열"],
+      "priority": 1,
+      "priorityItems": ["최종 준비 로드맵의 실행 항목 4개(면접 있는 카드만, 아니면 빈 배열)"]
+    }
+  ],
+  "conclusion": "핵심 결론 — 공통 답안 암기가 왜 맞지 않는지, 대학별로 무엇을 바꿔야 하는지 2문장(90~130자)",
+  "topics": [{ "title": "학생부 소재(8~14자)", "focus": "면접에서 확인할 핵심(15~25자)" }],
+  "axis": ["가장 강한 연결축 3단계(각 5~8자)"],
+  "doubts": ["면접관이 의심할 수 있는 지점 4개(각 30~50자, 의문문)"],
+  "principle": "답변을 관통할 기준 — 전공을 보는 관점 한 문장(70~100자)",
+  "recheck": "반드시 다시 확인할 사실 — 판례명·수치·표본·역할 등 학생 본인 자료로 복기할 것 한 문장(60~100자)",
+  "mapping": {
+    "rows": [{ "cardIndex": 0, "axis": "가장 중요한 평가축(예: 전공적합성 50 / 잠재력 50)", "evidence": "학생부의 대표 근거(30~50자)", "focus": "준비 초점(30~50자)" }],
+    "strongest": "가장 강한 평가축(25~40자)", "weakest": "보완이 필요한 축(25~45자)", "risk": "공통 위험(35~55자)",
+    "quote": "같은 활동이 대학마다 어떻게 다르게 말해지는지 한 문장(60~90자)"
+  },
+  "verification": {
+    "conceptTitle": "전공 개념 검증", "concept": [{ "q": "복기할 전문개념 질문(30~45자)", "check": "확인 · 무엇을 복기할지(15~30자)" }],
+    "dataTitle": "연구·데이터 검증", "data": [{ "q": "자료·역할·수치 검증 질문(30~45자)", "check": "확인 · ...(15~30자)" }]
+  },
+  "docOnly": {
+    "diagnosis": "공통 서류 진단 — 이 학생부의 장점이 무엇의 양이 아니라 어떤 구조인지 2문장(80~120자)",
+    "strengths": "강점(25~40자)", "gaps": "보완(25~40자)", "forbidden": "금지(25~45자)"
+  },
+  "practice": {
+    "plan": [{ "period": "D-14~12", "task": "학습 과제(35~55자)", "output": "결과물·통과 기준(25~40자)", "log": "기록 항목(15~30자)" }],
+    "checklist": ["학생 확인 체크리스트 9개(각 10~18자)"],
+    "principle": "면접 답변의 원칙 한 문장(70~110자)"
+  },
+  "sources": [{ "label": "대학명 2027학년도 수시모집요강", "url": "" }]
+}
+
+[분량·규칙]
+- cards 는 입력한 지원 카드 순서·개수 그대로. interview 는 자료로 판단하되 입력의 면접 유무 지정이 있으면 그것을 따른다. 면접 없는 카드는 kind "없음", minutes 0, style "서류형", styleChar "書", weights 는 서류평가 요소로 채운다.
+- styleTitle/styleChar/styleDesc 는 면접 있는 카드에만 의미가 있다(면접 없는 카드는 그대로 서류형으로 채운다).
+- topics 는 정확히 10개, 우선순위 순. doubts 4개, concept 4개, data 4개, plan 6개(D-14~12 / D-11~9 / D-8~6 / D-5~4 / D-3~2 / D-1), checklist 9개, axis 3개, themes 4개.
+- mapping.rows 는 카드마다 하나(cardIndex 는 cards 배열 인덱스).
+- priority 는 면접 있는 카드끼리 1부터 매기고(준비 비중 순), 면접 없는 카드는 0.
+- weights 의 pct 합은 100. 자료에 배점이 없으면 대학의 공식 평가요소 이름만 쓰고 pct 는 균등 배분하되 detail 에 '배점 재확인'을 적는다.
+- sources 는 카드의 대학마다 하나. url 은 확실히 아는 입학처 주소만, 아니면 빈 문자열.`;
+
+const INTERVIEW_CARD_SYSTEM = `당신은 학생부 기반 대학 면접 문항과 예시 답안을 설계하는 입시 컨설턴트입니다. 한 지원 카드(대학·학과·전형)에 대해 실전 문항과 예시 답안을 JSON으로 작성합니다.
+
+${INTERVIEW_RULES}
+
+[출력 — 반드시 JSON 객체 하나만. 코드펜스·설명 금지. 모든 문자열은 한국어 평문(HTML 태그 금지)]
+{
+  "questions": [{ "q": "실전 질문(35~60자, 존댓말 의문문)", "follow": "꼬리·반론·검증 질문(25~45자)", "followType": "꼬리 | 반론 | 검증 | 선택 | 확인" }],
+  "answers": [{ "q": "질문 요약(12~25자, 의문형)", "intent": "의도 · 이 문항이 확인하려는 것(20~35자, '의도 · ' 없이 내용만)", "sample": "예시 답안(대학 유형별 길이 규칙 준수)", "foot": [{ "k": "꼬리|키워드", "v": "15~25자" }, { "k": "주의|시간", "v": "10~20자" }] }],
+  "answerPageTitles": ["예시 답안 페이지 소제목 2개(각 8~14자, 예: 진로와 법적 사고 / 책임과 성장)"],
+  "studentNote": "학생용 수정 지시 — 예시 답안에서 무엇을 본인 표현으로 바꾸고 어떤 사실을 추가·확인할지 2문장(80~120자)",
+  "teacherNote": "교사용 메모 — 이 대학 모의면접에서 볼 감점 신호와 다음 회차 목표 1~2문장(60~100자)"
+}
+
+[규칙]
+- questions 와 answers 는 요청한 개수만큼, 같은 순서·같은 번호(answers[i] 는 questions[i]의 답).
+- 문항 구성: 지원동기·진로 변화 1 → 학생부 핵심 활동 진위·개념 4~5 → 가치 충돌·비판적 판단 2 → 공동체·역할 1 → 성장·대학 확장 1~2. 교과면접·공통문항형은 지원동기·역량·활동 장면·학업계획·공동체·미래상 중심으로 짧게.
+- 서류기반 심층형 followType 은 주로 '꼬리', 논리형은 주로 '반론', 교과면접은 follow 를 짧게 두거나 '확인'.
+- foot 는 심층·논리형이면 [꼬리, 주의], 압축형이면 [키워드, 시간].
+- 학생부에 없는 판례명·수치·기관명을 지어내지 않는다. 학생부가 없으면 sample 안에 [학생 경험] 자리 표시를 쓴다.`;
+
+// AI 응답에서 JSON 하나를 관대하게 꺼낸다 — 코드펜스·앞뒤 설명·끝 쉼표까지 흔히 붙는다.
+function parseJsonLoose(reply, what = 'JSON') {
+  let s = String(reply || '').replace(/```(?:json)?/gi, '').trim();
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error(`AI 응답에서 ${what}을 찾지 못했습니다`);
+  s = s.slice(a, b + 1);
+  try { return JSON.parse(s); } catch {}
+  const fixed = s.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '');
+  try { return JSON.parse(fixed); } catch (e) { throw new Error(`${what} 해석 실패: ${e.message}`); }
+}
+
+// 카드마다 전형 사실 묶음 — 대학어디가 입시가이드 표 + 지식베이스(대학별전형) 발췌
+async function interviewCardFacts(card) {
+  const parts = [];
+  const f = univFacts(card.univ, card.track);
+  if (f?.text) parts.push(`[대학어디가 ${f.year} 입시가이드 · ${f.name}]\n${f.text}`);
+  try {
+    const hits = await lookupAdmissionGuide(`${card.univ} ${card.dept || ''} ${card.track || ''} 면접 전형방법 평가요소`, ['대학별전형']);
+    const top = (hits || []).slice(0, 4);
+    if (top.length) parts.push(`[지식베이스 발췌]\n${top.map(h => `· ${h.제목}: ${String(h.내용 || '').slice(0, 700)}`).join('\n')}`);
+  } catch (e) { console.warn('[interview] 지식베이스 조회 건너뜀:', e.message); }
+  return parts.join('\n\n');
+}
+
+function cardLine(c, i) {
+  const iv = c.interview === true ? '면접 있음' : c.interview === false ? '면접 없음' : '면접 유무 자료로 판단';
+  return `${i + 1}. ${c.univ} · ${c.dept || '학과 미입력'} · ${c.track || '전형 미입력'} · ${iv}${c.memo ? ` · 메모: ${c.memo}` : ''}`;
+}
+
+app.post('/api/interview/generate', requireAuth, async (req, res) => {
+  const { student = {}, cards = [], recordText = '', options = {} } = req.body || {};
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+  const list = (Array.isArray(cards) ? cards : []).filter(c => c && String(c.univ || '').trim()).slice(0, 8);
+  if (!list.length) return res.status(400).json({ success: false, message: '지원 카드(대학·학과·전형)를 하나 이상 넣어 주세요' });
+  const qCount = Math.min(Math.max(Number(options.questionCount) || 10, 6), 12);
+  const year = String(options.year || '2027');
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+
+  try {
+    send({ stage: 'facts', message: '대학별 전형 사실을 모으는 중…' });
+    const facts = [];
+    for (const c of list) facts.push(await interviewCardFacts(c));
+
+    const record = String(recordText || '').trim();
+    const studentLine = `[학생] ${[student.name, student.school, student.grade].filter(Boolean).join(' · ') || '미입력'}\n[지원 전공] ${student.major || list[0].dept || '미입력'}\n[학년도] ${year}`;
+    const cardsBlock = list.map(cardLine).join('\n');
+    const factsBlock = list.map((c, i) => `■ ${c.univ} ${c.track || ''}\n${facts[i] || '(공식 자료 없음 — 일반적으로 알려진 전형 구조로 설계하고 재확인 표시)'}`).join('\n\n');
+    const recordBlock = record
+      ? `[학생부 자료 전문]\n${record.slice(0, 60000)}`
+      : '[학생부 자료 없음] — 대학·학과·전형 기반 공통 문항으로 설계하고, 개인 경험은 [학생 경험] 자리 표시로 남긴다.';
+
+    // ① 개요
+    send({ stage: 'overview', message: '전형 구조·학생부 소재·평가표 매핑을 설계하는 중…' });
+    const overviewMsg = `${studentLine}\n\n[지원 카드]\n${cardsBlock}\n\n[전형 사실 자료]\n${factsBlock}\n\n${recordBlock}\n\n위 자료로 면접 전략 리포트의 개요 JSON을 작성해 주세요. 기준일 ${new Date().toISOString().slice(0, 10)}.`;
+    const overview = parseJsonLoose(
+      await callAIModel({ aiModel, submodel, apiKey, systemPrompt: INTERVIEW_OVERVIEW_SYSTEM, userMsg: overviewMsg, maxTokens: 14000 }),
+      '개요 JSON');
+    if (!Array.isArray(overview.cards) || !overview.cards.length) throw new Error('개요에 지원 카드가 없습니다');
+    // 입력 카드의 이름·학과·전형은 사용자가 적은 그대로 유지한다(모델이 바꿔 적는 일이 있다).
+    while (overview.cards.length < list.length) overview.cards.push({ interview: true, kind: '서류기반', weights: [] });
+    overview.cards = overview.cards.slice(0, list.length).map((oc, i) => ({
+      ...oc, univ: list[i].univ, dept: list[i].dept || oc.dept || '', track: list[i].track || oc.track || '',
+      interview: typeof list[i].interview === 'boolean' ? list[i].interview : !!oc.interview,
+    }));
+    send({ stage: 'overview-done', overview });
+
+    // ② 면접 있는 카드마다 문항·답안
+    const interviews = [];
+    const targets = overview.cards.map((c, i) => ({ c, i })).filter(({ c }) => c.interview);
+    for (let k = 0; k < targets.length; k++) {
+      const { c, i } = targets[k];
+      send({ stage: 'card', index: i, current: k + 1, total: targets.length, message: `${c.univ} ${c.track} 문항 ${qCount}개와 예시 답안을 만드는 중… (${k + 1}/${targets.length})` });
+      const cardMsg = `${studentLine}
+
+[이 카드]
+${cardLine(list[i], i)}
+면접 유형: ${c.kind || '서류기반'} · ${c.minutes || '?'}분 · ${c.style || ''} · 답변 ${c.answerSeconds || 60}초
+평가요소: ${(c.weights || []).map(w => `${w.name} ${w.pct}%${w.detail ? `(${w.detail})` : ''}`).join(' · ') || '자료 참고'}
+답변 공식: ${c.formula || ''}
+${c.prep?.length ? `사전 기초자료 예상 문항: ${c.prep.join(' / ')}` : ''}
+
+[전형 사실 자료]
+${facts[i] || '(없음)'}
+
+[학생부 핵심 소재 — 개요에서 뽑은 10개]
+${(overview.topics || []).map((t, n) => `${n + 1}. ${t.title} — ${t.focus}`).join('\n')}
+[답변을 관통할 기준] ${overview.principle || ''}
+[면접관이 의심할 지점] ${(overview.doubts || []).join(' / ')}
+
+${recordBlock}
+
+이 카드의 실전 문항 ${qCount}개와 예시 답안 ${qCount}개를 JSON으로 작성해 주세요.`;
+      const part = parseJsonLoose(
+        await callAIModel({ aiModel, submodel, apiKey, systemPrompt: INTERVIEW_CARD_SYSTEM, userMsg: cardMsg, maxTokens: 12000 }),
+        `${c.univ} 문항 JSON`);
+      const item = {
+        cardIndex: i,
+        questions: (part.questions || []).slice(0, qCount),
+        answers: (part.answers || []).slice(0, qCount),
+        answerPageTitles: part.answerPageTitles || [],
+        studentNote: part.studentNote || '', teacherNote: part.teacherNote || '',
+      };
+      interviews.push(item);
+      send({ stage: 'card-done', index: i, interview: item });
+    }
+
+    const data = { ...overview, year, questionCount: qCount, interviews, generatedAt: new Date().toISOString(), model: submodel };
+    sendDone({ success: true, data });
+  } catch (err) {
+    console.error('[interview/generate] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// 보관 CRUD (선생님별 분리)
+app.get('/api/interview', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    res.json({ success: true, items: await listInterviews(req.user.userId, { q: req.query.q }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/interview', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    if (req.body?.studentId && !(await canEditStudent(req, Number(req.body.studentId)))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    res.json({ success: true, item: await createInterview(req.user.userId, req.body) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.get('/api/interview/:id', requireAuth, async (req, res) => {
+  try {
+    const item = await getInterview(Number(req.params.id));
+    if (!item) return res.status(404).json({ success: false, message: '리포트 없음' });
+    if (req.user.role !== 'admin' && item.owner_id !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    res.json({ success: true, item });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/interview/:id', requireAuth, async (req, res) => {
+  try {
+    const owner = await getInterviewOwner(Number(req.params.id));
+    if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    await deleteInterview(Number(req.params.id));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 리포트 요약을 학생 기록으로 남긴다 — 학생 보드·학생 열람 페이지에서 문항을 볼 수 있게
+app.post('/api/interview/:id/assign', requireAuth, async (req, res) => {
+  try {
+    const item = await getInterview(Number(req.params.id));
+    if (!item) return res.status(404).json({ success: false, message: '리포트 없음' });
+    if (req.user.role !== 'admin' && item.owner_id !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    const studentId = Number(req.body.studentId);
+    if (!(await canEditStudent(req, studentId))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    const record = await addRecord(studentId, {
+      type: '면접 전략', title: item.title,
+      detail: (item.cards || []).map(c => `${c.univ} ${c.track || ''}`.trim()).join(' · '),
+      content: interviewMarkdown(item.data || {}),
+    });
+    res.json({ success: true, record });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 학생 기록용 마크다운 — 문항과 예시 답안만(학생이 연습할 부분). 리포트 전체는 면접 전략 화면에서 연다.
+function interviewMarkdown(d) {
+  const out = [];
+  if (d.conclusion) out.push(`## 핵심 결론\n${d.conclusion}`);
+  if (d.topics?.length) out.push(`## 학생부 핵심 소재\n${d.topics.map((t, i) => `${i + 1}. **${t.title}** — ${t.focus}`).join('\n')}`);
+  for (const iv of d.interviews || []) {
+    const c = d.cards?.[iv.cardIndex] || {};
+    out.push(`## ${c.univ} ${c.track || ''} ${c.dept || ''} · ${c.minutes ? `${c.minutes}분 ` : ''}${c.style || ''}`.trim());
+    if (c.formula) out.push(`답변 공식: ${c.formula}`);
+    out.push((iv.questions || []).map((q, i) => `${i + 1}. ${q.q}${q.follow ? `\n   - ${q.followType || '꼬리'} · ${q.follow}` : ''}`).join('\n'));
+    if (iv.answers?.length) out.push(`### 예시 답안\n${iv.answers.map((a, i) => `**${i + 1}. ${a.q}** (${a.intent})\n${a.sample}`).join('\n\n')}`);
+    if (iv.studentNote) out.push(`> 학생용 수정 지시: ${iv.studentNote}`);
+  }
+  if (d.practice?.checklist?.length) out.push(`## 학생 확인 체크리스트\n${d.practice.checklist.map(s => `- [ ] ${s}`).join('\n')}`);
+  return out.join('\n\n');
+}
 
 // ── 수행평가/분석 결과 → Word(.docx) 다운로드 ──────────────
 app.post('/api/assessment/docx', async (req, res) => {

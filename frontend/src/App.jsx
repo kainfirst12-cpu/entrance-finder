@@ -13,6 +13,7 @@ import UnivInfo from './components/UnivInfo';
 import IpgyeolConsole from './components/IpgyeolConsole';
 import RatioLive from './components/RatioLive';
 import SuhaengArchive from './components/SuhaengArchive';
+import InterviewStrategy from './components/InterviewStrategy';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import AssistantPanel from './components/AssistantPanel';
@@ -467,6 +468,14 @@ export default function App() {
         )}
         {view === 'suharchive' && (
           <SuhaengArchive
+            getActiveKey={getActiveKey}
+            selectedModel={selectedModel}
+            aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+            onAuthError={handleLogout}
+          />
+        )}
+        {view === 'interview' && (
+          <InterviewStrategy
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}
             aiGroup={modelConfig[selectedModel]?.group || selectedModel}
