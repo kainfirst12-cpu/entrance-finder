@@ -143,7 +143,42 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
   const setCard = (i, patch) => setCards((cs) => cs.map((c, k) => (k === i ? { ...c, ...patch } : c)));
   const removeCard = (i) => setCards((cs) => cs.filter((_, k) => k !== i));
 
-  // ── 생성 ──
+  // ── 생성 — 서버 백그라운드 작업을 걸고 상태를 폴링한다 ──
+  // 카드 6장이면 10분이 넘는다. 한 연결에 매달지 않으므로 화면을 옮기거나 새로고침해도 이어서 받는다(JOB_KEY).
+  const JOB_KEY = 'ef_interview_job';
+  const pollJob = async (jobId) => {
+    setRunning(true); setError('');
+    try { localStorage.setItem(JOB_KEY, jobId); } catch {}
+    let misses = 0;
+    while (true) {
+      let j;
+      try { j = await api(`/api/interview/jobs/${jobId}`); }
+      catch (e) {
+        if (e.auth) { onAuthError?.(); return; }
+        if (++misses > 20) throw new Error('서버 상태를 오래 받지 못했습니다 — 보관함 목록을 새로고침해 저장된 리포트를 확인해 주세요.');
+        await new Promise((r) => setTimeout(r, 5000)); continue;
+      }
+      if (!j.success) throw new Error(j.message || '작업 상태를 받지 못했습니다');
+      const job = j.job;
+      if (job.status === 'running') {
+        const mins = Math.round((Date.now() - job.startedAt) / 60000);
+        setProgress(`${job.message || '작업 중…'}${mins ? ` · ${mins}분 경과` : ''}`);
+        await new Promise((r) => setTimeout(r, 3000)); continue;
+      }
+      try { localStorage.removeItem(JOB_KEY); } catch {}
+      if (job.status === 'done' && job.data) {
+        const data = job.data;
+        setResult({ data, savedId: job.savedId || null, studentId: student?.id || null, studentName: data.studentName || profile.name });
+        setHtml(buildInterviewHtml(data));
+        setNotice(job.savedId ? '✓ 리포트가 만들어졌고 보관함에 저장됐습니다. 아래에서 확인하고 인쇄하세요.' : '✓ 리포트가 만들어졌습니다. 아래에서 확인하고 인쇄하거나 저장하세요.');
+        load();
+        return;
+      }
+      const p = job.partial || {};
+      throw new Error(`${job.error || '생성 실패'}${p.overview ? ` (개요와 면접 ${p.interviews?.length || 0}개 카드까지는 만들어졌으나 저장되지 않았습니다 — 다시 시도해 주세요)` : ''}`);
+    }
+  };
+
   const generate = async () => {
     const list = cards.filter((c) => c.univ.trim());
     if (!list.length) { setError('지원 카드에 대학을 하나 이상 적어 주세요.'); return; }
@@ -152,23 +187,29 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
     setRunning(true); setError(''); setNotice(''); setResult(null); setHtml('');
     setProgress('시작하는 중…');
     try {
-      const d = await postSSE(`${API_BASE}/api/interview/generate`, {
+      const d = await api('/api/interview/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'x-ai-model': aiGroup || 'claude', 'x-ai-submodel': selectedModel || 'claude', Authorization: `Bearer ${token()}` },
-        body: JSON.stringify({
-          student: profile,
+        headers: { 'x-api-key': apiKey, 'x-ai-model': aiGroup || 'claude', 'x-ai-submodel': selectedModel || 'claude' },
+        body: {
+          student: { ...profile, id: student?.id || null },
           cards: list.map((c) => ({ univ: c.univ.trim(), dept: c.dept.trim(), track: c.track.trim(), memo: c.memo.trim(), interview: c.interview === 'auto' ? null : c.interview === 'yes' })),
           recordText, options: { questionCount, year },
-        }),
-      }, (ev) => { if (ev.message) setProgress(ev.message); });
-      if (!d.success) throw new Error(d.message || '생성 실패');
-      const data = { ...d.data, studentName: profile.name, major: profile.major || list[0].dept };
-      setResult({ data, savedId: null, studentId: student?.id || null, studentName: profile.name });
-      setHtml(buildInterviewHtml(data));
-      setNotice('✓ 리포트가 만들어졌습니다. 아래에서 확인하고 인쇄하거나 저장하세요.');
-    } catch (e) { setError('생성 오류: ' + e.message); }
+        },
+      });
+      if (!d.success || !d.jobId) throw new Error(d.message || '생성을 시작하지 못했습니다');
+      await pollJob(d.jobId);
+    } catch (e) { if (e.auth) onAuthError?.(); else setError('생성 오류: ' + e.message); }
     finally { setRunning(false); setProgress(''); }
   };
+
+  // 새로고침·화면 이동 뒤 돌아오면 진행 중이던 작업을 이어서 받는다
+  useEffect(() => {
+    let jobId = '';
+    try { jobId = localStorage.getItem(JOB_KEY) || ''; } catch {}
+    if (!jobId) return;
+    pollJob(jobId).catch((e) => setError('생성 오류: ' + e.message)).finally(() => { setRunning(false); setProgress(''); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reportTitle = (data) => `${data.studentName ? `${data.studentName} ` : ''}${data.year || year} ${data.major || ''} 대학별 면접 전략`.replace(/\s+/g, ' ').trim();
 
@@ -298,7 +339,7 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
         {running && (
           <div style={S.progress}>
             <span style={S.spinner} /> {progress || '작업 중…'}
-            <div style={{ fontSize: 11.5, color: '#7f93a3', marginTop: 4 }}>개요 1회 + 면접 있는 카드마다 1회씩 AI를 부릅니다. 카드 3개면 보통 3~6분 걸립니다. 화면을 닫지 마세요.</div>
+            <div style={{ fontSize: 11.5, color: '#7f93a3', marginTop: 4 }}>개요 1회 + 면접 있는 카드마다 1회씩 AI를 부릅니다. 카드 3개면 보통 5~8분, 6개면 15분 안팎입니다. 서버에서 만들고 끝나면 보관함에 자동 저장되므로 다른 화면에 다녀오거나 새로고침해도 됩니다.</div>
           </div>
         )}
       </div>

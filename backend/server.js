@@ -1319,6 +1319,13 @@ function cardLine(c, i) {
   return `${i + 1}. ${c.univ} · ${c.dept || '학과 미입력'} · ${c.track || '전형 미입력'} · ${iv}${c.memo ? ` · 메모: ${c.memo}` : ''}`;
 }
 
+// 면접 전략 생성 작업(메모리). 배포되면 사라지지만, 끝난 리포트는 보관함에 저장돼 있다.
+const interviewJobs = new Map();
+function cleanupInterviewJobs() {
+  const cutoff = Date.now() - 3 * 3600 * 1000;
+  for (const [id, j] of interviewJobs) if (j.updatedAt < cutoff) interviewJobs.delete(id);
+}
+
 app.post('/api/interview/generate', requireAuth, async (req, res) => {
   const { student = {}, cards = [], recordText = '', options = {} } = req.body || {};
   const aiModel = req.headers['x-ai-model'] || 'claude';
@@ -1329,14 +1336,41 @@ app.post('/api/interview/generate', requireAuth, async (req, res) => {
   if (!list.length) return res.status(400).json({ success: false, message: '지원 카드(대학·학과·전형)를 하나 이상 넣어 주세요' });
   const qCount = Math.min(Math.max(Number(options.questionCount) || 10, 6), 12);
   const year = String(options.year || '2027');
+  // 자동 저장할 학생 — 남의 학생 id 를 보내도 붙지 않게 소유를 확인한다
+  const studentId = Number(student.id) || null;
+  if (studentId && !(await canEditStudent(req, studentId))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
-  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
-  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+  // 백그라운드 작업으로 돌리고 즉시 작업 id 를 돌려준다.
+  // 카드 6장이면 AI 호출 7번·10분이 넘는데, 그 시간을 한 연결(SSE)로 버티게 하면 배포·프록시·노트북 절전에
+  // 연결이 끊기는 순간 결과가 통째로 날아갔다("network error"). 이제 화면은 작업 상태를 폴링하고,
+  // 끝난 리포트는 서버가 바로 보관함에 저장한다(화면이 닫혀 있어도 남는다).
+  cleanupInterviewJobs();
+  const job = { id: crypto.randomBytes(8).toString('hex'), ownerId: req.user.userId ?? null, role: req.user.role,
+    status: 'running', stage: 'facts', message: '대학별 전형 사실을 모으는 중…', startedAt: Date.now(), updatedAt: Date.now(),
+    partial: { overview: null, interviews: [] }, data: null, savedId: null, error: null };
+  interviewJobs.set(job.id, job);
+  res.json({ success: true, jobId: job.id });
+  const send = (obj) => { Object.assign(job, { stage: obj.stage || job.stage, message: obj.message || job.message, updatedAt: Date.now() });
+    if (obj.overview) job.partial.overview = obj.overview;
+    if (obj.interview) job.partial.interviews.push(obj.interview); };
+  const sendDone = async (obj) => {
+    job.updatedAt = Date.now();
+    if (obj.success) {
+      job.data = obj.data;
+      // 끝난 리포트는 바로 보관함에 — 화면이 닫혀 있어도 목록에서 열 수 있게
+      try {
+        if (dbEnabled() && job.ownerId) {
+          const title = `${student.name ? `${student.name} ` : ''}${year} ${student.major || list[0].dept || ''} 대학별 면접 전략`.replace(/\s+/g, ' ').trim();
+          const row = await createInterview(job.ownerId, {
+            studentId, studentName: student.name || '', title,
+            cards: obj.data.cards.map(c => ({ univ: c.univ, dept: c.dept, track: c.track, interview: !!c.interview })), data: obj.data,
+          });
+          job.savedId = row.id;
+        }
+      } catch (e) { console.warn('[interview] 자동 저장 실패:', e.message); }
+      job.status = 'done';
+    } else { job.error = obj.message || '실패'; job.status = 'error'; }
+  };
 
   try {
     send({ stage: 'facts', message: '대학별 전형 사실을 모으는 중…' });
@@ -1409,12 +1443,24 @@ ${recordBlock}
       send({ stage: 'card-done', index: i, interview: item });
     }
 
-    const data = { ...overview, year, questionCount: qCount, interviews, generatedAt: new Date().toISOString(), model: submodel };
-    sendDone({ success: true, data });
+    const data = { ...overview, year, questionCount: qCount, interviews, generatedAt: new Date().toISOString(), model: submodel,
+      studentName: student.name || '', major: student.major || list[0].dept || '' };
+    await sendDone({ success: true, data });
   } catch (err) {
     console.error('[interview/generate] 오류:', err.message);
-    sendDone({ success: false, message: err.message });
+    await sendDone({ success: false, message: err.message });
   }
+});
+
+// 작업 상태 — 화면이 3초마다 묻는다. 진행 중이면 stage·message, 끝나면 data(+savedId), 실패면 error(+partial)
+app.get('/api/interview/jobs/:id', requireAuth, (req, res) => {
+  const job = interviewJobs.get(req.params.id);
+  if (!job) return res.status(404).json({ success: false, message: '작업을 찾을 수 없습니다 (서버가 재시작됐을 수 있습니다). 보관함에 저장된 리포트가 있는지 확인해 주세요.' });
+  if (req.user.role !== 'admin' && job.ownerId !== (req.user.userId ?? null)) return res.status(403).json({ success: false, message: '권한 없음' });
+  const { id, status, stage, message, startedAt, updatedAt, data, savedId, error, partial } = job;
+  res.json({ success: true, job: { id, status, stage, message, startedAt, updatedAt, savedId, error,
+    data: status === 'done' ? data : null,
+    partial: status === 'error' ? partial : { cards: partial.overview?.cards?.length || 0, interviews: partial.interviews.length } } });
 });
 
 // 보관 CRUD (선생님별 분리)
