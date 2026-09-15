@@ -316,7 +316,7 @@ export default function AdminDashboard({ onAuthError }) {
       <section style={S.card}>
         <div style={S.cardTitle}>
           지식베이스 (Supabase 벡터 검색)
-          <span style={S.sub}>분석 시 참고하는 입시 자료</span>
+          <span style={S.sub}>분석 시 참고하는 입시 자료 · 면접자료는 면접 전략 생성이 읽음 (Drive는 이름에 ‘면접’이 든 폴더)</span>
         </div>
         {!kb.vectorEnabled ? (
           <div style={S.warn}>
@@ -325,7 +325,7 @@ export default function AdminDashboard({ onAuthError }) {
         ) : (
           <>
             <div style={S.kbCounts}>
-              {['대입정책', '대학별전형', '합격자사례'].map(t => (
+              {['대입정책', '대학별전형', '합격자사례', '면접자료'].map(t => (
                 <div key={t} style={S.kbStat}>
                   <div style={S.kbStatNum}>{kb.counts?.[t] || 0}</div>
                   <div style={S.kbStatLabel}>{t} 청크</div>
@@ -343,8 +343,9 @@ export default function AdminDashboard({ onAuthError }) {
                 <option value="합격자사례">합격자사례</option>
                 <option value="대입정책">대입정책</option>
                 <option value="대학별전형">대학별전형</option>
+                <option value="면접자료">면접자료 (자료집·후기·기출 문항)</option>
               </select>
-              <input ref={uploadRef} type="file" multiple accept=".pdf,.txt,.md,.docx"
+              <input ref={uploadRef} type="file" multiple accept=".pdf,.txt,.md,.docx,.html,.htm"
                 onChange={e => ingestUpload(e.target.files)} disabled={!!kbBusy}
                 style={{ ...S.input, flex: 1, padding: '8px 10px' }} />
             </div>

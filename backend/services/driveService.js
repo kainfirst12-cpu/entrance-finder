@@ -178,6 +178,9 @@ async function extractText(drive, fileId, mimeType, fileName, maxChars = MAX_CHA
     );
     const buffer = Buffer.from(res.data);
 
+    if (mimeType === 'text/html' || /\.html?$/i.test(fileName)) {
+      return htmlToText(buffer.toString('utf-8')).slice(0, maxChars);
+    }
     if (mimeType === 'application/pdf') {
       // 1차: pdftotext (poppler) — 한글 PDF에 강함
       try {
@@ -389,9 +392,21 @@ export const loadStudentFiles = async (studentName) => {
   }
 };
 
+// HTML 자료(선행학습영향평가 공개 문항 모음 등) → 본문 글자만
+export function htmlToText(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h[1-6]|section|article|td|th)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
+}
+
 // ── 폴더명 → 지식베이스 타입 매핑 ──────────────────────
 function folderToType(name) {
   const n = name || '';
+  // '면접'을 먼저 본다 — '면접 전형 자료집' 같은 이름이 '전형'에 먼저 걸리면 대학별전형으로 새어 들어간다.
+  if (n.includes('면접')) return '면접자료';
   if (n.includes('정책') || n.includes('01') || n.includes('1.')) return '대입정책';
   if (n.includes('전형') || n.includes('02') || n.includes('2.')) return '대학별전형';
   if (n.includes('사례') || n.includes('03') || n.includes('3.')) return '합격자사례';
@@ -418,8 +433,15 @@ export async function loadAllKnowledgeDocs({ maxCharsPerFile = 200000 } = {}) {
   for (const folder of subFolders) {
     const type = folderToType(folder.name);
     if (!type) continue;
-    const files = await listFiles(drive, folder.id);
+    // 한 단계 아래 하위 폴더까지 읽는다 — '4. 면접자료/후기집' 처럼 묶어 두는 일이 많다.
+    const top = await listFiles(drive, folder.id);
+    const files = [];
+    for (const f of top) {
+      if (f.mimeType === 'application/vnd.google-apps.folder') files.push(...await listFiles(drive, f.id));
+      else files.push(f);
+    }
     for (const f of files) {
+      if (f.mimeType === 'application/vnd.google-apps.folder') continue;
       const text = await extractText(drive, f.id, f.mimeType, f.name, maxCharsPerFile);
       if (text && !text.startsWith('[')) {
         docs.push({ type, title: f.name, text });

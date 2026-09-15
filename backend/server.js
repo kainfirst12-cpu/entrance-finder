@@ -2,9 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import 'dotenv/config';
-import { loadKnowledgeBase, loadStudentFiles, loadAllKnowledgeDocs } from './services/driveService.js';
+import { loadKnowledgeBase, loadStudentFiles, loadAllKnowledgeDocs, htmlToText } from './services/driveService.js';
 import { loadKnowledgeBaseRAG, ragAvailable } from './services/ragService.js';
-import { refreshKbCount, countByType, clearKnowledge, ingestDocuments } from './services/vectorStore.js';
+import { refreshKbCount, countByType, clearKnowledge, ingestDocuments, KB_TYPES } from './services/vectorStore.js';
 import {
   BOARD_COLUMNS, listStudents, getStudentOwner, createStudent, updateStudent, deleteStudent,
   addGrade, deleteGrade, addRecord, updateRecord, deleteRecord, listTeachers, getGradeOwner, getRecordOwner,
@@ -1189,7 +1189,8 @@ const INTERVIEW_RULES = `[면접 설계 원칙 — 학생부 기반 대학 면�
 9. 감점 신호: 개념 이름만 말하고 설명 못함 / 활동 나열만 있고 연결이 없음 / "제가 다 했습니다" 또는 역할 없는 "함께" / 학생부에 없는 전문용어 남발.
 10. 교과면접(사전 기초자료 작성형)은 기초자료 예상 문항을 따로 주고 30~40초 압축 답변으로, 제시문 면접은 핵심어 → 논점 → 결론 → 근거 순으로 설계한다.
 11. 면접 일정·반영비율·평가요소는 기준일을 표시하고 최종 모집요강·입학처 공지를 다시 확인하라고 적는다. 지원 카드에 적힌 전형 사실(면접 유무·시간·비율)이 자료와 다르면 자료를 따르되 '재확인'을 남긴다.
-12. 문체: 합니다체, 이모지 금지, 한 문장은 짧고 구체적으로. 학부모를 부를 일이 있으면 '학부모님'.`;
+12. 문체: 합니다체, 이모지 금지, 한 문장은 짧고 구체적으로. 학부모를 부를 일이 있으면 '학부모님'.
+13. [면접 자료집·후기·공개 기출 문항 발췌]가 있으면 그 대학의 실제 질문 구조·꼬리질문 방식·면접 분위기·시간 배분을 우선 반영한다. 기출은 문항의 내용보다 반복되는 질문 구조를 따르고, 연도가 다르면 '재확인'을 남긴다. 후기의 개인 경험을 이 학생의 사실로 옮기지 않는다.`;
 
 const INTERVIEW_OVERVIEW_SYSTEM = `당신은 학생부 기반 대학 면접 전략을 설계하는 입시 컨설턴트입니다. 학생부 자료와 지원 카드(대학·학과·전형)를 읽고, 대학별 면접 전략 리포트의 '개요' 부분을 JSON으로 작성합니다.
 
@@ -1292,17 +1293,25 @@ function parseJsonLoose(reply, what = 'JSON') {
   try { return JSON.parse(fixed); } catch (e) { throw new Error(`${what} 해석 실패: ${e.message}`); }
 }
 
-// 카드마다 전형 사실 묶음 — 대학어디가 입시가이드 표 + 지식베이스(대학별전형) 발췌
+// 지식베이스 발췌 한 묶음 — 유형별로 상위 n개, 프롬프트에 넣을 수 있게 짧게
+async function kbExcerpt(query, types, label, n = 4, chars = 700) {
+  try {
+    const hits = await lookupAdmissionGuide(query, types);
+    const top = (hits || []).slice(0, n);
+    if (!top.length) return '';
+    return `[${label}]\n${top.map(h => `· ${h.제목}: ${String(h.내용 || '').slice(0, chars)}`).join('\n')}`;
+  } catch (e) { console.warn('[interview] 지식베이스 조회 건너뜀:', e.message); return ''; }
+}
+
+// 카드마다 전형 사실 묶음 — 대학어디가 입시가이드 표 + 지식베이스(대학별전형) + 면접자료(자료집·후기·기출) 발췌
 async function interviewCardFacts(card) {
   const parts = [];
   const f = univFacts(card.univ, card.track);
   if (f?.text) parts.push(`[대학어디가 ${f.year} 입시가이드 · ${f.name}]\n${f.text}`);
-  try {
-    const hits = await lookupAdmissionGuide(`${card.univ} ${card.dept || ''} ${card.track || ''} 면접 전형방법 평가요소`, ['대학별전형']);
-    const top = (hits || []).slice(0, 4);
-    if (top.length) parts.push(`[지식베이스 발췌]\n${top.map(h => `· ${h.제목}: ${String(h.내용 || '').slice(0, 700)}`).join('\n')}`);
-  } catch (e) { console.warn('[interview] 지식베이스 조회 건너뜀:', e.message); }
-  return parts.join('\n\n');
+  const who = `${card.univ} ${card.dept || ''} ${card.track || ''}`.trim();
+  parts.push(await kbExcerpt(`${who} 면접 전형방법 평가요소`, ['대학별전형'], '지식베이스 발췌 · 대학별전형'));
+  parts.push(await kbExcerpt(`${who} 면접 후기 기출 문항 질문 분위기`, ['면접자료'], '면접 자료집·후기·공개 기출 문항 발췌', 6, 900));
+  return parts.filter(Boolean).join('\n\n');
 }
 
 function cardLine(c, i) {
@@ -1334,6 +1343,9 @@ app.post('/api/interview/generate', requireAuth, async (req, res) => {
     const facts = [];
     for (const c of list) facts.push(await interviewCardFacts(c));
 
+    // 전공 공통 면접 자료(자료집·가이드북) — 개요 설계에서 평가 관점·질문 유형의 근거로 쓴다
+    const generalKb = await kbExcerpt(`${student.major || list[0].dept || ''} 학생부종합 면접 준비 평가요소 꼬리질문 예시 문항`, ['면접자료'], '면접 준비 일반 자료 발췌', 6, 900);
+
     const record = String(recordText || '').trim();
     const studentLine = `[학생] ${[student.name, student.school, student.grade].filter(Boolean).join(' · ') || '미입력'}\n[지원 전공] ${student.major || list[0].dept || '미입력'}\n[학년도] ${year}`;
     const cardsBlock = list.map(cardLine).join('\n');
@@ -1344,7 +1356,7 @@ app.post('/api/interview/generate', requireAuth, async (req, res) => {
 
     // ① 개요
     send({ stage: 'overview', message: '전형 구조·학생부 소재·평가표 매핑을 설계하는 중…' });
-    const overviewMsg = `${studentLine}\n\n[지원 카드]\n${cardsBlock}\n\n[전형 사실 자료]\n${factsBlock}\n\n${recordBlock}\n\n위 자료로 면접 전략 리포트의 개요 JSON을 작성해 주세요. 기준일 ${new Date().toISOString().slice(0, 10)}.`;
+    const overviewMsg = `${studentLine}\n\n[지원 카드]\n${cardsBlock}\n\n[전형 사실 자료]\n${factsBlock}${generalKb ? `\n\n${generalKb}` : ''}\n\n${recordBlock}\n\n위 자료로 면접 전략 리포트의 개요 JSON을 작성해 주세요. 기준일 ${new Date().toISOString().slice(0, 10)}.`;
     const overview = parseJsonLoose(
       await callAIModel({ aiModel, submodel, apiKey, systemPrompt: INTERVIEW_OVERVIEW_SYSTEM, userMsg: overviewMsg, maxTokens: 14000 }),
       '개요 JSON');
@@ -4019,7 +4031,7 @@ app.post('/api/admin/ingest/upload', requireAdmin, kbUpload, async (req, res) =>
   if (!vectorEnabled()) return res.status(400).json({ success: false, message: 'pgvector 비활성 상태입니다' });
   if (!process.env.OPENAI_API_KEY) return res.status(400).json({ success: false, message: 'OPENAI_API_KEY 미설정' });
   const type = (req.body.type || '').trim();
-  const validTypes = ['대입정책', '대학별전형', '합격자사례'];
+  const validTypes = KB_TYPES;
   if (!validTypes.includes(type)) return res.status(400).json({ success: false, message: `type은 ${validTypes.join('/')} 중 하나여야 합니다` });
   try {
     const files = req.files || [];
@@ -4031,6 +4043,8 @@ app.post('/api/admin/ingest/upload', requireAdmin, kbUpload, async (req, res) =>
       } else if (f.mimetype.includes('wordprocessingml')) {
         const mammoth = await import('mammoth');
         text = (await mammoth.extractRawText({ buffer: f.buffer })).value || '';
+      } else if (f.mimetype.includes('html') || /\.html?$/i.test(f.originalname)) {
+        text = htmlToText(f.buffer.toString('utf-8'));
       } else {
         text = f.buffer.toString('utf-8');
       }

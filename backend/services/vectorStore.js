@@ -6,7 +6,8 @@ import { getPool, vectorEnabled } from './db.js';
 const EMBED_MODEL = 'text-embedding-3-small'; // 1536차원 (db.js의 vector(1536)와 일치해야 함)
 const EMBED_BATCH = 96;
 
-const KB_TYPES = ['대입정책', '대학별전형', '합격자사례'];
+// 면접자료 — 면접 자료집·후기·기출 문항(선행학습영향평가 공개 문항). 면접 전략 생성이 이 유형을 읽는다.
+const KB_TYPES = ['대입정책', '대학별전형', '합격자사례', '면접자료'];
 
 // KB 준비 여부 캐시 (analyze 동기 경로에서 사용)
 let kbDocCount = 0;
