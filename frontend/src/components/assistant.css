@@ -2,8 +2,10 @@
    클래스는 전부 ef-as- 로 시작한다 — 12,000줄짜리 App.css 와 이름이 부딪히지 않게. */
 
 .ef-as-fab {
+  /* 가운데 아래 — 오른쪽 아래는 다른 떠 있는 버튼과 겹쳐서(원장 요청 2026-09-18) */
   position: fixed;
-  right: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 20px;
   z-index: 9000;
   padding: 11px 18px;
