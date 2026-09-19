@@ -1,0 +1,50 @@
+# 학교알리미 정기 갱신 — 보안문자 없이 되는 부분만(학교 목록 + 학교정보: 학생수·교원수·설립·유형·주소).
+# 교과별 학업성취는 학교마다 보안문자라 자동화 불가 → 새 공시가 뜨면 앱 대시보드 배너가 알리고 사람이 수집한다(scripts/schoolinfo/README.md).
+# 분기 1일 03:00 KST(학교정보는 매년 5월 공시 → 6월 1일 실행분이 잡는다) + 수동 실행. 바뀐 게 있을 때만 커밋·푸시 → Vercel 이 배포.
+name: schoolinfo-refresh
+on:
+  schedule:
+    - cron: '0 18 1 3,6,9,12 *'   # UTC 18:00 = KST 03:00, 3·6·9·12월 1일
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: schoolinfo-refresh
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180   # 학교정보 5,900곳 × 0.5초 ≈ 50분
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 학교 목록 (전국 중·고)
+        working-directory: scripts/schoolinfo
+        run: node fetch-school-list.mjs
+      - name: 학교정보 (학생수·교원수·설립·주소)
+        working-directory: scripts/schoolinfo
+        run: node fetch-school-info.mjs --refresh
+      - name: 바뀐 게 있는지
+        id: changed
+        working-directory: scripts/schoolinfo
+        run: |
+          if node ci-changed.mjs; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+      - name: catalog 조립
+        if: steps.changed.outputs.changed == 'true'
+        working-directory: scripts/schoolinfo
+        run: node build-catalog.mjs
+      - name: 커밋·푸시
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          git config user.name "schoolinfo-refresh[bot]"
+          git config user.email "kainfirst12@gmail.com"
+          git add scripts/schoolinfo/out/school-list.json scripts/schoolinfo/out/school-info.json frontend/public/data/
+          git commit -m "🏫 학교알리미 정기 갱신 — $(cat scripts/schoolinfo/out/ci-summary.txt)"
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: 결과
+        run: |
+          echo "changed=${{ steps.changed.outputs.changed }}"
+          cat scripts/schoolinfo/out/ci-summary.txt 2>/dev/null || true

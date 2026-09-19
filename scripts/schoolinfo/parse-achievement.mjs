@@ -23,17 +23,21 @@ export function parseRecord(rec) {
   for (const [gk, g] of Object.entries(rec.grades || {})) {
     const grade = parseInt(gk, 10); if (!grade) continue;
     const year = g.year || null;
+    // 고교 표는 [계열, 과목(단위), …] 14칸, 중학교 표는 계열 칸이 없는 [과목, …] 13칸 — 헤더(또는 칸 수)로 구분
+    const hdr = (g.rows || [])[0] || [];
+    const hasTrack = hdr[0] === '계열(학과)' || (hdr[0] !== '과 목' && hdr.length >= 14);
     for (const row of g.rows || []) {
-      if (!row || row.length < 8 || row[1] === '과 목' || row[0] === '계열(학과)') continue;
-      const track = (row[0] || '').trim();
-      const m = (row[1] || '').trim().match(/^(.*?)\s*\((\d+(?:\.\d+)?)\)\s*$/);
-      const subjectName = m ? m[1].trim() : (row[1] || '').trim();
+      if (!row || row.length < 8 || row[0] === '과 목' || row[1] === '과 목' || row[0] === '계열(학과)') continue;
+      const t = hasTrack ? 1 : 0;
+      const track = hasTrack ? (row[0] || '').trim() : '';
+      const m = (row[t] || '').trim().match(/^(.*?)\s*\((\d+(?:\.\d+)?)\)\s*$/);
+      const subjectName = m ? m[1].trim() : (row[t] || '').trim();
       const credit = m ? Number(m[2]) : null;
       if (!subjectName) continue;
       const suffix = track && !/전체계열\s*\/\s*전체학과/.test(track) ? ` [${track}]` : '';
       const subject = subjectName + suffix;
       for (const sem of [1, 2]) {
-        const o = sem === 1 ? 2 : 8;
+        const o = (sem === 1 ? 1 : 7) + t;
         const mean = num(row[o]);
         const a = num(row[o + 1]), b = num(row[o + 2]), c = num(row[o + 3]), d = num(row[o + 4]), e = num(row[o + 5]);
         if (mean === null && a === null && b === null && c === null) continue; // 해당 학기 미운영

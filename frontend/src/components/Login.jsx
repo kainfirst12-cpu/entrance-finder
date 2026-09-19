@@ -25,6 +25,8 @@ export default function Login({ onLogin }) {
         localStorage.setItem('ef_token', data.token);
         localStorage.setItem('ef_role', data.role || 'user');
         localStorage.setItem('ef_name', data.name || '');
+        // 학원 코드별 공개 메뉴(null=전부) — 대시보드·화면 전환이 이걸로 거른다
+        try { localStorage.setItem('ef_menus', JSON.stringify(Array.isArray(data.menus) ? data.menus : null)); } catch { /* 저장소 막힘 */ }
         onLogin();
       } else {
         setError(data.message || '코드가 올바르지 않습니다.');

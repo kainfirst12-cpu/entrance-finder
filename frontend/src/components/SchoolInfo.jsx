@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import DisclosureNotice from './DisclosureNotice';
+import { explainSchools, ReportEditor, SavedReports, ExplainBox } from './SchoolReport';
 
 // 전국 고교·중학 공시정보 — 학교알리미 교과별 학업성취(A~E 비율·평균) + 학년별 재적 + EDSS 학급·교원.
 // 데이터는 /data/school-catalog.json.gz 하나(정적 파일). 서버·로그인 토큰이 필요 없어 백엔드를 건드리지 않는다.
@@ -11,8 +13,8 @@ const BAND_COLORS = { a: '#2dd4bf', b: '#60a5fa', c: '#a78bfa', d: '#fbbf24', e:
 const PAGE = 60;
 const MAX_COMPARE = 4;
 
-async function loadCatalog() {
-  const res = await fetch(CATALOG_URL);
+async function fetchGzJson(url) {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`데이터를 불러오지 못했습니다 (${res.status})`);
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -25,7 +27,11 @@ async function loadCatalog() {
   } else {
     text = new TextDecoder().decode(buf);
   }
-  const cat = JSON.parse(text);
+  return JSON.parse(text);
+}
+
+async function loadCatalog() {
+  const cat = await fetchGzJson(CATALOG_URL);
   cat.schools = cat.schools.map((s) => ({
     ...s,
     gender: s.gender === '녀' || s.gender === '여' ? '여자' : s.gender === '남' ? '남자' : s.gender,
@@ -33,11 +39,24 @@ async function loadCatalog() {
   return cat;
 }
 
+// catalog 의 bands 는 국·영·수만 실려 있다(전국 45만 줄을 다 실으면 84MB). 전 과목 표는 학교의 bandsFile
+// (시도×급별 파일, { [school.id]: bands[] }) 에 있어 상세 모달이 열릴 때 한 번 받아 두고 같은 시도는 재사용한다.
+const bandFileCache = new Map();
+function loadFullBands(school) {
+  if (!school.bandsFile) return Promise.resolve(null);
+  const url = CATALOG_URL.replace(/[^/]+$/, school.bandsFile);
+  if (!bandFileCache.has(url)) bandFileCache.set(url, fetchGzJson(url).catch((e) => { bandFileCache.delete(url); throw e; }));
+  return bandFileCache.get(url).then((m) => m[school.id] || null);
+}
+
 // 과목군(국어/영어/수학)·학년의 성취도 — 같은 학년이면 뒤 학기(2학기)를 우선한다.
+// 종합고·특성화고는 '과목 [일반계 / 전체학과]' 처럼 계열별 줄만 있고 전체 줄이 없는 곳이 있다(493곳) →
+// 전체계열 줄 > 일반계 줄 > 나머지 순으로 고른다.
+function trackRank(subject) { return !/\[/.test(subject) ? 0 : /일반계/.test(subject) ? 1 : 2; }
 function pickBand(school, subject, grade) {
   const list = (school.bands || []).filter((b) => b.family === subject && b.grade === grade && b.a !== null);
   if (!list.length) return null;
-  return list.sort((x, y) => (y.semester || 0) - (x.semester || 0))[0];
+  return list.sort((x, y) => trackRank(x.subject) - trackRank(y.subject) || (y.semester || 0) - (x.semester || 0))[0];
 }
 function seatsOf(s) {
   const g1 = s.enrollment?.grade1;
@@ -47,7 +66,7 @@ function pct(v) { return v === null || v === undefined ? '—' : `${Number(v).to
 function num(v) { return v === null || v === undefined ? '—' : Number(v).toLocaleString('ko-KR'); }
 function dec1(v) { return v === null || v === undefined ? '—' : Number(v).toFixed(1); }
 
-export default function SchoolInfo() {
+export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
   const [cat, setCat] = useState(null);
   const [err, setErr] = useState('');
   const [level, setLevel] = useState('고등학교');
@@ -64,6 +83,13 @@ export default function SchoolInfo() {
   const [detailId, setDetailId] = useState(null);
   const [compare, setCompare] = useState([]);
   const [showCompare, setShowCompare] = useState(false);
+  // 입시 해설 보고서 — 생성 중 표시, 열려 있는 편집기, 보관함
+  const [explaining, setExplaining] = useState('');
+  const [report, setReport] = useState(null);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedKey, setSavedKey] = useState(0);
+  const [explainErr, setExplainErr] = useState('');
+  const hasKey = !!getActiveKey?.();
 
   useEffect(() => {
     let dead = false;
@@ -118,6 +144,20 @@ export default function SchoolInfo() {
   const compareSchools = compare.map((id) => (cat?.schools || []).find((s) => s.id === id)).filter(Boolean);
   const toggleCompare = (id) => setCompare((c) => (c.includes(id) ? c.filter((x) => x !== id) : c.length >= MAX_COMPARE ? c : [...c, id]));
 
+  // 학교 1곳(kind school) 또는 비교함(kind compare) → 전 과목 표를 채워 AI 해설을 받는다
+  const startExplain = async (kind, list, focus) => {
+    setExplainErr('');
+    setExplaining(kind === 'compare' ? `비교 해설 생성 중… (${list.length}곳, 1~2분)` : '해설 생성 중… (1~2분)');
+    try {
+      const full = await Promise.all(list.map(async (s) => ({ ...s, bands: (await loadFullBands(s).catch(() => null)) || s.bands || [] })));
+      const r = await explainSchools({ kind, schools: full, focus, apiKey: getActiveKey?.(), aiGroup, selectedModel });
+      setReport(r);
+    } catch (e) {
+      if (e.auth) onAuthError?.();
+      setExplainErr(e.message || '해설 생성 실패');
+    } finally { setExplaining(''); }
+  };
+
   const isHigh = level === '고등학교';
   const scopeLabel = [sido === '전체' ? '전국' : sido, sigungu === '전체' ? '' : sigungu].filter(Boolean).join(' ');
 
@@ -133,12 +173,17 @@ export default function SchoolInfo() {
             학교알리미 {cat.disclosureYear} 공시({cat.academicYear} 성취도) · 학년별 재적 · EDSS 학급·교원 — 전국 고교 {num(cat.schools.filter((s) => s.schoolLevel === '고등학교').length)}곳, 중학 {num(cat.schools.filter((s) => s.schoolLevel === '중학교').length)}곳
           </p>
         </div>
-        <div style={S.levelTabs}>
-          {['고등학교', '중학교'].map((l) => (
-            <button key={l} style={{ ...S.tab, ...(level === l ? S.tabOn : {}) }} onClick={() => setLevel(l)}>{l}</button>
-          ))}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={S.smallBtn} onClick={() => setSavedOpen(true)}>📚 해설 보고서 보관함</button>
+          <div style={S.levelTabs}>
+            {['고등학교', '중학교'].map((l) => (
+              <button key={l} style={{ ...S.tab, ...(level === l ? S.tabOn : {}) }} onClick={() => setLevel(l)}>{l}</button>
+            ))}
+          </div>
         </div>
       </div>
+
+      <DisclosureNotice compact />
 
       {/* 필터 */}
       <div style={S.filters}>
@@ -205,14 +250,14 @@ export default function SchoolInfo() {
               <div style={S.badges}>
                 {s.gender && <span style={S.badge}>{s.gender}</span>}
                 {s.fond && <span style={S.badge}>{s.fond}</span>}
-                {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년)</span>}
+                {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년, 2025 공시)</span>}
                 {s.enrollment?.grade1 == null && s.current?.students != null && <span style={S.badgeDim}>학생 {s.current.students}명 · 교원 {s.current.teachers ?? '—'}명 (2026 학교정보)</span>}
               </div>
               {isHigh && seats !== null && (
                 <div style={S.seats}>1학년 {s.enrollment.grade1}명 중 1등급권 <b>{seats}자리</b> <span style={S.dim}>· 5등급제 상위 10% 가정</span></div>
               )}
               {s.edss && (s.edss.classes !== null || s.edss.teachers !== null) && (
-                <div style={S.dim}>{s.edss.classes !== null ? `${s.edss.classes}학급` : ''}{s.edss.classes !== null && s.edss.teachers !== null ? ' · ' : ''}{s.edss.teachers !== null ? `교원 ${s.edss.teachers}명` : ''}</div>
+                <div style={S.dim}>{s.edss.classes !== null ? `${s.edss.classes}학급` : ''}{s.edss.classes !== null && (s.current?.teachers ?? s.edss.teachers) !== null ? ' · ' : ''}{(s.current?.teachers ?? s.edss.teachers) != null ? `교원 ${s.current?.teachers ?? s.edss.teachers}명` : ''}</div>
               )}
               <div style={S.bandTitle}>
                 {b ? <>{isHigh ? '고' : '중'}{grade} {b.subject} · {b.year} {b.semester}학기 · A <b>{pct(b.a)}</b> · 평균 <b>{dec1(b.mean)}</b></> : <span style={S.dim}>{grade}학년 {subject} 성취도 공시 없음</span>}
@@ -247,8 +292,13 @@ export default function SchoolInfo() {
         </div>
       )}
 
-      {detail && <DetailModal school={detail} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)} />}
-      {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)} />}
+      {detail && <DetailModal school={detail} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
+        explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('school', [detail], focus) }} />}
+      {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)}
+        explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('compare', compareSchools, focus) }} />}
+      {report && <ReportEditor report={report} onClose={() => setReport(null)} onAuthError={onAuthError}
+        onSaved={() => setSavedKey((k) => k + 1)} onDeleted={() => setSavedKey((k) => k + 1)} />}
+      {savedOpen && <SavedReports refreshKey={savedKey} onAuthError={onAuthError} onClose={() => setSavedOpen(false)} onOpen={(r) => { setReport(r); setSavedOpen(false); }} />}
     </div>
   );
 }
@@ -276,13 +326,24 @@ function Stat({ label, value, hint }) {
   );
 }
 
-function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
+function DetailModal({ school: s, onClose, inCompare, onToggleCompare, explain }) {
   const isHigh = s.schoolLevel === '고등학교';
   const seats = seatsOf(s);
+  // 전 과목 표(기타 과목)는 열릴 때 따로 받는다 — 받기 전엔 catalog 에 실린 국·영·수만 보인다.
+  const [full, setFull] = useState(null);
+  const [fullState, setFullState] = useState(s.bandsFile ? 'loading' : 'none');
+  useEffect(() => {
+    let dead = false;
+    setFull(null); setFullState(s.bandsFile ? 'loading' : 'none');
+    if (!s.bandsFile) return undefined;
+    loadFullBands(s).then((b) => { if (!dead) { setFull(b); setFullState(b ? 'ok' : 'none'); } }).catch(() => { if (!dead) setFullState('error'); });
+    return () => { dead = true; };
+  }, [s]);
+  const bands = full || s.bands || [];
   // 과목군 → 학년·학기 순으로 표를 만든다. 3학년 선택과목은 A~C 만 있는 것도 있어 null 은 '—' 로 둔다.
   const families = ['국어', '영어', '수학'];
-  const bandsBy = (fam) => (s.bands || []).filter((b) => b.family === fam).sort((x, y) => x.grade - y.grade || x.semester - y.semester);
-  const others = (s.bands || []).filter((b) => !families.includes(b.family));
+  const bandsBy = (fam) => bands.filter((b) => b.family === fam).sort((x, y) => x.grade - y.grade || x.semester - y.semester);
+  const others = bands.filter((b) => !families.includes(b.family));
   return (
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
@@ -301,10 +362,13 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
         </div>
 
         <div style={S.statGrid}>
-          <Stat label="전체 재적" value={s.enrollment ? `${num(s.enrollment.total)}명` : '—'} hint={s.enrollment ? `${s.enrollment.grade1 ?? '—'}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)` : '재적 공시 없음'} />
-          {isHigh && <Stat label="1등급권 자리" value={seats === null ? '—' : `${seats}개`} hint="1학년 인원 × 10% (2022 교육과정 5등급제, 반올림)" />}
+          {/* 학년별 재적은 학교알리미 공개용데이터(2025년 공시) — 학교정보 팝업(2026)의 현재 학생수와 한 해 차이가 난다. 어느 해 숫자인지 적는다. */}
+          <Stat label="학년별 재적 (2025 공시)" value={s.enrollment?.grade1 != null ? `${num(s.enrollment.total)}명` : '—'} hint={s.enrollment?.grade1 != null ? `${s.enrollment.grade1 ?? '—'}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)${s.current?.students != null && s.current.students !== s.enrollment.total ? ` · 2026 현재 ${num(s.current.students)}명` : ''}` : '학년별 재적 공시 없음'} />
+          {isHigh && <Stat label="1등급권 자리" value={seats === null ? '—' : `${seats}개`} hint="2025 공시 1학년 인원 × 10% (2022 교육과정 5등급제, 반올림)" />}
           <Stat label="학급 수" value={s.edss?.classes != null ? `${s.edss.classes}학급` : '—'} hint={s.edss ? `${s.edss.classGrade1 ?? '—'}·${s.edss.classGrade2 ?? '—'}·${s.edss.classGrade3 ?? '—'} (1·2·3학년) · EDSS 2025` : 'EDSS 미매칭'} />
-          <Stat label="교원 수" value={s.edss?.teachers != null ? `${s.edss.teachers}명` : '—'} hint={s.edss?.staff != null ? `직원 ${s.edss.staff}명` : 'EDSS 2025'} />
+          {/* 교원 수: 학교알리미 학교정보(2026)가 최신. EDSS(2025 조사)는 한 해 전 값이라 힌트로만 — 가곡고 7명(EDSS) vs 8명(학교알리미) 같은 차이가 그것이다. */}
+          <Stat label="교원 수" value={s.current?.teachers != null ? `${num(s.current.teachers)}명` : s.edss?.teachers != null ? `${s.edss.teachers}명` : '—'}
+            hint={s.current?.teachers != null ? `학교알리미 학교정보(2026)${s.edss?.teachers != null ? ` · EDSS 2025: ${s.edss.teachers}명${s.edss.staff != null ? `·직원 ${s.edss.staff}명` : ''}` : ''}` : s.edss ? `EDSS 2025${s.edss.staff != null ? ` · 직원 ${s.edss.staff}명` : ''}` : 'EDSS 미매칭'} />
           <Stat label="입학생 / 졸업생" value={s.edss ? `${s.edss.entrants ?? '—'} / ${s.edss.graduates ?? '—'}` : '—'} hint="EDSS 조사년도 기준" />
           {s.current && <Stat label="현재 학생 · 교원" value={`${num(s.current.students)}명 · ${num(s.current.teachers)}명`} hint={`남 ${num(s.current.male)} · 여 ${num(s.current.female)} · 학교알리미 학교정보(2026)${s.current.founded ? ` · 개교 ${s.current.founded}` : ''}`} />}
         </div>
@@ -321,10 +385,18 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
         })}
         {others.length > 0 && (
           <section style={{ marginTop: 18 }}>
-            <h4 style={S.h4}>기타 과목</h4>
+            <h4 style={S.h4}>기타 과목 <span style={S.dim}>({others[0].year})</span></h4>
             <BandTable rows={others.sort((x, y) => x.grade - y.grade || x.semester - y.semester)} />
           </section>
         )}
+        {explain && (
+          <>
+            <ExplainBox label={`${s.schoolName} 입시·진학 해설`} busy={explain.busy} hasKey={explain.hasKey} onExplain={explain.run} />
+            {explain.err && <p style={{ ...S.dim, color: '#f87171', marginTop: 6 }}>{explain.err}</p>}
+          </>
+        )}
+        {fullState === 'loading' && <p style={{ ...S.dim, marginTop: 14 }}>전 과목 성취도를 불러오는 중…</p>}
+        {fullState === 'error' && <p style={{ ...S.dim, marginTop: 14 }}>전 과목 성취도를 불러오지 못했습니다. 국·영·수만 표시합니다.</p>}
         <p style={{ ...S.dim, marginTop: 14 }}>A~E = 성취도 비율(%). 평균·표준편차는 학교알리미 공시값. 3학년 진로선택 과목은 A·B·C 3단계만 공시됩니다.</p>
       </div>
     </div>
@@ -355,7 +427,7 @@ function BandTable({ rows }) {
   );
 }
 
-function CompareModal({ schools, subject, grade, onClose }) {
+function CompareModal({ schools, subject, grade, onClose, explain }) {
   const isHigh = schools.every((s) => s.schoolLevel === '고등학교');
   const rowsSpec = [
     { label: '소재지', get: (s) => `${s.sido} ${s.sigungu}` },
@@ -364,7 +436,7 @@ function CompareModal({ schools, subject, grade, onClose }) {
     { label: '전체 재적', get: (s) => (s.enrollment ? `${num(s.enrollment.total)}명` : '—') },
     { label: '1학년 재적', get: (s) => (s.enrollment?.grade1 != null ? `${s.enrollment.grade1}명` : '—') },
     ...(isHigh ? [{ label: '1등급권 자리', get: (s) => (seatsOf(s) === null ? '—' : `${seatsOf(s)}개`) }] : []),
-    { label: '학급 · 교원', get: (s) => (s.edss ? `${s.edss.classes ?? '—'}학급 · ${s.edss.teachers ?? '—'}명` : '—') },
+    { label: '학급 · 교원', get: (s) => `${s.edss?.classes ?? '—'}학급 · ${s.current?.teachers ?? s.edss?.teachers ?? '—'}명` },
   ];
   const bandRows = [];
   for (const fam of SUBJECTS) {
@@ -396,6 +468,12 @@ function CompareModal({ schools, subject, grade, onClose }) {
           </table>
         </div>
         <p style={{ ...S.dim, marginTop: 12 }}>강조 행 = 목록에서 고른 과목·학년. 같은 학년은 뒤 학기(2학기) 값을 우선합니다.</p>
+        {explain && (
+          <>
+            <ExplainBox label={`${schools.length}개 학교 입시 비교 해설`} busy={explain.busy} hasKey={explain.hasKey} onExplain={explain.run} />
+            {explain.err && <p style={{ ...S.dim, color: '#f87171', marginTop: 6 }}>{explain.err}</p>}
+          </>
+        )}
       </div>
     </div>
   );

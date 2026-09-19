@@ -127,13 +127,40 @@ async function main() {
   // 1등급 자리(1학년 × 10%)는 재적이 바뀌면 다시 계산
   for (const s of cat.schools) if (s.enrollment?.grade1) s.grade1Seats = Math.round(s.enrollment.grade1 * 0.1);
 
+  // 2026년 공시부터는 국·영·수 외 전 과목이 들어와 밴드가 학교당 ~76개(전국 45만 줄, JSON 84MB) 가 된다.
+  // 화면의 목록·정렬·비교는 국·영·수만 쓰므로 본 catalog 에는 국·영·수만 남기고, 전 과목 표는 시도×급별 파일로 나눠
+  // 상세 모달이 열릴 때만 받는다(frontend/public/data/school-bands/<key>.json.gz = { [school.id]: bands[] }).
+  const BANDS_DIR = path.join(path.dirname(OUT), 'school-bands');
+  fs.rmSync(BANDS_DIR, { recursive: true, force: true }); fs.mkdirSync(BANDS_DIR, { recursive: true });
+  const sidoIdx = [...new Set(cat.schools.map((s) => s.sido))].sort();
+  const bandKey = (s) => `${s.schoolLevel === '고등학교' ? 'h' : 'm'}${String(sidoIdx.indexOf(s.sido)).padStart(2, '0')}`;
+  const chunks = new Map();
+  let fullBands = 0;
+  for (const s of cat.schools) {
+    if (!s.bands?.length) continue;
+    fullBands += s.bands.length;
+    const k = bandKey(s);
+    if (!chunks.has(k)) chunks.set(k, {});
+    chunks.get(k)[s.id] = s.bands;
+    s.bandsFile = `school-bands/${k}.json.gz`;
+    s.bands = s.bands.filter((b) => b.family);
+  }
+  for (const [k, obj] of chunks) fs.writeFileSync(path.join(BANDS_DIR, `${k}.json.gz`), zlib.gzipSync(Buffer.from(JSON.stringify(obj), 'utf8'), { level: 9 }));
+  cat.bandFiles = { note: '국·영·수 외 전 과목 성취도. school.bandsFile 경로(catalog 와 같은 폴더 기준) 의 { [school.id]: bands[] }', count: chunks.size, bands: fullBands };
+
   cat.generatedAt = new Date().toISOString();
   cat.achievementUpdate = { schools: replaced, years: [...years].sort(), at: cat.generatedAt };
+  const chasus = parsed.map((p) => p.chasu).filter(Boolean).sort();
+  if (chasus.length) cat.disclosureYear = Number(chasus[chasus.length - 1].slice(0, 4));
   cat.academicYear = years.size ? `${[...years].sort().reverse()[0]}(갱신 ${replaced}곳)·2024학년도` : cat.academicYear;
   cat.source = '학교알리미 교과별 학업성취(보안문자 도우미 수집) + 공개용데이터 학년별 학생수 + EDSS 개방데이터';
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, zlib.gzipSync(Buffer.from(JSON.stringify(cat), 'utf8'), { level: 9 }));
+  // 대시보드의 '새 공시' 배너용 — 2.8MB catalog 를 안 받고도 지금 실린 공시 연도를 알 수 있게 작은 메타 파일을 같이 쓴다
+  const meta = { disclosureYear: cat.disclosureYear, academicYear: cat.academicYear, generatedAt: cat.generatedAt, achievementUpdate: cat.achievementUpdate, schools: cat.schools.length };
+  fs.writeFileSync(OUT.replace(/\.json\.gz$/, '-meta.json'), JSON.stringify(meta), 'utf8');
+  console.log(`전 과목 밴드 ${fullBands}줄 → ${BANDS_DIR} (${chunks.size}개 파일, ${(fs.readdirSync(BANDS_DIR).reduce((a, f) => a + fs.statSync(path.join(BANDS_DIR, f)).size, 0) / 1024).toFixed(0)}KB)`);
   console.log(`학교 ${cat.schools.length}곳 (신규 ${added}, 학교정보 반영 ${infoApplied}) · 성취도 교체 ${replaced}곳 (${[...years].join(',')}) · 재적 갱신 ${enrollUpdated}곳 → ${OUT} ${(fs.statSync(OUT).size / 1024).toFixed(0)}KB`);
   if (missing.length) console.log('catalog 에 못 맞춘 학교:', missing.join(', '));
 }

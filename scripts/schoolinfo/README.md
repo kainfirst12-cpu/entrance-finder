@@ -114,5 +114,42 @@ claude.ai/code 환경 설정에서 정책을 바꾸고 **그 환경으로 세션
 `parse-achievement.mjs`·`build-catalog.mjs` 조립, 커밋·푸시. 즉 **원장 PC 크롬에서 숫자만 치고**,
 받은 JSON 파일을 세션에 올려 주면 나머지는 원격 세션이 한다.
 
-진행 현황(2026-09-19): 부천 28 + 강릉고 1 + 경기 90곳 = 119곳 수집. 경기 고교 남은 큐 380곳
-(`out/collect-경기도-고등학교-1~3.js`, 시군구·가나다순으로 김포 '양곡고'부터).
+진행 현황(2026-09-20): **전국 완료** — 고교 2,283 + 중학 3,413 = 5,696곳 수집, 공시제외(신설·'입력된 데이터가 없습니다') 236곳 → 학교 목록 5,932곳 전부 처리.
+집 PC 수집분은 `achievement-raw-<지역>-<날짜>.json`(`{exportedAt, count, records[]}`) 묶음으로 넘어와 학교당 파일로 풀어 넣었다.
+
+## 정기 자동 갱신 (보안문자 없는 부분만)
+
+`.github/workflows/schoolinfo-refresh.yml` — 3·6·9·12월 1일 03:00 KST 자동 + GitHub Actions 탭에서 수동 실행(Run workflow).
+1. `fetch-school-list.mjs` → 2. `fetch-school-info.mjs --refresh`(24h 내 받은 건 건너뜀) → 3. `ci-changed.mjs` 로 fetchedAt 외에
+실제 바뀐 게 있는지 판정 → 있으면 `build-catalog.mjs` 후 `out/school-list.json`·`out/school-info.json`·`frontend/public/data/` 커밋·푸시
+→ Vercel 배포. 바뀐 게 없으면 아무것도 안 한다. 성취도(`achievement-raw/`)는 손대지 않는다(아래 알림 참고).
+
+## 새 공시 알림 (자동 갱신 대신)
+
+성취도는 자동 갱신이 안 되므로, 대신 **새 공시가 올라오면 입시파인더 대시보드·공시정보 화면에 배너**가 뜬다.
+- 백엔드 `GET /api/schoolinfo/disclosure` — 학교 공시 팝업(인증 없음)의 `<select id="gsYear">` 최신값을 하루 1회 읽는다(24h 캐시).
+- `frontend/public/data/school-catalog-meta.json` — 지금 실린 공시 연도(`disclosureYear`). `build-catalog.mjs` 가 catalog 와 같이 만든다.
+- `DisclosureNotice.jsx` — 최신값 > disclosureYear 면 "N년 공시가 올라왔습니다", 조회가 안 되는 날엔 다음 해 5월 1일 이후에만
+  "공시 시기입니다" 로 약하게 안내. ✕ 로 닫으면 그 연도 배너만 숨김(localStorage).
+배너가 뜨면 위 '갱신 절차'대로 다시 수집하면 된다(학교알리미 정기 공시는 보통 5월 말).
+
+## 입시 해설 보고서 (2026-09-20)
+
+상세·비교 모달의 `🧭 입시 해설 생성` → 백엔드 `/api/schoolinfo/explain`(AI 본문) + `schoolReportData.buildReportData`(수치 블록 `data`).
+- `data` = 학교 카드(재적·1등급 자리·학급·교원) + 국·영·수 학년별 A~E 분포. **AI 가 아니라 catalog 수치로 결정론적으로** 만들고
+  PDF(`pdfService._drawReportData`)·Word(`docxService.reportDataChildren`)·화면(`SchoolReport.jsx ReportVisual`)·나만의 패파(`ReportVisual.tsx`)가
+  같은 순서·색(A 청록·B 파랑·C 보라·D 노랑·E 빨강, 학교색 4개)으로 그린다. AI 본문은 해석만(원자료 표·HTML 금지).
+- 보관: `ef_school_reports`(선생님별, `snapshot.data`, 전송 이력 `sent`). 내보내기: `/api/school-reports/export` (docx·pdf).
+- 학부모 전송: `📨 학부모에게 보내기` → `/api/school-reports/send` → 나만의 패파 `POST /api/inbound/report` `{student_name, title, md, data, audience, memo}`
+  → 그 학생의 성장 리포트(payload.kind='doc') + 알림. 서버 환경변수 `ACADEMY_VIDEO_INBOUND_KEY`(나만의 패파 선생님 대시보드 '연동 열쇠'),
+  `ACADEMY_VIDEO_URL`(기본 https://academy-video.vercel.app).
+
+## 출력 파일 구조 (2026-09-20 부터)
+
+2026년 공시 표는 국·영·수 외 전 과목이 들어와 밴드가 학교당 ~76줄(전국 45만 줄, JSON 84MB) 이라 한 파일로는 못 싣는다.
+- `frontend/public/data/school-catalog.json.gz` (2.8MB) — 학교별 `bands` 는 **국·영·수만**. 목록·정렬·비교 화면은 이것만 쓴다.
+- `frontend/public/data/school-bands/<h|m><시도번호>.json.gz` (32개, 7.2MB) — 전 과목 표 `{ [school.id]: bands[] }`.
+  학교 항목의 `bandsFile` 이 경로. 상세 모달이 열릴 때 그 시도 파일만 받아 캐시한다(`SchoolInfo.jsx` `loadFullBands`).
+- 중학교 표는 계열 칸이 없는 13칸(`[과목, 1학기 평균, A~E, 2학기 평균, A~E]`) — `parse-achievement.mjs` 가 헤더로 구분한다.
+- 종합고(일반계+상업계 등)는 `과목 [일반계 / 전체학과]` 처럼 계열별 줄만 있고 전체 줄이 없다(493곳). 목록 카드의 대표값은
+  전체계열 → 일반계 → 나머지 순으로 고른다(`pickBand`).

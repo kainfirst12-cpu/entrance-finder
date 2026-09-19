@@ -14,6 +14,7 @@ import SchoolInfo from './components/SchoolInfo';
 import IpgyeolConsole from './components/IpgyeolConsole';
 import RatioLive from './components/RatioLive';
 import SuhaengArchive from './components/SuhaengArchive';
+import { menuAllowed, readMenus } from './menus';
 import InterviewStrategy from './components/InterviewStrategy';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
@@ -41,6 +42,7 @@ const modelConfig = {
 export default function App() {
   const [isLoggedIn, setIsLoggedIn]   = useState(!!localStorage.getItem('ef_token'));
   const [role, setRole]               = useState(localStorage.getItem('ef_role') || 'user');
+  const [menus, setMenus]             = useState(readMenus()); // 학원 코드별 공개 메뉴(null=전부)
   // 새로고침/끊김 복구: 진행 중이던 분석이 저장돼 있으면 결과화면으로 복원
   const recovered = (() => {
     try {
@@ -86,6 +88,7 @@ export default function App() {
     localStorage.removeItem('ef_token');
     localStorage.removeItem('ef_role');
     localStorage.removeItem('ef_name');
+    localStorage.removeItem('ef_menus');
     setIsLoggedIn(false);
     setRole('user');
   };
@@ -328,7 +331,7 @@ export default function App() {
   });
 
   if (!isLoggedIn) {
-    return <Login onLogin={() => { setIsLoggedIn(true); setRole(localStorage.getItem('ef_role') || 'user'); }} />;
+    return <Login onLogin={() => { setIsLoggedIn(true); setRole(localStorage.getItem('ef_role') || 'user'); setMenus(readMenus()); }} />;
   }
 
   return (
@@ -399,11 +402,19 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {view === 'dashboard' && (
-          <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout}
+        {/* 학원 코드에 공개되지 않은 메뉴로 들어오면(저장된 화면 복구 등) 안내만 — 서버도 같은 표로 막는다 */}
+        {!menuAllowed(menus, role, view) && (
+          <div style={{ padding: 40 }}>
+            <h2 style={{ margin: '0 0 8px' }}>🔒 공개되지 않은 메뉴입니다</h2>
+            <p style={{ color: 'var(--text3, #9aa4b2)' }}>이 학원 코드에는 이 메뉴가 열려 있지 않습니다. 필요하시면 패스파인더에 문의해 주세요.</p>
+            <button className="nav-item" onClick={() => setView('dashboard')}>대시보드로</button>
+          </div>
+        )}
+        {menuAllowed(menus, role, view) && view === 'dashboard' && (
+          <Dashboard onNav={setView} onImport={() => fileInputRef.current?.click()} onAuthError={handleLogout} menus={menus}
             onOpenAnalysis={openSavedAnalysis} onAnalyzeFile={analyzeBoardFile} role={role} />
         )}
-        {view === 'list'      && (
+        {menuAllowed(menus, role, view) && view === 'list'      && (
           <StudentsPage
             onNewAnalysis={() => setView('form')}
             onAuthError={handleLogout}
@@ -411,7 +422,7 @@ export default function App() {
             onAnalyzeFile={analyzeBoardFile}
           />
         )}
-        {view === 'form'      && (
+        {menuAllowed(menus, role, view) && view === 'form'      && (
           <StudentForm
             onSubmit={startAnalysis}
             onCancel={() => { setFormPrefill(null); setView('list'); }}
@@ -419,8 +430,8 @@ export default function App() {
             onClearPrefill={() => setFormPrefill(null)}
           />
         )}
-        {view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} warnings={analysisWarnings} />}
-        {view === 'result' && analysisData && (
+        {menuAllowed(menus, role, view) && view === 'analyzing' && <AnalysisProgress steps={progressSteps} currentStep={currentStep} warnings={analysisWarnings} />}
+        {menuAllowed(menus, role, view) && view === 'result' && analysisData && (
           <AnalysisResult
             data={analysisData}
             onBack={() => setView('list')}
@@ -435,42 +446,47 @@ export default function App() {
             gptKey={gptKey}
           />
         )}
-        {view === 'chat' && (
+        {menuAllowed(menus, role, view) && view === 'chat' && (
           <ChatInterface getActiveKey={getActiveKey} selectedModel={selectedModel} analysisData={analysisData} />
         )}
-        {view === 'assessment' && (
+        {menuAllowed(menus, role, view) && view === 'assessment' && (
           <Assessment
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}
             aiGroup={modelConfig[selectedModel]?.group || selectedModel}
           />
         )}
-        {view === 'settings' && (
+        {menuAllowed(menus, role, view) && view === 'settings' && (
           <Settings apiKey={apiKey} geminiKey={geminiKey} gptKey={gptKey} onSave={handleApiKeySave} />
         )}
-        {view === 'board' && (
+        {menuAllowed(menus, role, view) && view === 'board' && (
           <Board
             onAuthError={handleLogout}
             onOpenAnalysis={openSavedAnalysis}
             onAnalyzeFile={analyzeBoardFile}
           />
         )}
-        {view === 'admissions' && (
+        {menuAllowed(menus, role, view) && view === 'admissions' && (
           <Admissions onAuthError={handleLogout} />
         )}
-        {view === 'univinfo' && (
+        {menuAllowed(menus, role, view) && view === 'univinfo' && (
           <UnivInfo onAuthError={handleLogout} />
         )}
-        {view === 'schoolinfo' && (
-          <SchoolInfo />
+        {menuAllowed(menus, role, view) && view === 'schoolinfo' && (
+          <SchoolInfo
+            getActiveKey={getActiveKey}
+            selectedModel={selectedModel}
+            aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+            onAuthError={handleLogout}
+          />
         )}
-        {view === 'ipgyeol' && (
+        {menuAllowed(menus, role, view) && view === 'ipgyeol' && (
           <IpgyeolConsole onAuthError={handleLogout} />
         )}
-        {view === 'ratio' && (
+        {menuAllowed(menus, role, view) && view === 'ratio' && (
           <RatioLive onAuthError={handleLogout} />
         )}
-        {view === 'suharchive' && (
+        {menuAllowed(menus, role, view) && view === 'suharchive' && (
           <SuhaengArchive
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}
@@ -478,7 +494,7 @@ export default function App() {
             onAuthError={handleLogout}
           />
         )}
-        {view === 'interview' && role === 'admin' && (
+        {menuAllowed(menus, role, view) && view === 'interview' && role === 'admin' && (
           <InterviewStrategy
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}
@@ -486,7 +502,7 @@ export default function App() {
             onAuthError={handleLogout}
           />
         )}
-        {view === 'admin' && role === 'admin' && (
+        {menuAllowed(menus, role, view) && view === 'admin' && role === 'admin' && (
           <AdminDashboard onAuthError={handleLogout} />
         )}
       </main>

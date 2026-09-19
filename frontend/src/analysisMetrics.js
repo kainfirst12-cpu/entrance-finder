@@ -18,7 +18,9 @@ const LABELS = [
 const NOT_SCORE = /등급|백분위|퍼센타일|경쟁률|%|명\s*모집/;
 
 function scoreFromLine(line) {
-  if (NOT_SCORE.test(line)) return null;
+  if (/^\s*\[지표\]/.test(line)) return null;  // 5점 스코어카드 줄은 따로 그린다 — 10점 표만 종합 점수로
+  // "8/10" 같은 명시적 점수가 있으면 평가 칸에 '등급' 이 적혀 있어도 점수 줄이다(학업역량 줄이 '1~2등급' 때문에 빠지던 문제)
+  if (NOT_SCORE.test(line) && !/\b\d+(?:\.\d+)?\s*점?\s*\/\s*10\b/.test(line)) return null;
   // ① 배점·획득 표: | 학업 역량 | 10점 | 8.0점 |
   let m = line.match(/\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*(?=\||$)/);
   if (m) {
