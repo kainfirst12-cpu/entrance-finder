@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import SendToPapa from './SendToPapa';
+import { scoreTableHtml, indicatorLineHtml, trackLineHtml, wrapCard } from '../reportHtml';
 import { extractScores, extractHighlights, scoreTone, totalScore, radarSvg } from '../analysisMetrics';
 
 // SSE(keepalive 포함) 또는 일반 JSON 응답을 모두 처리해 최종 결과 객체를 반환.
@@ -77,6 +78,8 @@ function stripEmojis(str) {
 }
 
 // 마크다운 → HTML 변환 (테이블, 볼드, 헤딩, 블록쿼트 등)
+// mdToHtml 은 먼저 HTML 을 이스케이프한 뒤 줄을 처리한다 — reportHtml 조각은 스스로 이스케이프하므로 되돌려 넘긴다
+const unesc = (s) => String(s).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 function mdToHtml(raw) {
   if (!raw) return '';
   let text = stripEmojis(raw);
@@ -101,6 +104,9 @@ function mdToHtml(raw) {
       }
       // 구분선 (|---|---| ) 제거하고 데이터 행만 추출
       const dataRows = tableLines.filter(l => !/^\s*\|[\s\-:]+\|/.test(l));
+      // 점수(7/10·65%) 칸이 있는 표는 막대 표로 — 종합 평가의 '5개 영역 평가'·'합격 가능성' 표
+      const scoreTable = dataRows.length > 1 ? scoreTableHtml(dataRows.map(row => row.split('|').filter((_, ci, arr) => ci > 0 && ci < arr.length - 1).map(c => unesc(c.trim().replace(/\*\*([^*]+)\*\*/g, '$1'))))) : null;
+      if (scoreTable) { out.push(`<div class="md-table-wrap">${scoreTable}</div>`); continue; }
       if (dataRows.length > 0) {
         let html = '<div class="md-table-wrap"><table class="md-table">';
         dataRows.forEach((row, ri) => {
@@ -121,6 +127,14 @@ function mdToHtml(raw) {
 
     // 코드블록 ``` 제거
     if (/^\s*```/.test(line)) { i++; continue; }
+
+    // [지표]·[전형] 줄 → 스코어카드·전형 막대(연속 줄은 한 상자)
+    if (/^\s*\[(지표|전형)\]/.test(line)) {
+      let card = '';
+      while (i < lines.length && /^\s*\[(지표|전형)\]/.test(lines[i])) { const t = unesc(lines[i].trim()); card += indicatorLineHtml(t) || trackLineHtml(t) || `<p>${lines[i].trim()}</p>`; i++; }
+      out.push(wrapCard(card));
+      continue;
+    }
 
     // 구분선 (────) → <hr>
     if (/^[─━─]{5,}/.test(line.trim())) {

@@ -1,4 +1,7 @@
 // 가벼운 마크다운 미리보기 (다크 테마) — 수행평가 아카이브·학교 입시 해설 보고서 공용
+// 점수 표(7/10·65%)·[지표]·[전형] 줄은 reportHtml 의 규칙대로 막대·점으로 그린다(PDF·Word·나만의 패파와 같은 규칙).
+import { scoreTableHtml, indicatorLineHtml, trackLineHtml, wrapCard } from './reportHtml';
+
 export function mdPreview(md) {
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b style="color:#e8eef3">$1</b>');
@@ -11,6 +14,8 @@ export function mdPreview(md) {
       const block = [];
       while (i < lines.length && lines[i].trim().startsWith('|')) { block.push(lines[i]); i++; }
       const rows = block.filter(l => !/^\s*\|?[\s:|-]+\|?\s*$/.test(l));
+      const scoreTable = scoreTableHtml(rows.map(r => r.replace(/^\||\|$/g, '').split('|').map(c => c.trim())));
+      if (scoreTable) { html += scoreTable; continue; }
       html += '<table style="border-collapse:collapse;width:100%;margin:8px 0">';
       rows.forEach((r, ri) => {
         const cells = r.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
@@ -18,6 +23,13 @@ export function mdPreview(md) {
           `<${ri === 0 ? 'th' : 'td'} style="border:1px solid #2a3a48;padding:6px 9px;text-align:left;background:${ri === 0 ? '#243341' : '#1c2937'};color:#e8eef3">${inline(c)}</${ri === 0 ? 'th' : 'td'}>`).join('') + '</tr>';
       });
       html += '</table>';
+      continue;
+    }
+    // [지표]·[전형] 줄 — 연속된 줄은 한 상자로
+    if (/^\[(지표|전형)\]/.test(t)) {
+      let card = '';
+      while (i < lines.length && /^\[(지표|전형)\]/.test(lines[i].trim())) { card += indicatorLineHtml(lines[i].trim()) || trackLineHtml(lines[i].trim()) || `<p style="margin:6px 0">${inline(lines[i].trim())}</p>`; i++; }
+      html += wrapCard(card);
       continue;
     }
     const h = t.match(/^(#{1,4})\s+(.*)$/);

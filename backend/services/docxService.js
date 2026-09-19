@@ -24,17 +24,42 @@ function parseInline(text) {
 const BORDER = { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC' };
 const CELL_BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
 
+// "7/10"·"4/5"·"65%" 점수 칸 → 색 막대(PDF·화면과 같은 규칙)
+function parseScoreCell(text) {
+  const t = String(text || '').trim().replace(/\*\*/g, '');
+  let m = t.match(/^(\d+(?:\.\d+)?)\s*\/\s*(5|10|100)\s*(?:점)?$/);
+  if (m) return { value: Number(m[1]), max: Number(m[2]), label: `${m[1]}/${m[2]}` };
+  m = t.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  if (m) return { value: Number(m[1]), max: 100, label: `${m[1]}%` };
+  return null;
+}
+const scoreHex = (r) => (r >= 0.7 ? '14B8A6' : r >= 0.4 ? 'F59E0B' : 'EF4444');
+function scoreCellChildren(sc) {
+  // 칸 안에 작은 표(2칸: 채움/빈칸)로 막대를 만든다
+  const ratio = Math.max(0, Math.min(1, sc.value / sc.max));
+  const on = Math.max(3, Math.round(ratio * 100));
+  const NB = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+  const NBS = { top: NB, bottom: NB, left: NB, right: NB };
+  return [new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [new TableRow({ children: [
+    new TableCell({ borders: NBS, shading: { fill: scoreHex(ratio) }, width: { size: on * 0.7, type: WidthType.PERCENTAGE }, children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [new TextRun({ text: ' ', size: 10 })] })] }),
+    new TableCell({ borders: NBS, shading: { fill: 'F3F4F6' }, width: { size: (100 - on) * 0.7, type: WidthType.PERCENTAGE }, children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [new TextRun({ text: ' ', size: 10 })] })] }),
+    new TableCell({ borders: NBS, width: { size: 30, type: WidthType.PERCENTAGE }, children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [new TextRun({ text: sc.label, bold: true, size: 16, color: scoreHex(ratio) })] })] }),
+  ] })] })];
+}
+
 function buildTable(rows) {
   // rows: [['헤더1','헤더2'], ['값1','값2'], ...]
+  const scoreCols = new Set();
+  rows.slice(1).forEach((r) => r.forEach((c, i) => { if (parseScoreCell(c)) scoreCols.add(i); }));
   const tableRows = rows.map((cells, ri) =>
     new TableRow({
       tableHeader: ri === 0,
-      children: cells.map(c =>
+      children: cells.map((c, ci) =>
         new TableCell({
           borders: CELL_BORDERS,
           shading: ri === 0 ? { fill: 'F0EEE8' } : undefined,
           margins: { top: 60, bottom: 60, left: 100, right: 100 },
-          children: [new Paragraph({ children: parseInline(c.trim()).map(r => {
+          children: (ri > 0 && scoreCols.has(ci) && parseScoreCell(c)) ? scoreCellChildren(parseScoreCell(c)) : [new Paragraph({ children: parseInline(c.trim()).map(r => {
             // 헤더는 굵게
             if (ri === 0) return new TextRun({ text: c.trim(), bold: true });
             return r;
@@ -246,7 +271,7 @@ function tracksTable(tracks, schools) {
     const hex = many ? SCHOOL_HEX[i % SCHOOL_HEX.length] : '2563EB';
     const cells = [];
     if (many) cells.push(new TableCell({ borders: NO_BORDERS, width: { size: 12, type: WidthType.PERCENTAGE }, children: [cellText(t.who || shortName(schools[i]?.name), { bold: true, size: 15, color: hex })] }));
-    for (const sc of t.scores.slice(0, 3)) {
+    for (const sc of t.scores.slice(0, 4)) {
       const on = Math.max(1, Math.round(sc.score / 5 * 100));
       cells.push(new TableCell({ borders: NO_BORDERS, width: { size: 12, type: WidthType.PERCENTAGE }, children: [cellText(sc.who || '', { size: 14 })] }));
       cells.push(new TableCell({ borders: NO_BORDERS, shading: { fill: hex }, width: { size: Math.round(on * 0.14), type: WidthType.PERCENTAGE }, children: [cellText('', {})] }));
@@ -279,9 +304,14 @@ function structuredBodyChildren(markdown, data) {
     const inds = rep.indicators.filter((x) => x.section === sec.title);
     const trs = rep.tracks.filter((x) => x.section === sec.title);
     if (isFav || isUnfav) { out.push(...whoTable(isFav ? rep.favorable : rep.unfavorable, isFav ? 'fav' : 'unfav')); out.push(...markdownToDocxChildren(prose)); continue; }
-    if (trs.length) { out.push(...tracksTable(trs, schools)); out.push(...markdownToDocxChildren(prose)); continue; }
-    out.push(...markdownToDocxChildren(prose));
+    if (trs.length && !inds.length) { out.push(...tracksTable(trs, schools)); out.push(...markdownToDocxChildren(prose)); continue; }
+    const firstTable = prose.search(/^\s*\|/m);
+    const lead = inds.length && firstTable > 0 ? prose.slice(0, firstTable) : prose;
+    const rest = inds.length && firstTable > 0 ? prose.slice(firstTable) : '';
+    out.push(...markdownToDocxChildren(lead));
     if (inds.length) out.push(...scorecardTable(inds, schools));
+    if (trs.length) out.push(...tracksTable(trs, schools));
+    if (rest) out.push(...markdownToDocxChildren(rest));
   }
   return out;
 }
@@ -296,8 +326,9 @@ export async function markdownToDocxBuffer(title, markdown, { reportData = null 
     }));
   }
   const body = String(markdown || '').replace(/<br\s*\/?>/gi, ' / ');
-  if (reportData) { children.push(...reportDataChildren(reportData)); children.push(...structuredBodyChildren(body, reportData)); }
-  else children.push(...markdownToDocxChildren(body));
+  if (reportData) children.push(...reportDataChildren(reportData));
+  // 구조 서식([지표]·[전형]·유리/불리·점수 표)은 어느 보고서든 같은 모양으로 — 서식이 없으면 그냥 마크다운 변환과 같다
+  children.push(...structuredBodyChildren(body, reportData));
 
   const doc = new Document({
     numbering: {

@@ -123,34 +123,8 @@ function generateAnalysisPDF(analysisData, studentData) {
         curY = _drawSectionHeader(doc, `제${idx + 1}장`, section.title, curY, ML, BODY_W);
         curY += 8;
 
-        section.items.forEach(item => {
-          if (curY > 750) { doc.addPage(); curY = 20; }
-
-          if (item.type === 'subheader') {
-            curY = _drawSubHeader(doc, item.text, ML, curY, BODY_W);
-            curY += 4;
-          } else if (item.type === 'text') {
-            const h = doc.heightOfString(item.text, { width: BODY_W });
-            doc.fontSize(8.5).fillColor(C.BLACK).text(item.text, ML, curY, { width: BODY_W });
-            curY += h + 6;
-          } else if (item.type === 'list') {
-            item.items.forEach((li, i) => {
-              if (curY > 750) { doc.addPage(); curY = 20; }
-              doc.roundedRect(ML, curY, BODY_W, 24, 3).fill(C.LIGHT);
-              doc.circle(ML + 14, curY + 12, 9).fill(C.BLUE);
-              doc.fontSize(8).fillColor(C.WHITE).text(`${i + 1}`, ML + 11, curY + 8);
-              doc.fontSize(8).fillColor(C.NAVY).text(li, ML + 28, curY + 8, { width: BODY_W - 36 });
-              curY += 28;
-            });
-            curY += 4;
-          } else if (item.type === 'quote') {
-            const qh = doc.heightOfString(item.text, { width: BODY_W - 30 }) + 16;
-            doc.roundedRect(ML, curY, BODY_W, qh, 3).fill('#f8fafc');
-            doc.rect(ML, curY, 3, qh).fill(C.BLUE);
-            doc.fontSize(8).fillColor('#374151').text(item.text, ML + 12, curY + 8, { width: BODY_W - 24 });
-            curY += qh + 6;
-          }
-        });
+        // 본문은 공용 문서 엔진으로 — 표(점수 칸은 막대)·[지표] 스코어카드·[전형] 막대·목록이 다른 보고서와 같은 모양
+        curY = _drawStructuredBody(doc, _latin(section.raw).replace(/<br\s*\/?>/gi, ' / '), null, ML, curY, BODY_W);
       });
 
       _drawFooters(doc, ML, PW, MR);
@@ -233,7 +207,9 @@ function _extractScores(data) {
     ];
     const NOT_SCORE = /등급|백분위|경쟁률|%/;   // 성적·비율 줄은 역량 점수가 아니다
     const scoreFromLine = (line) => {
-      if (NOT_SCORE.test(line)) return null;
+      if (/^\s*\[지표\]/.test(line)) return null;  // 5점 스코어카드 줄은 따로 그린다 — 10점 표만 종합 점수로
+      // "8/10" 같은 명시적 점수가 있으면 평가 칸에 '등급' 이 적혀 있어도 점수 줄이다(학업역량 줄이 '1~2등급' 때문에 빠지던 문제)
+      if (NOT_SCORE.test(line) && !/\b\d+(?:\.\d+)?\s*점?\s*\/\s*10\b/.test(line)) return null;
       // ① 배점·획득 표: | 학업 역량 | 10점 | 8.0점 |
       let m = line.match(/\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*\|\s*([0-9]+(?:\.[0-9]+)?)\s*점?\s*(?=\||$)/);
       if (m) { const max = parseFloat(m[1]), score = parseFloat(m[2]); if (max >= 5 && score >= 0 && score <= max) return { score, max }; }
@@ -307,7 +283,7 @@ function _parseSections(data) {
   };
   return Object.entries(nameMap)
     .filter(([k]) => data[k] && typeof data[k] === 'string')
-    .map(([k, title]) => ({ title, items: _parseItems(data[k]) }));
+    .map(([k, title]) => ({ title, raw: data[k], items: _parseItems(data[k]) }));
 }
 
 function _parseItems(text) {
@@ -416,15 +392,35 @@ export function parseRoadmapMarkdown(md) {
 }
 
 // 마크다운 표 → 실제 표 (열 너비 비례 배분, 헤더 배경, 셀 줄바꿈, 페이지 넘김 시 헤더 반복)
+// "7/10"·"4/5"·"65%" 꼴 점수 칸 — 표에서 막대로 그린다(생기부 분석 '5개 영역 평가'·'합격 가능성', 화면·Word 와 같은 규칙)
+function _parseScore(text) {
+  const t = String(text || '').trim().replace(/\*\*/g, '');
+  let m = t.match(/^(\d+(?:\.\d+)?)\s*\/\s*(5|10|100)\s*(?:점)?$/);
+  if (m) return { value: Number(m[1]), max: Number(m[2]), label: `${m[1]}/${m[2]}` };
+  m = t.match(/^(\d+(?:\.\d+)?)\s*%$/);
+  if (m) return { value: Number(m[1]), max: 100, label: `${m[1]}%` };
+  return null;
+}
+const _scoreColor = (r) => (r >= 0.7 ? '#14b8a6' : r >= 0.4 ? '#f59e0b' : '#ef4444');
+function _drawScoreBar(doc, sc, x, y, w, h) {
+  const ratio = Math.max(0, Math.min(1, sc.value / sc.max));
+  const barW = Math.max(30, w - 34);
+  doc.roundedRect(x, y + (h - 6) / 2, barW, 6, 3).fill(C.LGRAY);
+  doc.roundedRect(x, y + (h - 6) / 2, Math.max(2, barW * ratio), 6, 3).fill(_scoreColor(ratio));
+  doc.fontSize(6.5).fillColor(_scoreColor(ratio)).text(sc.label, x + barW + 3, y + (h - 7) / 2, { lineBreak: false });
+}
+
 function _rmDrawTable(doc, rows, ml, y, bw) {
   if (!rows.length) return y;
   const cols = Math.max(...rows.map(r => r.length));
   const norm = rows.map(r => Array.from({ length: cols }, (_, i) => r[i] || ''));
   const FS = 7.5, PADX = 5, PADY = 3.5;
+  const scoreCols = new Set();
+  norm.slice(1).forEach(r => r.forEach((c, i) => { if (_parseScore(c)) scoreCols.add(i); }));
 
   doc.fontSize(FS);
   const natural = Array.from({ length: cols }, (_, i) =>
-    Math.min(Math.max(...norm.map(r => doc.widthOfString(r[i] || ' ')), 18) + PADX * 2, bw * 0.6));
+    scoreCols.has(i) ? 92 : Math.min(Math.max(...norm.map(r => doc.widthOfString(r[i] || ' ')), 18) + PADX * 2, bw * 0.6));
   const natSum = natural.reduce((a, b) => a + b, 0);
   const colW = natural.map(w => Math.max(30, (w / natSum) * bw));
   const wSum = colW.reduce((a, b) => a + b, 0);
@@ -440,7 +436,9 @@ function _rmDrawTable(doc, rows, ml, y, bw) {
     let x = ml;
     doc.fontSize(FS);
     r.forEach((c, i) => {
-      doc.fillColor(header ? C.NAVY : '#374151').text(c || '', x + PADX, yy + PADY, { width: colW[i] - PADX * 2 });
+      const sc = !header && scoreCols.has(i) ? _parseScore(c) : null;
+      if (sc) _drawScoreBar(doc, sc, x + PADX, yy, colW[i] - PADX * 2, h);
+      else doc.fontSize(FS).fillColor(header ? C.NAVY : '#374151').text(c || '', x + PADX, yy + PADY, { width: colW[i] - PADX * 2 });
       x += colW[i];
     });
     doc.lineWidth(0.4).strokeColor(C.BORDER);
@@ -604,7 +602,7 @@ function generateRoadmapPDF(rm) {
         doc.addPage(); y = 20;
         y = _drawSectionHeader(doc, '전문', '로드맵 전문 (컨설팅 보고서)', y, ML, BODY_W);
         y += 6;
-        y = _rmDrawMarkdown(doc, rm.body, ML, y, BODY_W);
+        y = _drawStructuredBody(doc, _latin(rm.body), null, ML, y, BODY_W);
       }
 
       _drawFooters(doc, ML, PW, MR);
@@ -757,8 +755,8 @@ function _drawTracks(doc, tracks, schools, ml, y, bw) {
   if (!tracks.length) return y;
   const many = schools.length > 1;
   const rowH = 14;
-  const perRow = 3; // 학생부교과 · 학생부종합 · 정시
-  const nameW = many ? 56 : 0, labelW = 56, gap = 30;
+  const perRow = Math.min(4, Math.max(...tracks.map((t) => t.scores.length), 1)); // 학생부교과 · 학생부종합 · (논술) · 정시
+  const nameW = many ? 56 : 0, labelW = perRow >= 4 ? 50 : 56, gap = perRow >= 4 ? 26 : 30;
   const barW = Math.floor((bw - nameW - perRow * (labelW + gap)) / perRow);
   y = _rmEnsure(doc, y, tracks.length * (rowH + 4) + 14);
   doc.fontSize(8.5).fillColor(C.BLACK).text('전형별 적합도', ml, y); y += 12;
@@ -807,9 +805,15 @@ function _drawStructuredBody(doc, md, data, ml, y, bw) {
     const inds = rep.indicators.filter((x) => x.section === sec.title);
     const trs = rep.tracks.filter((x) => x.section === sec.title);
     if (isFav || isUnfav) { y = _drawWhoTable(doc, isFav ? rep.favorable : rep.unfavorable, isFav ? 'fav' : 'unfav', ml, y, bw); y = _rmDrawMarkdown(doc, prose, ml, y, bw); continue; }
-    if (trs.length) { y = _drawTracks(doc, trs, schools, ml, y, bw); y = _rmDrawMarkdown(doc, prose, ml, y, bw); continue; }
-    y = _rmDrawMarkdown(doc, prose, ml, y, bw);
+    if (trs.length && !inds.length) { y = _drawTracks(doc, trs, schools, ml, y, bw); y = _rmDrawMarkdown(doc, prose, ml, y, bw); continue; }
+    // 지표(스코어카드)가 있는 섹션: 요약 문장 → 스코어카드 → 전형 막대 → 나머지(표 등)
+    const firstTable = prose.search(/^\s*\|/m);
+    const lead = inds.length && firstTable > 0 ? prose.slice(0, firstTable) : prose;
+    const rest = inds.length && firstTable > 0 ? prose.slice(firstTable) : '';
+    y = _rmDrawMarkdown(doc, lead, ml, y, bw);
     if (inds.length) y = _drawScorecard(doc, inds, schools, ml, y, bw);
+    if (trs.length) y = _drawTracks(doc, trs, schools, ml, y, bw);
+    if (rest) y = _rmDrawMarkdown(doc, rest, ml, y, bw);
   }
   return y;
 }
