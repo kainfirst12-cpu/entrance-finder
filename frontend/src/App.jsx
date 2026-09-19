@@ -10,6 +10,7 @@ import Assessment from './components/Assessment';
 import Board from './components/Board';
 import Admissions from './components/Admissions';
 import UnivInfo from './components/UnivInfo';
+import SchoolInfo from './components/SchoolInfo';
 import IpgyeolConsole from './components/IpgyeolConsole';
 import RatioLive from './components/RatioLive';
 import SuhaengArchive from './components/SuhaengArchive';
@@ -459,6 +460,9 @@ export default function App() {
         )}
         {view === 'univinfo' && (
           <UnivInfo onAuthError={handleLogout} />
+        )}
+        {view === 'schoolinfo' && (
+          <SchoolInfo />
         )}
         {view === 'ipgyeol' && (
           <IpgyeolConsole onAuthError={handleLogout} />

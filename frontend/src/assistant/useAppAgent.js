@@ -19,6 +19,7 @@ export const VIEWS = [
   { key: 'ratio', label: '실시간 경쟁률', desc: '원서 접수 기간 경쟁률을 따라간다.' },
   { key: 'admissions', label: '전형 자료', desc: '대학별 전형계획·모집요강 자료.' },
   { key: 'univinfo', label: '대학 정보', desc: '대학별 기본 정보.' },
+  { key: 'schoolinfo', label: '고교·중학 공시정보', desc: '전국 고등학교·중학교의 학교알리미 성취도(A~E 비율·평균)·재적·1등급 자리를 검색·비교한다.' },
   { key: 'settings', label: '설정', desc: 'Claude·GPT·Gemini API 키를 넣는 곳.' },
   { key: 'admin', label: '관리자', desc: '이용자 코드·접속 기록·지식베이스. 관리자만.', adminOnly: true },
 ];

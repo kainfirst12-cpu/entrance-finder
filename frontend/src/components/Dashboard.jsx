@@ -5,6 +5,7 @@ const ACTIONS = [
   { key: 'chat', icon: '💬', label: '입시 상담', desc: '학생 자료 불러와 맞춤 상담', color: '#46a571', bg: 'rgba(70,165,113,0.16)' },
   { key: 'admissions', icon: '🎓', label: '대학 입결 조회', desc: '정시·수시·논술 입결', color: '#e0993f', bg: 'rgba(224,153,63,0.16)' },
   { key: 'univinfo', icon: '🏫', label: '대학별 입시정보', desc: '전형방법·평가기준·장애인전형', color: '#3f9ee0', bg: 'rgba(63,158,224,0.16)' },
+  { key: 'schoolinfo', icon: '🏫', label: '고교·중학 공시정보', desc: '전국 학교 성취도·1등급 자리·비교', color: '#2dd4bf', bg: 'rgba(45,212,191,0.14)' },
   { key: 'ipgyeol', icon: '📈', label: '입결 콘솔', desc: 'AI 검색·다개년 추이·배치 판정', color: '#3f6fe0', bg: 'rgba(63,111,224,0.16)' },
   { key: 'ratio', icon: '⏱️', label: '실시간 경쟁률', desc: '마감 남은 시간·전형별 현황·흐름', color: '#e05b7a', bg: 'rgba(224,91,122,0.16)' },
   { key: 'suharchive', icon: '🗂️', label: '수행평가 아카이브', desc: '자료 분석·분류 보관·재활용 배정', color: '#c46ad6', bg: 'rgba(196,106,214,0.16)' },
