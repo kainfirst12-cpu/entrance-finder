@@ -178,6 +178,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
 
   const edit = (patch) => { setR((x) => ({ ...x, ...patch })); setDirty(true); };
   const fail = (e) => { if (e.auth) onAuthError?.(); setMsg(e.message); };
+  // 저장 — 성공하면 저장된 보고서를 돌려준다(보내기 전 자동 저장에서 씀), 실패면 null
   const save = async () => {
     setBusy('save'); setMsg('');
     try {
@@ -187,7 +188,13 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
       if (!d.success) throw new Error(d.message || '저장 실패');
       const saved = { ...r, id: d.item.id, updatedAt: d.item.updated_at };
       setR(saved); setDirty(false); setMsg('저장했습니다'); onSaved?.(saved);
-    } catch (e) { fail(e); } finally { setBusy(''); }
+      return saved;
+    } catch (e) { fail(e); return null; } finally { setBusy(''); }
+  };
+  // 학부모에게 보내기 — 저장 전이면 먼저 저장한다(버튼이 잠겨 있어 눌러도 반응이 없던 문제, 원장 제보 2026-09-20)
+  const openSend = async () => {
+    if (dirty || !r.id) { const saved = await save(); if (!saved) return; }
+    setSendOpen(true);
   };
   const remove = async () => {
     if (!window.confirm('이 보고서를 삭제할까요? 되돌릴 수 없습니다.')) return;
@@ -224,8 +231,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
           <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : r.id ? '변경 저장' : '보관함에 저장'}</button>
           <button style={S.btn} disabled={!!busy} onClick={() => dl('docx')}>{busy === 'docx' ? '만드는 중…' : 'Word 다운로드'}</button>
           <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : 'PDF 다운로드'}</button>
-          <button style={S.btn} disabled={!!busy || dirty} onClick={() => setSendOpen(true)}
-            title={dirty ? '먼저 저장해 주세요 — 저장된 내용이 그대로 전송됩니다' : sendCfg && !sendCfg.enabled ? '서버에 나만의 패파 연동 열쇠가 없습니다' : ''}>
+          <button style={S.btn} disabled={!!busy} onClick={openSend} title="저장 전이면 먼저 저장한 뒤 보냅니다">
             📨 학부모에게 보내기{r.sent?.length ? ` (${r.sent.length})` : ''}
           </button>
           <button style={{ ...S.btn, ...S.danger }} disabled={!!busy} onClick={remove}>{r.id ? '삭제' : '버리기'}</button>
