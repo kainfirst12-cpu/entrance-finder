@@ -612,9 +612,96 @@ function generateRoadmapPDF(rm) {
   });
 }
 
+// ── 학교 입시 해설 보고서의 수치 블록(schoolReportData.buildReportData) 그리기 ──
+// 화면(SchoolReport.jsx ReportVisual)·Word(docxService)·나만의 패파와 같은 색·같은 순서: 학교 카드 → 국·영·수 학년별 A~E 분포 막대.
+const BAND = { a: '#14b8a6', b: '#3b82f6', c: '#8b5cf6', d: '#f59e0b', e: '#ef4444' };
+const SCHOOL_COLORS = ['#4f46e5', '#0d9488', '#d97706', '#e11d48'];
+const _n = (v, unit = '') => (v === null || v === undefined ? '—' : `${Number(v).toLocaleString('ko-KR')}${unit}`);
+// 나눔고딕에 로마숫자(Ⅰ·Ⅱ…) 글리프가 없다 → 라틴 문자로
+const ROMAN = { 'Ⅰ': 'I', 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅴ': 'V', 'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X' };
+const _latin = (t) => String(t || '').replace(/[Ⅰ-Ⅹ]/g, (c) => ROMAN[c] || c);
+const _short = (name) => String(name || '').replace(/(고등|중)학교$/, '');
+
+function _drawReportData(doc, data, ml, y, bw) {
+  const schools = data?.schools || [];
+  if (!schools.length) return y;
+  const isHigh = schools.every((s) => s.level === '고등학교');
+  const gradeLabel = (g) => `${isHigh ? '고' : '중'}${g}`;
+
+  // ① 학교 카드 — 비교면 나란히
+  const cardW = (bw - 8 * (schools.length - 1)) / schools.length;
+  const cardH = 92;
+  y = _rmEnsure(doc, y, cardH + 12);
+  schools.forEach((s, i) => {
+    const x = ml + i * (cardW + 8);
+    const color = schools.length > 1 ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : C.NAVY;
+    doc.roundedRect(x, y, cardW, cardH, 6).fill(C.LGRAY);
+    doc.rect(x, y, 4, cardH).fill(color);
+    doc.fontSize(11).fillColor(C.BLACK).text(s.name, x + 12, y + 9, { width: cardW - 20, lineBreak: false });
+    doc.fontSize(7).fillColor(C.GRAY).text(s.chips.join(' · '), x + 12, y + 25, { width: cardW - 20, lineBreak: false });
+    const st = s.stats;
+    const cells = [
+      ['재적', _n(st.total, '명'), `${_n(st.g1)}·${_n(st.g2)}·${_n(st.g3)}`],
+      ...(isHigh ? [['1등급 자리', _n(st.seats, '개'), '1학년×10%']] : [['개설 과목', _n(s.subjects, '개'), `3단계 ${_n(s.threeStep)}개`]]),
+      ['학급', _n(st.classes, '개'), 'EDSS'],
+      ['교원', _n(st.teachers, '명'), st.students ? `학생 ${_n(st.students)}명` : ''],
+    ];
+    const cw = (cardW - 24) / cells.length;
+    cells.forEach(([label, val, hint], j) => {
+      const cx = x + 12 + j * cw;
+      doc.fontSize(6.5).fillColor(C.GRAY).text(label, cx, y + 42, { width: cw, lineBreak: false });
+      doc.fontSize(12).fillColor(color).text(val, cx, y + 52, { width: cw, lineBreak: false });
+      doc.fontSize(6.5).fillColor(C.GRAY).text(hint, cx, y + 70, { width: cw, lineBreak: false });
+    });
+  });
+  y += cardH + 10;
+
+  // ② 국·영·수 학년별 A~E 분포 — 학년 → 과목 → (학교별) 막대
+  const grades = [1, 2, 3].filter((g) => schools.some((s) => s.core?.[g]));
+  if (!grades.length) return y;
+  const labelW = 40;
+  const meanW = schools.length > 1 ? 120 : 96;
+  const barW = bw - labelW - meanW - 8;
+  const rowH = 13, gap = 3;
+  // 범례
+  y = _rmEnsure(doc, y, 22);
+  doc.fontSize(9).fillColor(C.BLACK).text(`국어·영어·수학 성취도 분포${data.year ? ` (${data.year})` : ''}`, ml, y);
+  let lx = ml + bw - 5 * 34;
+  for (const k of ['a', 'b', 'c', 'd', 'e']) { doc.rect(lx, y + 2, 7, 7).fill(BAND[k]); doc.fontSize(6.5).fillColor(C.GRAY).text(k.toUpperCase(), lx + 9, y + 1); lx += 34; }
+  y += 16;
+  for (const g of grades) {
+    const fams = ['국어', '영어', '수학'].filter((f) => schools.some((s) => s.core?.[g]?.[f]));
+    const need = 14 + fams.length * (schools.length * (rowH + gap) + 6);
+    y = _rmEnsure(doc, y, need);
+    doc.fontSize(8).fillColor(C.NAVY).text(`${gradeLabel(g)}`, ml, y);
+    doc.moveTo(ml + 22, y + 5).lineTo(ml + bw, y + 5).strokeColor(C.BORDER).lineWidth(0.5).stroke();
+    y += 12;
+    for (const f of fams) {
+      schools.forEach((s, i) => {
+        const b = s.core?.[g]?.[f];
+        const color = schools.length > 1 ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : C.GRAY;
+        if (i === 0) doc.fontSize(7.5).fillColor(C.BLACK).text(f, ml, y + 2, { width: labelW, lineBreak: false });
+        const who = schools.length > 1 ? `${_short(s.name)} · ` : '';
+        if (!b) { doc.fontSize(6.5).fillColor(color).text(`${who}공시 없음`, ml + labelW, y + 3); y += rowH + gap; return; }
+        let x = ml + labelW;
+        for (const k of ['a', 'b', 'c', 'd', 'e']) {
+          const w = Math.max(0, (Number(b[k]) || 0) / 100 * barW);
+          if (w > 0) { doc.rect(x, y, w, rowH).fill(BAND[k]); if (w > 16) doc.fontSize(6).fillColor(C.WHITE).text(`${Math.round(b[k])}`, x + 2, y + 3.5, { width: w - 2, lineBreak: false }); x += w; }
+        }
+        doc.fontSize(6.5).fillColor(color).text(`${who}${_latin(b.subject.replace(/\s*\[.*\]$/, ''))} · 평균 ${_n(b.mean)}`, ml + labelW + barW + 4, y + 3.5, { width: meanW + 4, lineBreak: false });
+        y += rowH + gap;
+      });
+      y += 3;
+    }
+    y += 2;
+  }
+  doc.fontSize(6.5).fillColor(C.GRAY).text('막대 = A~E 성취도 비율(%, 절대평가 90/80/70/60점 기준). 같은 학년은 뒤 학기 값. 종합고는 전체계열→일반계 순.', ml, y, { width: bw });
+  return y + 14;
+}
+
 // 마크다운 보고서 → PDF (고교·중학 공시정보 '입시 해설 보고서' 등 본문이 마크다운 하나인 문서 공용)
 //   { title, subtitle, chips: ['학교: …', …], markdown }
-function generateMarkdownPDF({ title, subtitle, chips = [], markdown }) {
+function generateMarkdownPDF({ title, subtitle, chips = [], markdown, data = null }) {
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margins: { top: 20, bottom: 20, left: 20, right: 20 }, bufferPages: true });
@@ -643,9 +730,9 @@ function generateMarkdownPDF({ title, subtitle, chips = [], markdown }) {
       doc.fontSize(7).fillColor('#94a3b8').text(`작성 ${new Date().toLocaleDateString('ko-KR')} · 자료: 학교알리미 교과별 학업성취(절대평가 A~E 비율)·학년별 재적·EDSS`, ML + 8, 108, { lineBreak: false });
 
       let y = 136;
-      // 나눔고딕에 로마숫자(Ⅰ·Ⅱ·Ⅲ…) 글리프가 없어 '수학Ⅰ' 이 빈칸으로 찍힌다 → 라틴 문자로 바꿔 그린다
-      const ROMAN = { 'Ⅰ': 'I', 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅴ': 'V', 'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X' };
-      const md = String(markdown || '').replace(/[Ⅰ-Ⅹ]/g, (c) => ROMAN[c] || c);
+      if (data) y = _drawReportData(doc, data, ML, y, BODY_W);
+      // 나눔고딕에 로마숫자 글리프가 없어 '수학Ⅰ' 이 빈칸으로 찍힌다 → 라틴 문자로. AI 가 표 칸에 넣는 <br> 은 ' / ' 로.
+      const md = _latin(markdown).replace(/<br\s*\/?>/gi, ' / ');
       y = _rmDrawMarkdown(doc, md, ML, y, BODY_W);
       _drawFooters(doc, ML, PW, MR);
       doc.end();

@@ -21,6 +21,8 @@ export async function ensureSchoolReportTable() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_school_reports_owner ON ef_school_reports(owner_id);`);
+  // 학부모 전송 이력 — 나만의 패파(academy-video) 로 보낸 기록 [{studentName, audience, reportId, at}]
+  await pool.query(`ALTER TABLE ef_school_reports ADD COLUMN IF NOT EXISTS sent JSONB NOT NULL DEFAULT '[]'::jsonb;`);
 }
 
 const COLS = 'id, owner_id, kind, title, school_ids, school_names, focus, created_at, updated_at';
@@ -61,6 +63,13 @@ export async function updateSchoolReport(id, f = {}) {
   params.push(id);
   const { rows } = await getPool().query(`UPDATE ef_school_reports SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING *`, params);
   return rows[0] || null;
+}
+export async function appendSchoolReportSent(id, entry) {
+  const { rows } = await getPool().query(
+    `UPDATE ef_school_reports SET sent = COALESCE(sent, '[]'::jsonb) || $2::jsonb, updated_at = now() WHERE id = $1 RETURNING sent`,
+    [id, JSON.stringify([entry])],
+  );
+  return rows[0]?.sent || [];
 }
 export async function deleteSchoolReport(id) {
   await getPool().query(`DELETE FROM ef_school_reports WHERE id = $1`, [id]);

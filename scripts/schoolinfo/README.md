@@ -101,6 +101,17 @@ Claude 가 할 일(순서):
   "공시 시기입니다" 로 약하게 안내. ✕ 로 닫으면 그 연도 배너만 숨김(localStorage).
 배너가 뜨면 위 '갱신 절차'대로 다시 수집하면 된다(학교알리미 정기 공시는 보통 5월 말).
 
+## 입시 해설 보고서 (2026-09-20)
+
+상세·비교 모달의 `🧭 입시 해설 생성` → 백엔드 `/api/schoolinfo/explain`(AI 본문) + `schoolReportData.buildReportData`(수치 블록 `data`).
+- `data` = 학교 카드(재적·1등급 자리·학급·교원) + 국·영·수 학년별 A~E 분포. **AI 가 아니라 catalog 수치로 결정론적으로** 만들고
+  PDF(`pdfService._drawReportData`)·Word(`docxService.reportDataChildren`)·화면(`SchoolReport.jsx ReportVisual`)·나만의 패파(`ReportVisual.tsx`)가
+  같은 순서·색(A 청록·B 파랑·C 보라·D 노랑·E 빨강, 학교색 4개)으로 그린다. AI 본문은 해석만(원자료 표·HTML 금지).
+- 보관: `ef_school_reports`(선생님별, `snapshot.data`, 전송 이력 `sent`). 내보내기: `/api/school-reports/export` (docx·pdf).
+- 학부모 전송: `📨 학부모에게 보내기` → `/api/school-reports/send` → 나만의 패파 `POST /api/inbound/report` `{student_name, title, md, data, audience, memo}`
+  → 그 학생의 성장 리포트(payload.kind='doc') + 알림. 서버 환경변수 `ACADEMY_VIDEO_INBOUND_KEY`(나만의 패파 선생님 대시보드 '연동 열쇠'),
+  `ACADEMY_VIDEO_URL`(기본 https://academy-video.vercel.app).
+
 ## 출력 파일 구조 (2026-09-20 부터)
 
 2026년 공시 표는 국·영·수 외 전 과목이 들어와 밴드가 학교당 ~76줄(전국 45만 줄, JSON 84MB) 이라 한 파일로는 못 싣는다.

@@ -33,8 +33,9 @@ import { reviewOnce, buildConsensus, applyFixes, VERIFY_KINDS } from './services
 import { generateAnalysisPDF, generateRoadmapPDF, generateMarkdownPDF } from './services/pdfService.js';
 import {
   ensureSchoolReportTable, listSchoolReports, getSchoolReport, getSchoolReportOwner,
-  createSchoolReport, updateSchoolReport, deleteSchoolReport,
+  createSchoolReport, updateSchoolReport, deleteSchoolReport, appendSchoolReportSent,
 } from './services/schoolReportStore.js';
+import { buildReportData } from './services/schoolReportData.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
@@ -1146,7 +1147,12 @@ const SCHOOL_EXPLAIN_SYSTEM = `당신은 한국 고입·대입 컨설팅 전문�
 8. 판단은 반드시 수치를 인용해 근거를 답니다(예: "고1 공통수학1 A 비율 8.7%, 평균 55.2점"). 자료에 없는 것은 지어내지 않고 "공시 없음"으로 씁니다.
 9. 성취도는 시험 난이도와 학교 재량에 크게 좌우되는 지표이므로 한계를 명시하고, 실제 등급컷·수업·프로그램은 학교 설명회·재학생 확인을 권합니다.
 
-[문체] 합니다체, 이모지 금지, 마크다운(## 제목, 표, 목록). 학부모가 읽어도 이해되게 쓰되 근거는 구체적으로. 분량은 A4 2~3장 수준.`;
+[형식 — 중요]
+- 재적·1등급 자리·학급·교원 카드와 국·영·수 학년별 A~E 분포 차트는 시스템이 본문 앞에 자동으로 붙입니다. 본문에서 그 숫자 표를 다시 만들지 마세요.
+  성취도 원자료 표(과목별 A~E 나열)도 넣지 않습니다. 본문은 '해석'에 집중합니다 — 숫자는 문장 속 근거로만 인용합니다.
+- 표는 정성 비교(학생 유형 → 추천 학교 → 이유 같은 것)에만, 3~5줄 이내로 씁니다. 표 칸 안에 줄바꿈·HTML 태그(<br> 등)를 넣지 마세요.
+- 문단은 짧게(2~3문장), 핵심은 글머리표로. 소제목(##, ###)으로 구획을 나눕니다.
+- 합니다체, 이모지 금지, 마크다운(## 제목, 목록). 학부모가 읽어도 이해되게 쓰되 근거는 구체적으로. 분량은 A4 1.5~2장 수준.`;
 
 const SCHOOL_FORMAT_SINGLE = `[출력 구조 — 이 제목 그대로]
 ## 한눈에 보기
@@ -1165,8 +1171,8 @@ const SCHOOL_FORMAT_SINGLE = `[출력 구조 — 이 제목 그대로]
 (자료의 한계와 확인해야 할 것)`;
 
 const SCHOOL_FORMAT_COMPARE = `[출력 구조 — 이 제목 그대로]
-## 비교 요약표
-(학교별 열: 유형/남녀 · 1학년 재적 · 1등급 자리 · 고1(중1) 국·영·수 A 비율과 평균 · 개설 과목 수 · 한 줄 평)
+## 한눈에 보기
+(학교마다 한 줄 평 + 결론 3~4줄. 숫자 요약표는 자동으로 붙으므로 만들지 않음)
 ## 항목별 비교
 ### 내신 경쟁 강도
 ### 1등급 자리와 학교 규모
@@ -1206,11 +1212,19 @@ app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
     const content = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: SCHOOL_EXPLAIN_SYSTEM, userMsg, maxTokens: isCompare ? 10000 : 7000 });
     const names = schools.map((s) => s.schoolName);
     const title = isCompare ? `${names.join(' vs ')} 입시 비교 해설` : `${names[0]} 입시 해설`;
-    sendDone({ success: true, content: String(content || '').trim(), title, kind: isCompare ? 'compare' : 'school', snapshot: { facts, model: submodel, at: new Date().toISOString() } });
+    const data = buildReportData(isCompare ? 'compare' : 'school', schools); // 표·차트용 수치 블록 — 모든 출력이 같은 걸 그린다
+    sendDone({ success: true, content: String(content || '').trim(), title, kind: isCompare ? 'compare' : 'school', data, snapshot: { data, facts, model: submodel, at: new Date().toISOString() } });
   } catch (err) {
     console.error('[schoolinfo/explain] 오류:', err.message);
     sendDone({ success: false, message: err.message });
   }
+});
+
+const ACADEMY_VIDEO_URL = (process.env.ACADEMY_VIDEO_URL || 'https://academy-video.vercel.app').replace(/\/+$/, '');
+const ACADEMY_VIDEO_KEY = process.env.ACADEMY_VIDEO_INBOUND_KEY || '';
+// ⚠ '/api/school-reports/:id' 보다 먼저 — 아니면 'send-config' 가 id 로 잡혀 NaN 조회가 된다
+app.get('/api/school-reports/send-config', requireAuth, (req, res) => {
+  res.json({ success: true, enabled: !!ACADEMY_VIDEO_KEY, target: ACADEMY_VIDEO_URL });
 });
 
 // 해설 보고서 보관 CRUD (선생님별)
@@ -1248,21 +1262,56 @@ app.delete('/api/school-reports/:id', requireAuth, async (req, res) => {
   catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 학부모에게 보내기 — 나만의 패파(academy-video) 성장 리포트로 본문째 발행 ──
+// academy-video 의 POST /api/inbound/report (학원별 연동 열쇠 x-api-key) 에 { student_name, title, md, data, audience, memo } 를 보내면
+// 그 학생의 성장 리포트에 문서(payload.kind='doc') 로 꽂히고 학부모에게 알림톡/푸시가 나간다. 학부모는 나만의 패파 로그인 안에서만 본다.
+// 열쇠는 나만의 패파 선생님 대시보드 '연동 열쇠' 에서 복사해 Railway 환경변수로 넣는다.
+app.post('/api/school-reports/send', requireAuth, async (req, res) => {
+  try {
+    if (!ACADEMY_VIDEO_KEY) return res.status(400).json({ success: false, message: '나만의 패파 연동 열쇠(ACADEMY_VIDEO_INBOUND_KEY)가 서버에 설정돼 있지 않습니다' });
+    const { reportId, title, markdown, data, studentName, audience, memo } = req.body || {};
+    const name = String(studentName || '').trim();
+    if (!name) return res.status(400).json({ success: false, message: '학생 이름이 필요합니다' });
+    if (!markdown?.trim()) return res.status(400).json({ success: false, message: '보낼 내용이 없습니다' });
+    if (reportId) { // 남의 보고서로 보내는 걸 막는다
+      const owner = await getSchoolReportOwner(Number(reportId));
+      if (owner !== null && req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    }
+    const aud = ['student', 'parent', 'both'].includes(audience) ? audience : 'parent';
+    const r = await fetch(`${ACADEMY_VIDEO_URL}/api/inbound/report`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': ACADEMY_VIDEO_KEY }, signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({ items: [{ student_name: name, title: String(title || '학교 입시 해설').slice(0, 150), md: String(markdown), data: data && Array.isArray(data.schools) ? data : undefined, source: '입시파인더 학교 입시 해설', audience: aud, memo: memo ? String(memo).slice(0, 500) : undefined }] }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) return res.status(502).json({ success: false, message: `나만의 패파 응답: ${j.error || `HTTP ${r.status}`}` });
+    const miss = (j.unmatched || [])[0];
+    if (miss) return res.json({ success: false, message: `${miss.student_name || name}: ${miss.reason}` });
+    const created = (j.items || [])[0] || {};
+    let sent = null;
+    if (reportId) sent = await appendSchoolReportSent(Number(reportId), { studentName: name, audience: aud, memo: memo || '', reportId: created.report_id || null, academy: j.academy || null, at: new Date().toISOString() });
+    res.json({ success: true, academy: j.academy, reportId: created.report_id || null, sent });
+  } catch (e) {
+    console.error('[school-reports/send] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // 보고서(수정 중인 본문 그대로) → Word / PDF. 저장 여부와 상관없이 화면이 보낸 내용을 내려준다.
 app.post('/api/school-reports/export', requireAuth, async (req, res) => {
   try {
-    const { title, markdown, format, schoolNames, kind } = req.body || {};
+    const { title, markdown, format, schoolNames, kind, data } = req.body || {};
     if (!markdown?.trim()) return res.status(400).json({ success: false, message: '내용 없음' });
     const safeTitle = String(title || '학교 입시 해설').trim();
     const chips = [kind === 'compare' ? '비교 해설' : '학교 해설', schoolNames ? `학교: ${String(schoolNames).slice(0, 80)}` : ''];
+    const reportData = data && Array.isArray(data.schools) ? data : null;
     if (format === 'pdf') {
-      const pdf = await generateMarkdownPDF({ title: safeTitle, subtitle: '입시-Finder  |  고교·중학 공시정보 입시 해설', chips, markdown });
+      const pdf = await generateMarkdownPDF({ title: safeTitle, subtitle: '입시-Finder  |  고교·중학 공시정보 입시 해설', chips, markdown, data: reportData });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.pdf`);
       return res.end(pdf);
     }
     const { markdownToDocxBuffer } = await import('./services/docxService.js');
-    const buf = await markdownToDocxBuffer(safeTitle, markdown);
+    const buf = await markdownToDocxBuffer(safeTitle, markdown, { reportData });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.docx`);
     res.end(buf);

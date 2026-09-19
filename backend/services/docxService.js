@@ -126,7 +126,80 @@ export function markdownToDocxChildren(markdown) {
   return children;
 }
 
-export async function markdownToDocxBuffer(title, markdown) {
+// ── 학교 입시 해설 보고서 수치 블록(schoolReportData.buildReportData) → 워드 표 ──
+// PDF(pdfService._drawReportData)·화면과 같은 색·순서. 막대 차트는 워드에 그림 없이 그리기 어렵기 때문에
+// A~E 비율만큼 폭을 나눈 5칸짜리 표에 색을 채워 막대처럼 보이게 한다(워드·한글 모두 열림).
+const BAND_HEX = { a: '14B8A6', b: '3B82F6', c: '8B5CF6', d: 'F59E0B', e: 'EF4444' };
+const SCHOOL_HEX = ['4F46E5', '0D9488', 'D97706', 'E11D48'];
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+const NO_BORDERS = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER };
+const _n = (v, unit = '') => (v === null || v === undefined ? '—' : `${Number(v).toLocaleString('ko-KR')}${unit}`);
+const cellText = (text, opts = {}) => new Paragraph({ alignment: opts.center ? AlignmentType.CENTER : AlignmentType.LEFT, spacing: { before: 0, after: 0 },
+  children: [new TextRun({ text: String(text), bold: !!opts.bold, size: opts.size || 18, color: opts.color })] });
+
+function reportDataChildren(data) {
+  const schools = data?.schools || [];
+  if (!schools.length) return [];
+  const isHigh = schools.every((s) => s.level === '고등학교');
+  const out = [];
+  const many = schools.length > 1;
+
+  // ① 학교 카드 — 학교마다 한 줄(이름·구분 / 수치 4칸)
+  const statRows = schools.map((s, i) => {
+    const color = many ? SCHOOL_HEX[i % SCHOOL_HEX.length] : '1A2744';
+    const st = s.stats;
+    const cells = [
+      ['재적', _n(st.total, '명'), `${_n(st.g1)}·${_n(st.g2)}·${_n(st.g3)}`],
+      ...(isHigh ? [['1등급 자리', _n(st.seats, '개'), '1학년×10%']] : [['개설 과목', _n(s.subjects, '개'), `3단계 ${_n(s.threeStep)}개`]]),
+      ['학급', _n(st.classes, '개'), 'EDSS'],
+      ['교원', _n(st.teachers, '명'), st.students ? `학생 ${_n(st.students)}명` : ''],
+    ];
+    return new TableRow({ children: [
+      new TableCell({ borders: NO_BORDERS, shading: { fill: 'F3F4F6' }, width: { size: 36, type: WidthType.PERCENTAGE }, margins: { top: 80, bottom: 80, left: 120, right: 80 },
+        children: [cellText(s.name, { bold: true, size: 22, color }), cellText(s.chips.join(' · '), { size: 15, color: '6B7280' })] }),
+      ...cells.map(([label, val, hint]) => new TableCell({ borders: NO_BORDERS, shading: { fill: 'F3F4F6' }, width: { size: 16, type: WidthType.PERCENTAGE }, margins: { top: 80, bottom: 80, left: 80, right: 80 },
+        children: [cellText(label, { size: 14, color: '6B7280' }), cellText(val, { bold: true, size: 22, color }), cellText(hint, { size: 13, color: '6B7280' })] })),
+    ] });
+  });
+  out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: statRows }));
+  out.push(new Paragraph({ spacing: { before: 120, after: 60 }, children: [new TextRun({ text: `국어·영어·수학 성취도 분포${data.year ? ` (${data.year})` : ''}`, bold: true, size: 20 })] }));
+  out.push(new Paragraph({ spacing: { after: 80 }, children: ['a', 'b', 'c', 'd', 'e'].flatMap((k) => [
+    new TextRun({ text: '■ ', color: BAND_HEX[k], size: 16 }), new TextRun({ text: `${k.toUpperCase()}   `, size: 14, color: '6B7280' })]) }));
+
+  // ② 학년 → 과목 → (학교별) 막대 표. 한 줄 = [학년·과목 | (학교) | 막대 5칸 | 평균]
+  const grades = [1, 2, 3].filter((g) => schools.some((s) => s.core?.[g]));
+  const rows = [];
+  for (const g of grades) {
+    for (const f of ['국어', '영어', '수학']) {
+      if (!schools.some((s) => s.core?.[g]?.[f])) continue;
+      schools.forEach((s, i) => {
+        const b = s.core?.[g]?.[f];
+        const color = many ? SCHOOL_HEX[i % SCHOOL_HEX.length] : '111827';
+        const label = `${isHigh ? '고' : '중'}${g} ${f}${many ? ` · ${s.name.replace(/(고등|중)학교$/, '')}` : ''}`;
+        const leftW = many ? 24 : 14, rightW = 24, barW = 100 - leftW - rightW; // 세 부분이 합쳐 100% 가 되게
+        const left = new TableCell({ borders: NO_BORDERS, width: { size: leftW, type: WidthType.PERCENTAGE }, margins: { top: 40, bottom: 40, left: 60, right: 60 },
+          children: [cellText(label, { size: 16, bold: true, color })] });
+        if (!b) {
+          rows.push(new TableRow({ children: [left, new TableCell({ borders: NO_BORDERS, columnSpan: 6, children: [cellText('공시 없음', { size: 14, color: '6B7280' })] })] }));
+          return;
+        }
+        const barCells = ['a', 'b', 'c', 'd', 'e'].map((k) => {
+          const pct = Math.max(0, Number(b[k]) || 0);
+          return new TableCell({ borders: NO_BORDERS, shading: { fill: BAND_HEX[k] }, width: { size: Math.max(0.5, pct / 100 * barW), type: WidthType.PERCENTAGE }, margins: { top: 40, bottom: 40, left: 40, right: 20 },
+            children: [cellText(pct >= 8 ? `${Math.round(pct)}` : '', { size: 13, color: 'FFFFFF', bold: true })] });
+        });
+        const right = new TableCell({ borders: NO_BORDERS, width: { size: rightW, type: WidthType.PERCENTAGE }, margins: { top: 40, bottom: 40, left: 80, right: 40 },
+          children: [cellText(`${b.subject.replace(/\s*\[.*\]$/, '')} · 평균 ${_n(b.mean)}`, { size: 14, color: '6B7280' })] });
+        rows.push(new TableRow({ children: [left, ...barCells, right] }));
+      });
+    }
+  }
+  if (rows.length) out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
+  out.push(new Paragraph({ spacing: { before: 60, after: 200 }, children: [new TextRun({ text: '막대 = A~E 성취도 비율(%, 절대평가 90/80/70/60점 기준). 같은 학년은 뒤 학기 값. 종합고는 전체계열→일반계 순.', size: 14, color: '6B7280' })] }));
+  return out;
+}
+
+export async function markdownToDocxBuffer(title, markdown, { reportData = null } = {}) {
   const children = [];
   if (title) {
     children.push(new Paragraph({
@@ -135,7 +208,8 @@ export async function markdownToDocxBuffer(title, markdown) {
       children: [new TextRun({ text: title, bold: true, size: 36 })],
     }));
   }
-  children.push(...markdownToDocxChildren(markdown));
+  if (reportData) children.push(...reportDataChildren(reportData));
+  children.push(...markdownToDocxChildren(String(markdown || '').replace(/<br\s*\/?>/gi, ' / ')));
 
   const doc = new Document({
     numbering: {
