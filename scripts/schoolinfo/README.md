@@ -61,3 +61,25 @@ bands[]   = { grade, semester, subject, credit, family(국어|영어|수학|null
   학교가 한 칸씩 건너뛰어진다(2026-09-19 실제 발생).
 - localStorage 는 학교당 1~2KB(그리드) 라 수백 곳 들어가지만, 원문 HTML 을 넣으면 12곳에서 꽉 찬다.
 - 시군구 개편(인천 서구→서해구 등)으로 이름이 바뀌므로 catalog 매칭은 학교명+시도 우선.
+
+## 다른 PC 에서 이어서 수집하기 (원장 안내)
+
+원본(`out/school-list.json`, `out/school-info.json`, `out/achievement-raw/*.json`, `out/achievement-skipped.json`)은 커밋돼 있다.
+집 PC 에서 Claude Code 를 `entrance-finder` 폴더로 열고 이렇게 말하면 된다:
+
+> "scripts/schoolinfo/README.md 읽고, 경기도 고등학교 교과별 학업성취 수집을 이어서 해줘. 보안문자는 내가 칠게."
+
+Claude 가 할 일(순서):
+1. `git pull` — 다른 PC 가 올린 원본을 받는다.
+2. 큐 = `out/school-list.json` 의 경기도 고등학교 − `out/achievement-raw/` 에 있는 id − `out/achievement-skipped.json` 의 id.
+3. 내장 브라우저로 `https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=<큐 첫 학교 uuid>` 를 열고
+   `captcha-runner.js` 를 javascript_tool 로 주입(주석 제거본 6KB) + 큐를 `window.__Q` 로 3덩이 나눠 넣고 `SI.start(q, 2026)`.
+   (페이지에서 localhost 로 fetch 는 막혀 있어 큐를 직접 붙여 넣어야 한다.)
+4. 원장이 숫자를 치는 동안 `JSON.stringify(window.SI._state.done.slice(a,b))` 로 꺼내 `save-toolresult.py <결과파일>` 로 저장.
+   결과가 커도 tool-results 파일로 떨어지므로 30~50곳씩 꺼내도 된다. 공시제외로 건너뛴 학교는 `SI._state.failed` 에서 읽어
+   `achievement-skipped.json` 에 추가.
+5. 끝나면 `node build-catalog.mjs` → `frontend/public/data/school-catalog.json.gz` 갱신 → 커밋·푸시(원본 포함).
+   아티팩트(HTML 단독 페이지) 갱신은 이 저장소를 처음 만든 세션에서만 같은 URL 로 재발행되므로, 다른 PC 에서는
+   `standalone/` 를 새 아티팩트로 올리거나 학원 PC 세션에 맡긴다.
+
+진행 현황(2026-09-19 학원 PC): 부천 28 + 강릉고 1 + 경기 90곳 = 119곳 수집. 경기 고교 남은 큐 ≈ 380곳(가나다순 김포 '양곡고'부터).

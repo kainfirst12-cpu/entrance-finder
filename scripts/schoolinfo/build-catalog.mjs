@@ -14,6 +14,8 @@ import { loadAll } from './parse-achievement.mjs';
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 const ROOT = path.resolve(here, '..', '..');
 const CATALOG = path.join(ROOT, 'frontend', 'public', 'data', 'school-catalog.json.gz');
+// 바탕은 항상 원본(bucheon-schoolinfo 2024학년도) 이다 — 출력물을 다시 바탕으로 쓰면 잘못 붙은 값이 굳는다
+const BASE = path.join(here, 'out', 'base-catalog-2024.json.gz');
 const args = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 const OUT = opt('--out') || CATALOG;
@@ -23,9 +25,12 @@ const TYPE_BY_CODE = { '01': '일반고등학교', '02': '특수목적고등학�
 const norm = (s) => String(s || '').replace(/\s+/g, '').replace(/[·ㆍ]/g, '');
 // 시군구 이름은 개편으로 바뀐다(인천 서구→서해구 등). 학교명+시도 로 먼저 맞추고, 겹치면 시군구까지 본다.
 function keyOf(level, sido, name) { return `${level}|${norm(sido)}|${norm(name)}`; }
+function keyOf2(level, sido, sigungu, name) { return `${level}|${norm(sido)}|${norm(sigungu)}|${norm(name)}`; }
+// 같은 시도에 같은 이름의 학교가 11쌍 있다(중학교 분교·캠퍼스 등) — 시군구까지 맞는 게 있으면 그걸 우선한다
+function findHit(byKey, byKey2, level, sido, sigungu, name) { return byKey2.get(keyOf2(level, sido, sigungu, name)) || byKey.get(keyOf(level, sido, name)) || null; }
 
 function loadCatalog() {
-  const raw = fs.readFileSync(CATALOG);
+  const raw = fs.readFileSync(fs.existsSync(BASE) ? BASE : CATALOG);
   const txt = raw[0] === 0x1f && raw[1] === 0x8b ? zlib.gunzipSync(raw).toString('utf8') : raw.toString('utf8');
   return JSON.parse(txt);
 }
@@ -54,9 +59,10 @@ async function loadEnrollment(file) {
 
 async function main() {
   const cat = loadCatalog();
-  const byKey = new Map();
-  for (const s of cat.schools) byKey.set(keyOf(s.schoolLevel, s.sido, s.schoolName), s);
-  const byCode = new Map(cat.schools.map((s) => [String(s.schulCode || '').replace(/^\D+/, ''), s]));
+  const byKey = new Map(), byKey2 = new Map();
+  for (const s of cat.schools) { byKey.set(keyOf(s.schoolLevel, s.sido, s.schoolName), s); byKey2.set(keyOf2(s.schoolLevel, s.sido, s.sigungu, s.schoolName), s); }
+  // 학교코드로는 맞추지 않는다 — catalog 의 S0900xxxxx 와 학교알리미 SHL_CD J1000xxxxx 는 체계가 달라 숫자만 비교하면
+  // 다른 시도의 엉뚱한 학교에 붙는다(2026-09-19: 경기항공고가 강원 학교에 붙어 학교정보가 덮였다).
 
   // ② 학교 목록(있으면) — 새 학교 추가 + 설립/유형 보정
   const listFile = path.join(here, 'out', 'school-list.json');
@@ -65,14 +71,14 @@ async function main() {
   let added = 0;
   for (const s of list) {
     const k = keyOf(s.schoolLevel, s.sido, s.schoolName);
-    let hit = byKey.get(k) || byCode.get(String(s.shlCd || '').replace(/^\D+/, ''));
+    let hit = findHit(byKey, byKey2, s.schoolLevel, s.sido, s.sigungu, s.schoolName);
     if (hit) { hit.shlIdfCd = s.shlIdfCd; if (!hit.fond && s.fond) hit.fond = s.fond; continue; }
     const entry = {
       id: s.shlCd || s.shlIdfCd, schulCode: s.shlCd || null, shlIdfCd: s.shlIdfCd, schoolName: s.schoolName, schoolLevel: s.schoolLevel,
       sido: s.sido, sigungu: s.sigungu, schoolType: s.schoolLevel === '고등학교' ? (TYPE_BY_CODE[s.hshKndScCd] || '고등학교') : '중학교',
       gender: null, fond: s.fond, enrollment: null, grade1Seats: null, sourceFile: null, bands: [], edss: null, address: s.address || null,
     };
-    cat.schools.push(entry); byKey.set(k, entry); added++;
+    cat.schools.push(entry); byKey.set(k, entry); byKey2.set(keyOf2(s.schoolLevel, s.sido, s.sigungu, s.schoolName), entry); added++;
   }
 
   // ②-b 학교정보 팝업(fetch-school-info) — 설립·유형·성별·현재 학생수·교원수. 새로 추가된 학교는 이걸로 빈칸을 채운다.
@@ -98,7 +104,7 @@ async function main() {
   for (const p of parsed) {
     const meta = listById.get(p.id);
     let hit = null;
-    if (meta) hit = byKey.get(keyOf(meta.schoolLevel, meta.sido, meta.schoolName));
+    if (meta) hit = findHit(byKey, byKey2, meta.schoolLevel, meta.sido, meta.sigungu, meta.schoolName);
     if (!hit) hit = cat.schools.find((s) => s.shlIdfCd === p.id) || cat.schools.find((s) => norm(s.schoolName) === norm(p.name));
     if (!hit) { missing.push(p.name); continue; }
     if (!p.bands.length) continue;

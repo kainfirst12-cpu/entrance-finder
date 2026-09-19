@@ -26,3 +26,10 @@ backend/data/ratio/
 
 # 학생 분석 리포트(개인정보) — 커밋 금지
 *_분석결과.*
+
+# 고교·중학 공시정보 수집 원본 — 다른 PC 에서 이어서 수집하려면 필요
+!scripts/schoolinfo/out/school-list.json
+!scripts/schoolinfo/out/school-info.json
+!scripts/schoolinfo/out/achievement-skipped.json
+!scripts/schoolinfo/out/achievement-raw/*.json
+!scripts/schoolinfo/out/base-catalog-2024.json.gz

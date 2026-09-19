@@ -1,2 +1,8 @@
-out/
+# out/ 는 원본 수집물 — 다른 PC 에서 이어서 하려면 이 넷은 공유해야 해서 커밋한다
+out/*
+!out/school-list.json
+!out/school-info.json
+!out/achievement-skipped.json
+!out/achievement-raw/
 standalone/data/school-catalog.js
+!out/base-catalog-2024.json.gz
