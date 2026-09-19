@@ -91,10 +91,25 @@ Claude 가 할 일(순서):
    아티팩트(HTML 단독 페이지) 갱신은 이 저장소를 처음 만든 세션에서만 같은 URL 로 재발행되므로, 다른 PC 에서는
    `standalone/` 를 새 아티팩트로 올리거나 학원 PC 세션에 맡긴다.
 
+### 채팅으로 보안문자 치기 (`chat-collect.mjs`) — 세션이 schoolinfo 로 나갈 수 있을 때만
+브라우저 없이 Node 만으로 공시항목 44 를 받아 온다. 보안문자 이미지는 파일로 떨어뜨려 채팅에 띄우고, 사람은 숫자만 답한다.
+```bash
+node chat-collect.mjs probe   <uuid>          # 팝업+fragment 를 out/probe/ 에 받아 폼·이미지·함수를 훑는다(첫 연결 확인용)
+node chat-collect.mjs captcha <uuid> [학교명]  # 보안문자 → out/captcha.png, 대기 상태는 out/chat-session.json
+node chat-collect.mjs answer  <숫자>          # 제출 → 표가 오면 out/achievement-raw/<id>.json 저장
+node chat-collect.mjs selftest                # 표 격자 펼치기만 오프라인 점검
+```
+쿠키·대기 학교는 `out/chat-session.json` 하나에 들고 다닌다. 요청·응답은 euc-kr(폼 인코딩도 직접 만든다).
+**실제 엔드포인트로 돌려 본 적은 아직 없다** — 보안문자 제출 파라미터는 `probe` 가 찍어 주는 폼을 보고 맞춰야 한다.
+학교마다 사람 왕복이 한 번씩 필요하므로(묶어도 5~10곳) 크롬에서 직접 치는 것보다 느리다.
+
 ### 웹/클라우드 Claude Code 에서는 수집이 안 된다 (2026-09-19 확인)
 claude.ai/code 같은 원격 세션은 바깥으로 나가는 주소가 조직 정책으로 걸러진다 —
 `www.schoolinfo.go.kr:443` 은 CONNECT 403(`connect_rejected`) 으로 막혀 curl·Playwright·내장 브라우저 모두 못 연다.
-게다가 보안문자를 칠 사람이 그 컨테이너 화면 앞에 없다. 그래서 **수집(2~4단계)은 브라우저가 있는 PC 에서만** 한다.
+게다가 보안문자를 칠 사람이 그 컨테이너 화면 앞에 없다. 그래서 기본 환경에서는 **수집(2~4단계)을 브라우저가 있는 PC 에서만** 한다.
+(환경 네트워크 정책에서 `www.schoolinfo.go.kr` 을 허용하면 위 `chat-collect.mjs` 로 채팅에서도 된다 —
+claude.ai/code 환경 설정에서 정책을 바꾸고 **그 환경으로 세션을 새로 열어야** 한다. 지금 쓰는 컨테이너의 정책은 도중에 안 바뀐다.
+설명: https://code.claude.com/docs/en/claude-code-on-the-web )
 원격 세션이 대신 해 줄 수 있는 것: 큐·붙여넣기 파일 만들기(`make-queue.mjs`), 받아온 결과 되넣기(`ingest-export.mjs`),
 `parse-achievement.mjs`·`build-catalog.mjs` 조립, 커밋·푸시. 즉 **원장 PC 크롬에서 숫자만 치고**,
 받은 JSON 파일을 세션에 올려 주면 나머지는 원격 세션이 한다.
