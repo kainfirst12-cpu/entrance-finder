@@ -250,14 +250,14 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
               <div style={S.badges}>
                 {s.gender && <span style={S.badge}>{s.gender}</span>}
                 {s.fond && <span style={S.badge}>{s.fond}</span>}
-                {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년)</span>}
+                {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년, 2025 공시)</span>}
                 {s.enrollment?.grade1 == null && s.current?.students != null && <span style={S.badgeDim}>학생 {s.current.students}명 · 교원 {s.current.teachers ?? '—'}명 (2026 학교정보)</span>}
               </div>
               {isHigh && seats !== null && (
                 <div style={S.seats}>1학년 {s.enrollment.grade1}명 중 1등급권 <b>{seats}자리</b> <span style={S.dim}>· 5등급제 상위 10% 가정</span></div>
               )}
               {s.edss && (s.edss.classes !== null || s.edss.teachers !== null) && (
-                <div style={S.dim}>{s.edss.classes !== null ? `${s.edss.classes}학급` : ''}{s.edss.classes !== null && s.edss.teachers !== null ? ' · ' : ''}{s.edss.teachers !== null ? `교원 ${s.edss.teachers}명` : ''}</div>
+                <div style={S.dim}>{s.edss.classes !== null ? `${s.edss.classes}학급` : ''}{s.edss.classes !== null && (s.current?.teachers ?? s.edss.teachers) !== null ? ' · ' : ''}{(s.current?.teachers ?? s.edss.teachers) != null ? `교원 ${s.current?.teachers ?? s.edss.teachers}명` : ''}</div>
               )}
               <div style={S.bandTitle}>
                 {b ? <>{isHigh ? '고' : '중'}{grade} {b.subject} · {b.year} {b.semester}학기 · A <b>{pct(b.a)}</b> · 평균 <b>{dec1(b.mean)}</b></> : <span style={S.dim}>{grade}학년 {subject} 성취도 공시 없음</span>}
@@ -362,10 +362,13 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare, explain }
         </div>
 
         <div style={S.statGrid}>
-          <Stat label="전체 재적" value={s.enrollment ? `${num(s.enrollment.total)}명` : '—'} hint={s.enrollment ? `${s.enrollment.grade1 ?? '—'}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)` : '재적 공시 없음'} />
-          {isHigh && <Stat label="1등급권 자리" value={seats === null ? '—' : `${seats}개`} hint="1학년 인원 × 10% (2022 교육과정 5등급제, 반올림)" />}
+          {/* 학년별 재적은 학교알리미 공개용데이터(2025년 공시) — 학교정보 팝업(2026)의 현재 학생수와 한 해 차이가 난다. 어느 해 숫자인지 적는다. */}
+          <Stat label="학년별 재적 (2025 공시)" value={s.enrollment?.grade1 != null ? `${num(s.enrollment.total)}명` : '—'} hint={s.enrollment?.grade1 != null ? `${s.enrollment.grade1 ?? '—'}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)${s.current?.students != null && s.current.students !== s.enrollment.total ? ` · 2026 현재 ${num(s.current.students)}명` : ''}` : '학년별 재적 공시 없음'} />
+          {isHigh && <Stat label="1등급권 자리" value={seats === null ? '—' : `${seats}개`} hint="2025 공시 1학년 인원 × 10% (2022 교육과정 5등급제, 반올림)" />}
           <Stat label="학급 수" value={s.edss?.classes != null ? `${s.edss.classes}학급` : '—'} hint={s.edss ? `${s.edss.classGrade1 ?? '—'}·${s.edss.classGrade2 ?? '—'}·${s.edss.classGrade3 ?? '—'} (1·2·3학년) · EDSS 2025` : 'EDSS 미매칭'} />
-          <Stat label="교원 수" value={s.edss?.teachers != null ? `${s.edss.teachers}명` : '—'} hint={s.edss?.staff != null ? `직원 ${s.edss.staff}명` : 'EDSS 2025'} />
+          {/* 교원 수: 학교알리미 학교정보(2026)가 최신. EDSS(2025 조사)는 한 해 전 값이라 힌트로만 — 가곡고 7명(EDSS) vs 8명(학교알리미) 같은 차이가 그것이다. */}
+          <Stat label="교원 수" value={s.current?.teachers != null ? `${num(s.current.teachers)}명` : s.edss?.teachers != null ? `${s.edss.teachers}명` : '—'}
+            hint={s.current?.teachers != null ? `학교알리미 학교정보(2026)${s.edss?.teachers != null ? ` · EDSS 2025: ${s.edss.teachers}명${s.edss.staff != null ? `·직원 ${s.edss.staff}명` : ''}` : ''}` : s.edss ? `EDSS 2025${s.edss.staff != null ? ` · 직원 ${s.edss.staff}명` : ''}` : 'EDSS 미매칭'} />
           <Stat label="입학생 / 졸업생" value={s.edss ? `${s.edss.entrants ?? '—'} / ${s.edss.graduates ?? '—'}` : '—'} hint="EDSS 조사년도 기준" />
           {s.current && <Stat label="현재 학생 · 교원" value={`${num(s.current.students)}명 · ${num(s.current.teachers)}명`} hint={`남 ${num(s.current.male)} · 여 ${num(s.current.female)} · 학교알리미 학교정보(2026)${s.current.founded ? ` · 개교 ${s.current.founded}` : ''}`} />}
         </div>
@@ -433,7 +436,7 @@ function CompareModal({ schools, subject, grade, onClose, explain }) {
     { label: '전체 재적', get: (s) => (s.enrollment ? `${num(s.enrollment.total)}명` : '—') },
     { label: '1학년 재적', get: (s) => (s.enrollment?.grade1 != null ? `${s.enrollment.grade1}명` : '—') },
     ...(isHigh ? [{ label: '1등급권 자리', get: (s) => (seatsOf(s) === null ? '—' : `${seatsOf(s)}개`) }] : []),
-    { label: '학급 · 교원', get: (s) => (s.edss ? `${s.edss.classes ?? '—'}학급 · ${s.edss.teachers ?? '—'}명` : '—') },
+    { label: '학급 · 교원', get: (s) => `${s.edss?.classes ?? '—'}학급 · ${s.current?.teachers ?? s.edss?.teachers ?? '—'}명` },
   ];
   const bandRows = [];
   for (const fam of SUBJECTS) {

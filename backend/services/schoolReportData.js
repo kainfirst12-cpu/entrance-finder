@@ -41,7 +41,7 @@ export function buildReportData(kind, schools) {
       stats: {
         g1: e.grade1 ?? null, g2: e.grade2 ?? null, g3: e.grade3 ?? null, total: e.total ?? null,
         seats: s.schoolLevel === '고등학교' && e.grade1 ? Math.round(e.grade1 * 0.1) : null,
-        classes: s.edss?.classes ?? null, teachers: s.edss?.teachers ?? s.current?.teachers ?? null,
+        classes: s.edss?.classes ?? null, teachers: s.current?.teachers ?? s.edss?.teachers ?? null, // 학교알리미 학교정보(2026)가 EDSS(2025)보다 최신
         students: s.current?.students ?? null,
       },
       core,
