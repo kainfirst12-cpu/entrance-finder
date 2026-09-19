@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { API_BASE } from '../apiBase';
 import { mdPreview } from '../mdPreview';
+import { parseReport, stripStructured } from '../reportMarkdown';
 
 // 고교·중학 공시정보 → 입시·진학 관점 해설 보고서
 //   - explainSchools(): 학교 1곳 또는 비교함(2~4곳)의 공시 수치를 백엔드 /api/schoolinfo/explain 에 보내 AI 해설(마크다운)을 받는다
@@ -111,6 +112,98 @@ export function ReportVisual({ data }) {
         </div>
       ))}
       <div style={V.note}>막대 = A~E 성취도 비율(%, 절대평가 90/80/70/60점 기준). 같은 학년은 뒤 학기 값. 종합고는 전체계열→일반계 순.</div>
+      <TrendTable data={data} />
+    </div>
+  );
+}
+
+// 학년별 추이 — 과목(×학교) × 학년, 칸 바탕 농도 = A 비율(상위권 두께)
+function TrendTable({ data }) {
+  const schools = data?.schools || [];
+  const many = schools.length > 1;
+  const isHigh = schools.every((s) => s.level === '고등학교');
+  const grades = [1, 2, 3].filter((g) => schools.some((s) => s.core?.[g]));
+  const rows = [];
+  for (const f of ['국어', '영어', '수학']) schools.forEach((s, i) => { if (grades.some((g) => s.core?.[g]?.[f])) rows.push({ f, s, i }); });
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={V.chartHead}><span>학년별 추이 — A 비율(상위권 두께)과 평균</span></div>
+      <table style={V.trend}>
+        <thead><tr><th style={V.trendTh} /> {grades.map((g) => <th key={g} style={V.trendTh}>{isHigh ? '고' : '중'}{g}</th>)}</tr></thead>
+        <tbody>
+          {rows.map(({ f, s, i }) => (
+            <tr key={`${f}-${i}`}>
+              <td style={{ ...V.trendTd, fontWeight: 700, color: many ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : 'var(--text)', whiteSpace: 'nowrap' }}>{many ? `${f} · ${shortName(s.name)}` : f}</td>
+              {grades.map((g) => { const b = s.core?.[g]?.[f]; const t = b ? Math.min(1, (Number(b.a) || 0) / 40) : 0;
+                return <td key={g} style={{ ...V.trendTd, textAlign: 'center', background: b ? `rgba(45,212,191,${0.08 + 0.42 * t})` : 'transparent' }}>{b ? `A ${fmtN(b.a)}% · 평균 ${fmtN(b.mean)}${b.e === null || b.e === undefined ? '' : ` · E ${fmtN(b.e)}%`}` : '—'}</td>; })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── 본문 구조 서식([지표]·[전형]·유리/불리 글머리표) → 스코어카드·막대·표. 나머지 줄은 mdPreview 로 ──
+const Dots = ({ score, color }) => <span style={{ color, letterSpacing: 1 }}>{'●'.repeat(Math.round(score))}<span style={{ opacity: 0.35 }}>{'●'.repeat(5 - Math.round(score))}</span> <span style={{ fontSize: 10, opacity: 0.8 }}>{score}/5</span></span>;
+export function StructuredBody({ content, data }) {
+  const rep = parseReport(content);
+  const schools = data?.schools || [];
+  const many = schools.length > 1;
+  const names = many ? schools.map((s) => shortName(s.name)) : [null];
+  const colorOf = (i) => (many ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : 'var(--accent)');
+  const whoIdx = (who) => Math.max(0, schools.findIndex((s) => who && (shortName(s.name).includes(who) || who.includes(shortName(s.name)))));
+  return (
+    <div>
+      {rep.sections.map((sec, si) => {
+        const isFav = /유리/.test(sec.title) && !/불리/.test(sec.title), isUnfav = /불리/.test(sec.title);
+        const prose = stripStructured(sec.lines.filter((l) => !((isFav || isUnfav) && /^\s*[-*•]\s+/.test(l))).join('\n'));
+        const inds = rep.indicators.filter((x) => x.section === sec.title);
+        const trs = rep.tracks.filter((x) => x.section === sec.title);
+        const who = isFav ? rep.favorable : isUnfav ? rep.unfavorable : [];
+        return (
+          <div key={si}>
+            {sec.title && <div dangerouslySetInnerHTML={{ __html: mdPreview(`${'#'.repeat(sec.level)} ${sec.title}`) }} />}
+            {who.length > 0 && (
+              <div style={{ margin: '6px 0 10px' }}>
+                {who.map((it, k) => (
+                  <div key={k} style={{ ...V.whoRow, borderLeftColor: isFav ? '#2dd4bf' : '#f87171', background: isFav ? 'rgba(45,212,191,0.08)' : 'rgba(248,113,113,0.08)' }}>
+                    <div style={{ ...V.whoName, color: isFav ? '#2dd4bf' : '#f87171' }}>{it.who}</div>
+                    <div style={V.whoWhy}>{it.why}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {trs.length > 0 && (
+              <div style={{ margin: '6px 0 10px' }}>
+                <div style={V.smallHead}>전형별 적합도</div>
+                {trs.map((t, k) => { const i = many ? whoIdx(t.who) : 0; const color = colorOf(i); return (
+                  <div key={k} style={V.trackRow}>
+                    {many && <div style={{ ...V.trackWho, color }}>{t.who || names[i]}</div>}
+                    {t.scores.slice(0, 3).map((sc, j) => (
+                      <div key={j} style={V.trackCell}><span style={V.trackLabel}>{sc.who}</span><span style={V.trackBar}><span style={{ ...V.trackFill, width: `${sc.score / 5 * 100}%`, background: color }} /></span><span style={V.trackScore}>{sc.score}/5</span></div>
+                    ))}
+                  </div>
+                ); })}
+              </div>
+            )}
+            <div dangerouslySetInnerHTML={{ __html: mdPreview(prose) }} />
+            {inds.length > 0 && (
+              <div style={V.scorecard}>
+                {many && <div style={{ ...V.scoreRow, fontSize: 11 }}><span /> {names.map((n, i) => <span key={i} style={{ color: colorOf(i), fontWeight: 700 }}>{n}</span>)}<span /></div>}
+                {inds.map((ind, k) => (
+                  <div key={k} style={{ ...V.scoreRow, gridTemplateColumns: `110px repeat(${names.length}, 96px) minmax(0, 1fr)` }}>
+                    <span style={V.scoreLabel}>{ind.label}</span>
+                    {names.map((n, i) => { const sc = many ? ind.scores.find((x) => x.who && (n.includes(x.who) || x.who.includes(n))) || ind.scores[i] : ind.scores[0]; return <span key={i}>{sc ? <Dots score={sc.score} color={colorOf(i)} /> : '—'}</span>; })}
+                    <span style={V.scoreNote}>{ind.note}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -135,6 +228,24 @@ const V = {
   seg: { fontSize: 9, color: '#0b1220', fontWeight: 700, paddingLeft: 3, lineHeight: '14px', overflow: 'hidden', whiteSpace: 'nowrap' },
   barMeta: { fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   note: { fontSize: 10.5, color: 'var(--text3)', marginTop: 6 },
+  trend: { width: '100%', borderCollapse: 'separate', borderSpacing: 2, fontSize: 11.5 },
+  trendTh: { background: 'var(--surface2)', color: 'var(--accent)', fontWeight: 800, padding: '4px 6px', borderRadius: 4, fontSize: 11 },
+  trendTd: { padding: '5px 6px', borderRadius: 4, color: 'var(--text)' },
+  scorecard: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', margin: '8px 0 12px' },
+  scoreRow: { display: 'grid', gridTemplateColumns: '110px 96px minmax(0, 1fr)', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid var(--border)' },
+  scoreLabel: { fontSize: 12.5, fontWeight: 700, color: 'var(--text)' },
+  scoreNote: { fontSize: 11, color: 'var(--text3)' },
+  whoRow: { display: 'grid', gridTemplateColumns: '220px minmax(0, 1fr)', gap: 10, padding: '7px 10px', borderLeft: '3px solid', borderRadius: 6, marginBottom: 4 },
+  whoName: { fontSize: 12.5, fontWeight: 800 },
+  whoWhy: { fontSize: 12.5, color: 'var(--text)' },
+  smallHead: { fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 4 },
+  trackRow: { display: 'flex', gap: 14, alignItems: 'center', marginBottom: 5, flexWrap: 'wrap' },
+  trackWho: { width: 56, fontSize: 12, fontWeight: 800 },
+  trackCell: { display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 180px' },
+  trackLabel: { fontSize: 11, width: 62, color: 'var(--text)' },
+  trackBar: { flex: 1, height: 9, borderRadius: 5, background: 'var(--surface2)', overflow: 'hidden', display: 'block' },
+  trackFill: { display: 'block', height: '100%', borderRadius: 5 },
+  trackScore: { fontSize: 10.5, color: 'var(--text3)', width: 26 },
 };
 
 export async function explainSchools({ kind, schools, focus, apiKey, aiGroup, selectedModel }) {
@@ -243,7 +354,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
         ) : (
           <div style={S.preview}>
             {r.data && <ReportVisual data={r.data} />}
-            <div dangerouslySetInnerHTML={{ __html: mdPreview(r.content) }} />
+            {r.data ? <StructuredBody content={r.content} data={r.data} /> : <div dangerouslySetInnerHTML={{ __html: mdPreview(r.content) }} />}
           </div>
         )}
         {r.sent?.length > 0 && (

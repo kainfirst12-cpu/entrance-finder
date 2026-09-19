@@ -4,6 +4,7 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
   Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle,
 } from 'docx';
+import { parseReport, stripStructured } from './reportMarkdown.js';
 
 // **굵게** 인라인 파싱 → TextRun[]
 function parseInline(text) {
@@ -196,6 +197,92 @@ function reportDataChildren(data) {
   }
   if (rows.length) out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
   out.push(new Paragraph({ spacing: { before: 60, after: 200 }, children: [new TextRun({ text: '막대 = A~E 성취도 비율(%, 절대평가 90/80/70/60점 기준). 같은 학년은 뒤 학기 값. 종합고는 전체계열→일반계 순.', size: 14, color: '6B7280' })] }));
+
+  // ③ 학년별 추이 — 과목(×학교) × 학년, 칸 바탕 농도 = A 비율
+  const trend = [];
+  for (const f of ['국어', '영어', '수학']) schools.forEach((s, i) => { if (grades.some((g) => s.core?.[g]?.[f])) trend.push({ f, s, i }); });
+  if (trend.length) {
+    const tint = (a) => { const t = Math.min(1, (Number(a) || 0) / 40); const mix = (c) => Math.round(255 - (255 - c) * (0.12 + 0.6 * t)); return [mix(0x14), mix(0xb8), mix(0xa6)].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase(); };
+    const thin = { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' };
+    const B = { top: thin, bottom: thin, left: thin, right: thin };
+    out.push(new Paragraph({ spacing: { before: 60, after: 60 }, children: [new TextRun({ text: '학년별 추이 — A 비율(상위권 두께)과 평균', bold: true, size: 20 })] }));
+    const head = new TableRow({ tableHeader: true, children: [new TableCell({ borders: B, shading: { fill: 'F3F4F6' }, children: [cellText('', {})] }),
+      ...grades.map((g) => new TableCell({ borders: B, shading: { fill: 'F3F4F6' }, children: [cellText(`${isHigh ? '고' : '중'}${g}`, { bold: true, size: 16, center: true, color: '1A2744' })] }))] });
+    const trows = trend.map(({ f, s, i }) => new TableRow({ children: [
+      new TableCell({ borders: B, width: { size: many ? 22 : 14, type: WidthType.PERCENTAGE }, children: [cellText(many ? `${f} · ${s.name.replace(/(고등|중)학교$/, '')}` : f, { bold: true, size: 16, color: many ? SCHOOL_HEX[i % SCHOOL_HEX.length] : '111827' })] }),
+      ...grades.map((g) => { const b = s.core?.[g]?.[f]; return new TableCell({ borders: B, shading: { fill: b ? tint(b.a) : 'FAFAFA' },
+        children: [cellText(b ? `A ${_n(b.a)}% · 평균 ${_n(b.mean)}${b.e === null || b.e === undefined ? '' : ` · E ${_n(b.e)}%`}` : '—', { size: 15, center: true })] }); }),
+    ] }));
+    out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [head, ...trows] }));
+    out.push(new Paragraph({ spacing: { after: 160 }, children: [] }));
+  }
+  return out;
+}
+
+// ── 본문 구조 서식([지표]·[전형]·유리/불리) → 워드 표 ──
+const dots = (score) => '●'.repeat(Math.round(score)) + '○'.repeat(5 - Math.round(score));
+const shortName = (n) => String(n || '').replace(/(고등|중)학교$/, '');
+function scorecardTable(indicators, schools) {
+  const many = schools.length > 1;
+  const names = many ? schools.map((s) => shortName(s.name)) : [null];
+  const B = { top: NO_BORDER, bottom: { style: BorderStyle.SINGLE, size: 4, color: 'E5E7EB' }, left: NO_BORDER, right: NO_BORDER };
+  const rows = [];
+  if (many) rows.push(new TableRow({ children: [new TableCell({ borders: B, children: [cellText('', {})] }), ...names.map((n, i) => new TableCell({ borders: B, children: [cellText(n, { bold: true, size: 15, color: SCHOOL_HEX[i % SCHOOL_HEX.length] })] })), new TableCell({ borders: B, children: [cellText('근거', { size: 14, color: '6B7280' })] })] }));
+  for (const ind of indicators) {
+    rows.push(new TableRow({ children: [
+      new TableCell({ borders: B, width: { size: 18, type: WidthType.PERCENTAGE }, children: [cellText(ind.label, { bold: true, size: 16 })] }),
+      ...names.map((n, i) => { const sc = many ? ind.scores.find((x) => x.who && (n.includes(x.who) || x.who.includes(n))) || ind.scores[i] : ind.scores[0];
+        return new TableCell({ borders: B, width: { size: many ? 14 : 18, type: WidthType.PERCENTAGE }, children: [cellText(sc ? `${dots(sc.score)}  ${sc.score}/5` : '—', { size: 17, color: many ? SCHOOL_HEX[i % SCHOOL_HEX.length] : '2563EB' })] }); }),
+      new TableCell({ borders: B, children: [cellText(ind.note, { size: 14, color: '6B7280' })] }),
+    ] }));
+  }
+  return [new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }), new Paragraph({ spacing: { after: 120 }, children: [] })];
+}
+function tracksTable(tracks, schools) {
+  const many = schools.length > 1;
+  const rows = [];
+  for (const t of tracks) {
+    const i = many ? Math.max(0, schools.findIndex((s) => t.who && (shortName(s.name).includes(t.who) || t.who.includes(shortName(s.name))))) : 0;
+    const hex = many ? SCHOOL_HEX[i % SCHOOL_HEX.length] : '2563EB';
+    const cells = [];
+    if (many) cells.push(new TableCell({ borders: NO_BORDERS, width: { size: 12, type: WidthType.PERCENTAGE }, children: [cellText(t.who || shortName(schools[i]?.name), { bold: true, size: 15, color: hex })] }));
+    for (const sc of t.scores.slice(0, 3)) {
+      const on = Math.max(1, Math.round(sc.score / 5 * 100));
+      cells.push(new TableCell({ borders: NO_BORDERS, width: { size: 12, type: WidthType.PERCENTAGE }, children: [cellText(sc.who || '', { size: 14 })] }));
+      cells.push(new TableCell({ borders: NO_BORDERS, shading: { fill: hex }, width: { size: Math.round(on * 0.14), type: WidthType.PERCENTAGE }, children: [cellText('', {})] }));
+      cells.push(new TableCell({ borders: NO_BORDERS, shading: { fill: 'F3F4F6' }, width: { size: Math.round((100 - on) * 0.14), type: WidthType.PERCENTAGE }, children: [cellText(`${sc.score}/5`, { size: 13, color: '6B7280' })] }));
+    }
+    rows.push(new TableRow({ children: cells }));
+  }
+  return [new Paragraph({ spacing: { before: 40, after: 40 }, children: [new TextRun({ text: '전형별 적합도', bold: true, size: 18 })] }), new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }), new Paragraph({ spacing: { after: 120 }, children: [] })];
+}
+function whoTable(items, kind) {
+  const good = kind === 'fav';
+  const accent = good ? '0F9D7A' : 'DC2626', tint = good ? 'ECFDF5' : 'FEF2F2';
+  const B = { top: { style: BorderStyle.SINGLE, size: 6, color: 'FFFFFF' }, bottom: { style: BorderStyle.SINGLE, size: 6, color: 'FFFFFF' }, left: NO_BORDER, right: NO_BORDER };
+  const rows = items.map((it) => new TableRow({ children: [
+    new TableCell({ borders: B, shading: { fill: accent }, width: { size: 1, type: WidthType.PERCENTAGE }, children: [cellText('', {})] }),
+    new TableCell({ borders: B, shading: { fill: tint }, width: { size: 30, type: WidthType.PERCENTAGE }, margins: { top: 60, bottom: 60, left: 100, right: 60 }, children: [cellText(it.who, { bold: true, size: 16, color: accent })] }),
+    new TableCell({ borders: B, shading: { fill: tint }, width: { size: 69, type: WidthType.PERCENTAGE }, margins: { top: 60, bottom: 60, left: 80, right: 80 }, children: [cellText(it.why || '', { size: 16 })] }),
+  ] }));
+  return rows.length ? [new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }), new Paragraph({ spacing: { after: 120 }, children: [] })] : [];
+}
+/** 본문 전체 — 섹션마다 제목을 두고, 구조 서식이 있는 섹션은 표로, 나머지 줄은 마크다운 변환 그대로 */
+function structuredBodyChildren(markdown, data) {
+  const rep = parseReport(markdown);
+  const schools = data?.schools || [];
+  const out = [];
+  for (const sec of rep.sections) {
+    const isFav = /유리/.test(sec.title) && !/불리/.test(sec.title), isUnfav = /불리/.test(sec.title);
+    const prose = stripStructured(sec.lines.filter((l) => !((isFav || isUnfav) && /^\s*[-*•]\s+/.test(l))).join('\n'));
+    if (sec.title) out.push(...markdownToDocxChildren(`${'#'.repeat(sec.level)} ${sec.title}`));
+    const inds = rep.indicators.filter((x) => x.section === sec.title);
+    const trs = rep.tracks.filter((x) => x.section === sec.title);
+    if (isFav || isUnfav) { out.push(...whoTable(isFav ? rep.favorable : rep.unfavorable, isFav ? 'fav' : 'unfav')); out.push(...markdownToDocxChildren(prose)); continue; }
+    if (trs.length) { out.push(...tracksTable(trs, schools)); out.push(...markdownToDocxChildren(prose)); continue; }
+    out.push(...markdownToDocxChildren(prose));
+    if (inds.length) out.push(...scorecardTable(inds, schools));
+  }
   return out;
 }
 
@@ -208,8 +295,9 @@ export async function markdownToDocxBuffer(title, markdown, { reportData = null 
       children: [new TextRun({ text: title, bold: true, size: 36 })],
     }));
   }
-  if (reportData) children.push(...reportDataChildren(reportData));
-  children.push(...markdownToDocxChildren(String(markdown || '').replace(/<br\s*\/?>/gi, ' / ')));
+  const body = String(markdown || '').replace(/<br\s*\/?>/gi, ' / ');
+  if (reportData) { children.push(...reportDataChildren(reportData)); children.push(...structuredBodyChildren(body, reportData)); }
+  else children.push(...markdownToDocxChildren(body));
 
   const doc = new Document({
     numbering: {

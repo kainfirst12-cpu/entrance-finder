@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { parseReport, stripStructured } from './reportMarkdown.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -696,7 +697,121 @@ function _drawReportData(doc, data, ml, y, bw) {
     y += 2;
   }
   doc.fontSize(6.5).fillColor(C.GRAY).text('막대 = A~E 성취도 비율(%, 절대평가 90/80/70/60점 기준). 같은 학년은 뒤 학기 값. 종합고는 전체계열→일반계 순.', ml, y, { width: bw });
-  return y + 14;
+  y += 14;
+
+  // ③ 학년별 추이 히트맵 — 과목(×학교) × 학년, 칸 = A%·평균, 바탕색 농도 = A 비율(상위권 두께)
+  const trendRows = [];
+  for (const f of ['국어', '영어', '수학']) schools.forEach((s, i) => { if (grades.some((g) => s.core?.[g]?.[f])) trendRows.push({ f, s, i }); });
+  if (trendRows.length) {
+    const rowH = 16, lw = schools.length > 1 ? 88 : 44, cw = (bw - lw) / grades.length;
+    y = _rmEnsure(doc, y, 14 + rowH * (trendRows.length + 1) + 10);
+    doc.fontSize(9).fillColor(C.BLACK).text('학년별 추이 — A 비율(상위권 두께)과 평균', ml, y); y += 13;
+    grades.forEach((g, j) => { doc.rect(ml + lw + j * cw, y, cw - 2, rowH).fill(C.LGRAY); doc.fontSize(7.5).fillColor(C.NAVY).text(gradeLabel(g), ml + lw + j * cw, y + 4, { width: cw - 2, align: 'center' }); });
+    y += rowH;
+    trendRows.forEach(({ f, s, i }) => {
+      const color = schools.length > 1 ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : C.BLACK;
+      doc.fontSize(7.5).fillColor(color).text(schools.length > 1 ? `${f} · ${_short(s.name)}` : f, ml, y + 4, { width: lw - 4, lineBreak: false });
+      grades.forEach((g, j) => {
+        const b = s.core?.[g]?.[f]; const x = ml + lw + j * cw;
+        if (!b) { doc.rect(x, y, cw - 2, rowH).fill('#fafafa'); doc.fontSize(6.5).fillColor(C.GRAY).text('—', x, y + 4, { width: cw - 2, align: 'center' }); return; }
+        const t = Math.min(1, (Number(b.a) || 0) / 40); // A 40% 이상이면 가장 진하게
+        doc.rect(x, y, cw - 2, rowH).fillOpacity(0.12 + 0.6 * t).fill(BAND.a).fillOpacity(1);
+        doc.fontSize(7).fillColor(C.BLACK).text(`A ${_n(b.a)}%  ·  평균 ${_n(b.mean)}${b.e === null || b.e === undefined ? '' : `  ·  E ${_n(b.e)}%`}`, x, y + 4.5, { width: cw - 2, align: 'center', lineBreak: false });
+      });
+      y += rowH;
+    });
+    y += 8;
+  }
+  return y;
+}
+
+// ── 본문의 구조 서식([지표]·[전형]·유리/불리 글머리표) 그리기 ──
+function _dot(doc, x, y, r, on, color) { doc.circle(x, y, r).lineWidth(0.6); if (on) doc.fill(color); else doc.strokeColor(color).fillColor(C.WHITE).fillAndStroke(); }
+function _drawScorecard(doc, indicators, schools, ml, y, bw) {
+  if (!indicators.length) return y;
+  const many = schools.length > 1;
+  const names = many ? schools.map((s) => _short(s.name)) : [null];
+  const rowH = many ? 18 + 8 : 18;
+  const labelW = 86, groupW = many ? Math.min(96, (bw - labelW - 120) / names.length) : 72;
+  y = _rmEnsure(doc, y, rowH * indicators.length + 24);
+  doc.roundedRect(ml, y, bw, rowH * indicators.length + 16, 6).fill(C.LGRAY);
+  // 열 머리(비교면 학교 이름)
+  let yy = y + 8;
+  if (many) { names.forEach((n, i) => doc.fontSize(7).fillColor(SCHOOL_COLORS[i % SCHOOL_COLORS.length]).text(n, ml + labelW + i * groupW, yy, { width: groupW, lineBreak: false })); yy += 10; }
+  for (const ind of indicators) {
+    doc.fontSize(8).fillColor(C.BLACK).text(ind.label, ml + 8, yy + 3, { width: labelW - 10, lineBreak: false });
+    names.forEach((n, i) => {
+      const sc = many ? ind.scores.find((x) => x.who && (n.includes(x.who) || x.who.includes(n))) || ind.scores[i] : ind.scores[0];
+      const color = many ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : C.BLUE;
+      const x0 = ml + labelW + i * groupW;
+      for (let d = 0; d < 5; d++) _dot(doc, x0 + 5 + d * 11, yy + 8, 3.6, sc && d < Math.round(sc.score), color);
+      if (sc) doc.fontSize(6.5).fillColor(color).text(`${sc.score}/5`, x0 + 60, yy + 5, { lineBreak: false });
+    });
+    const nx = ml + labelW + names.length * groupW + 4;
+    doc.fontSize(6.8).fillColor(C.GRAY).text(ind.note, nx, yy + 4, { width: ml + bw - nx - 8, height: rowH - 4, ellipsis: true, lineBreak: true });
+    yy += rowH;
+  }
+  return y + rowH * indicators.length + 24;
+}
+function _drawTracks(doc, tracks, schools, ml, y, bw) {
+  if (!tracks.length) return y;
+  const many = schools.length > 1;
+  const rowH = 14;
+  const perRow = 3; // 학생부교과 · 학생부종합 · 정시
+  const nameW = many ? 56 : 0, labelW = 56, gap = 30;
+  const barW = Math.floor((bw - nameW - perRow * (labelW + gap)) / perRow);
+  y = _rmEnsure(doc, y, tracks.length * (rowH + 4) + 14);
+  doc.fontSize(8.5).fillColor(C.BLACK).text('전형별 적합도', ml, y); y += 12;
+  for (const t of tracks) {
+    const i = many ? Math.max(0, schools.findIndex((s) => t.who && (_short(s.name).includes(t.who) || t.who.includes(_short(s.name))))) : 0;
+    const color = many ? SCHOOL_COLORS[i % SCHOOL_COLORS.length] : C.BLUE;
+    if (many) doc.fontSize(7.5).fillColor(color).text(t.who || _short(schools[i]?.name), ml, y + 3, { width: nameW - 4, lineBreak: false });
+    t.scores.slice(0, perRow).forEach((sc, k) => {
+      const x = ml + nameW + k * (labelW + barW + gap);
+      doc.fontSize(7).fillColor(C.BLACK).text(sc.who || '', x, y + 3, { width: labelW - 2, lineBreak: false });
+      doc.roundedRect(x + labelW, y + 2, barW, rowH - 4, 3).fill(C.LGRAY);
+      const w = Math.max(2, barW * (sc.score / 5));
+      doc.roundedRect(x + labelW, y + 2, w, rowH - 4, 3).fill(color);
+      doc.fontSize(6.5).fillColor(C.GRAY).text(`${sc.score}/5`, x + labelW + barW + 3, y + 3, { lineBreak: false });
+    });
+    y += rowH + 4;
+  }
+  return y + 6;
+}
+function _drawWhoTable(doc, items, kind, ml, y, bw) {
+  if (!items.length) return y;
+  const good = kind === 'fav';
+  const accent = good ? '#0f9d7a' : '#dc2626', tint = good ? '#ecfdf5' : '#fef2f2';
+  const whoW = 150;
+  for (const it of items) {
+    const th = Math.max(doc.fontSize(8).heightOfString(it.who, { width: whoW - 16 }), doc.fontSize(8).heightOfString(it.why || '', { width: bw - whoW - 16 })) + 8;
+    y = _rmEnsure(doc, y, th + 3);
+    doc.rect(ml, y, bw, th).fill(tint);
+    doc.rect(ml, y, 3, th).fill(accent);
+    doc.fontSize(8).fillColor(accent).text(it.who, ml + 10, y + 4, { width: whoW - 16 });
+    doc.fontSize(8).fillColor(C.BLACK).text(it.why || '', ml + whoW, y + 4, { width: bw - whoW - 8 });
+    y += th + 3;
+  }
+  return y + 4;
+}
+
+// 본문 전체 — 섹션마다 헤딩을 그리고, 구조 서식이 있는 섹션은 차트·표로, 나머지 줄은 마크다운 그대로
+function _drawStructuredBody(doc, md, data, ml, y, bw) {
+  const rep = parseReport(md);
+  const schools = data?.schools || [];
+  for (const sec of rep.sections) {
+    const isFav = /유리/.test(sec.title) && !/불리/.test(sec.title), isUnfav = /불리/.test(sec.title);
+    // 표로 그린 글머리표(유리/불리)와 [지표]·[전형] 줄은 본문에서 뺀다
+    const prose = stripStructured(sec.lines.filter((l) => !((isFav || isUnfav) && /^\s*[-*•]\s+/.test(l))).join('\n'));
+    if (sec.title) { y = _rmEnsure(doc, y, 90); y = _rmDrawMarkdown(doc, `${'#'.repeat(sec.level)} ${sec.title}`, ml, y, bw); } // 제목만 남고 페이지가 넘어가지 않게
+    const inds = rep.indicators.filter((x) => x.section === sec.title);
+    const trs = rep.tracks.filter((x) => x.section === sec.title);
+    if (isFav || isUnfav) { y = _drawWhoTable(doc, isFav ? rep.favorable : rep.unfavorable, isFav ? 'fav' : 'unfav', ml, y, bw); y = _rmDrawMarkdown(doc, prose, ml, y, bw); continue; }
+    if (trs.length) { y = _drawTracks(doc, trs, schools, ml, y, bw); y = _rmDrawMarkdown(doc, prose, ml, y, bw); continue; }
+    y = _rmDrawMarkdown(doc, prose, ml, y, bw);
+    if (inds.length) y = _drawScorecard(doc, inds, schools, ml, y, bw);
+  }
+  return y;
 }
 
 // 마크다운 보고서 → PDF (고교·중학 공시정보 '입시 해설 보고서' 등 본문이 마크다운 하나인 문서 공용)
@@ -733,7 +848,7 @@ function generateMarkdownPDF({ title, subtitle, chips = [], markdown, data = nul
       if (data) y = _drawReportData(doc, data, ML, y, BODY_W);
       // 나눔고딕에 로마숫자 글리프가 없어 '수학Ⅰ' 이 빈칸으로 찍힌다 → 라틴 문자로. AI 가 표 칸에 넣는 <br> 은 ' / ' 로.
       const md = _latin(markdown).replace(/<br\s*\/?>/gi, ' / ');
-      y = _rmDrawMarkdown(doc, md, ML, y, BODY_W);
+      y = _drawStructuredBody(doc, md, data, ML, y, BODY_W);
       _drawFooters(doc, ML, PW, MR);
       doc.end();
     } catch (err) { reject(err); }

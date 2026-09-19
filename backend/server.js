@@ -1227,7 +1227,8 @@ app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
   const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
   const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
   try {
-    const content = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: SCHOOL_EXPLAIN_SYSTEM, userMsg, maxTokens: isCompare ? 10000 : 7000 });
+    // Claude 5 는 사고 토큰이 max_tokens 를 먼저 먹는다 — 10000 으로는 본문이 '[전형' 에서 잘렸다(2026-09-20). 상한(32000)까지 준다.
+    const content = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: SCHOOL_EXPLAIN_SYSTEM, userMsg, maxTokens: 24000 });
     const names = schools.map((s) => s.schoolName);
     const title = isCompare ? `${names.join(' vs ')} 입시 비교 해설` : `${names[0]} 입시 해설`;
     const data = buildReportData(isCompare ? 'compare' : 'school', schools); // 표·차트용 수치 블록 — 모든 출력이 같은 걸 그린다
