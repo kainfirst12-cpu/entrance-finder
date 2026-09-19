@@ -1,0 +1,256 @@
+<title>전국 고교·중학 공시 탐색</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  :root {
+    --bg:#f5f7f6; --surface:#ffffff; --surface2:#eef2f1; --line:#d8dfdd; --ink:#16232a; --ink2:#55666f; --ink3:#8a979e;
+    --accent:#0f766e; --accent-bg:rgba(15,118,110,.10); --accent-ink:#ffffff; --shadow:0 1px 2px rgba(20,40,40,.06),0 6px 20px rgba(20,40,40,.06);
+    --bA:#14b8a6; --bB:#3b82f6; --bC:#8b5cf6; --bD:#f59e0b; --bE:#ef4444;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0e1620; --surface:#16212e; --surface2:#1c2937; --line:#2a3a48; --ink:#e8eef3; --ink2:#9db0bd; --ink3:#6b7d8a;
+    --accent:#2dd4bf; --accent-bg:rgba(45,212,191,.14); --accent-ink:#0b121b; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+  } }
+  :root[data-theme="dark"] {
+    --bg:#0e1620; --surface:#16212e; --surface2:#1c2937; --line:#2a3a48; --ink:#e8eef3; --ink2:#9db0bd; --ink3:#6b7d8a;
+    --accent:#2dd4bf; --accent-bg:rgba(45,212,191,.14); --accent-ink:#0b121b; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.28);
+  }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans KR","Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif; font-size:14px; line-height:1.5; }
+  .wrap { max-width:1360px; margin:0 auto; padding-block:20px 40px; padding-inline:16px; }
+  h1 { font-size:22px; font-weight:700; margin:0; letter-spacing:-.01em; text-wrap:balance }
+  .lead { color:var(--ink2); margin:4px 0 0; font-size:13px }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap }
+  .tabs { display:flex; gap:4px; background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:4px }
+  .tabs button { background:transparent; border:0; color:var(--ink2); font:inherit; font-weight:700; padding:7px 14px; border-radius:7px; cursor:pointer }
+  .tabs button[aria-pressed="true"] { background:var(--accent-bg); color:var(--accent) }
+  .bar { position:sticky; top:env(safe-area-inset-top,0px); z-index:5; background:var(--bg); padding-block:12px 8px; display:flex; flex-direction:column; gap:8px }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+  input[type=search], select { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-size:13px }
+  input[type=search] { min-width:220px; flex:1 1 220px }
+  .chip { background:var(--surface); color:var(--ink2); border:1px solid var(--line); border-radius:999px; padding:5px 12px; font:inherit; font-size:12px; font-weight:700; cursor:pointer }
+  .chip[aria-pressed="true"] { background:var(--accent-bg); color:var(--accent); border-color:var(--accent) }
+  .lbl { font-size:11px; color:var(--ink3); font-weight:700; letter-spacing:.04em; text-transform:uppercase }
+  .count { margin-left:auto; color:var(--ink2); font-size:13px }
+  .count b { color:var(--ink) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; margin-top:8px }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:7px; box-shadow:var(--shadow) }
+  .card .nm { font-size:16px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .card .sub { font-size:12px; color:var(--ink2) }
+  .ch { display:flex; justify-content:space-between; gap:8px; align-items:flex-start }
+  .badges { display:flex; gap:5px; flex-wrap:wrap }
+  .bd { font-size:11px; font-weight:700; color:var(--accent); background:var(--accent-bg); padding:2px 8px; border-radius:999px }
+  .bd.dim { color:var(--ink2); background:var(--surface2); font-weight:500 }
+  .seats { font-size:13px } .seats b { color:var(--accent) }
+  .dim { font-size:12px; color:var(--ink3) }
+  .bt { font-size:13px; margin-top:2px }
+  .bar5 { display:flex; height:10px; border-radius:6px; overflow:hidden; background:var(--surface2) }
+  .bar5 i { display:block; height:100% }
+  .lg { display:flex; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--ink2); font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums }
+  .lg s { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; vertical-align:middle; text-decoration:none }
+  .sm { background:var(--surface2); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:5px 10px; font:inherit; font-size:12px; font-weight:700; cursor:pointer; white-space:nowrap }
+  .sm[aria-pressed="true"] { background:var(--accent-bg); color:var(--accent); border-color:var(--accent) }
+  .lk { background:none; border:0; color:var(--accent); font:inherit; font-size:13px; font-weight:700; cursor:pointer; padding:4px; margin-top:auto; align-self:flex-end }
+  .more { display:block; margin:18px auto; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:10px 22px; font:inherit; font-weight:700; cursor:pointer }
+  .tray { position:sticky; bottom:env(safe-area-inset-bottom,0px); margin-top:16px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:10px 14px; box-shadow:var(--shadow) }
+  .tray .tc { background:var(--surface2); border-radius:999px; padding:4px 10px; font-size:12px } .tray .tc b { cursor:pointer; margin-left:4px }
+  .pri { background:var(--accent); color:var(--accent-ink); border:0; border-radius:8px; padding:7px 14px; font:inherit; font-weight:700; cursor:pointer }
+  .ov { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:50; overflow-y:auto; padding:28px 16px }
+  .md { background:var(--bg); border:1px solid var(--line); border-radius:16px; padding:20px; max-width:960px; margin:0 auto; box-shadow:var(--shadow) }
+  .md.wide { max-width:1120px }
+  .mh { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap }
+  .mh h2 { font-size:20px; margin:0 }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:14px }
+  .st { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 14px }
+  .st .l { font-size:11px; color:var(--ink3); font-weight:700 } .st .v { font-size:20px; font-weight:700; font-variant-numeric:tabular-nums } .st .h { font-size:11px; color:var(--ink2) }
+  h3 { font-size:15px; margin:18px 0 8px }
+  .tw { overflow-x:auto } table { width:100%; border-collapse:collapse; font-size:13px }
+  th { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); color:var(--ink3); font-size:12px; white-space:nowrap }
+  td { padding:7px 10px; border-bottom:1px solid var(--line) } td.n { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12.5px }
+  td.a { color:var(--accent); font-weight:700 } tr.hi { background:var(--accent-bg) }
+  .foot { margin-top:28px; font-size:12px; color:var(--ink3) }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+  @media (prefers-reduced-motion: no-preference) { .card { transition:transform .12s } .card:hover { transform:translateY(-1px) } }
+</style>
+
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h1>전국 고교·중학 공시 탐색</h1>
+      <p class="lead" id="lead">학교알리미 교과별 학업성취 · 학년별 재적 · EDSS 학급·교원 — 데이터 불러오는 중…</p>
+    </div>
+    <div class="tabs" role="tablist" aria-label="학교급">
+      <button id="lv-h" aria-pressed="true" data-level="고등학교">고등학교</button>
+      <button id="lv-m" aria-pressed="false" data-level="중학교">중학교</button>
+    </div>
+  </div>
+
+  <div class="bar">
+    <div class="row">
+      <input type="search" id="q" placeholder="학교명 검색 (예: 부천고, 대원외고)" aria-label="학교명 검색">
+      <select id="sido" aria-label="시도"><option value="">시도 전체</option></select>
+      <select id="sigungu" aria-label="시군구" disabled><option value="">시군구 전체</option></select>
+      <select id="type" aria-label="유형"><option value="">유형 전체</option></select>
+      <select id="fond" aria-label="설립"><option value="">설립 전체</option></select>
+      <select id="gender" aria-label="남녀"><option value="">남녀 전체</option><option>남녀공학</option><option>남자</option><option>여자</option></select>
+      <select id="sort" aria-label="정렬">
+        <option value="name">이름순</option><option value="seats">1등급 자리 많은순</option><option value="enroll">재적 많은순</option>
+        <option value="a-desc">A비율 높은순</option><option value="a-asc">A비율 낮은순</option><option value="mean">평균 높은순</option>
+      </select>
+    </div>
+    <div class="row">
+      <span class="lbl">과목</span>
+      <button class="chip" data-subject="국어" aria-pressed="false">국어</button>
+      <button class="chip" data-subject="영어" aria-pressed="true">영어</button>
+      <button class="chip" data-subject="수학" aria-pressed="false">수학</button>
+      <span class="lbl" style="margin-left:8px">학년</span>
+      <button class="chip" data-grade="1" aria-pressed="true">1학년</button>
+      <button class="chip" data-grade="2" aria-pressed="false">2학년</button>
+      <button class="chip" data-grade="3" aria-pressed="false">3학년</button>
+      <span class="count" id="count"></span>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <button class="more" id="more" hidden>더 보기</button>
+  <div class="tray" id="tray" hidden></div>
+  <p class="foot">1등급권 자리 = 1학년 재적 × 10%(2022 교육과정 5등급제 상위 10%, 반올림). '확인'은 공시값 그대로이며 학교 선택을 보장하지 않습니다. 출처: 교육부·한국교육학술정보원 학교알리미(공공누리 출처표시).</p>
+</div>
+<div id="modal"></div>
+
+<script src="data/school-catalog.js"></script>
+<script>
+(async function () {
+  const $ = (s, r) => (r || document).querySelector(s);
+  const SUBJ = ['국어', '영어', '수학'], KEYS = ['a', 'b', 'c', 'd', 'e'], COL = { a: 'var(--bA)', b: 'var(--bB)', c: 'var(--bC)', d: 'var(--bD)', e: 'var(--bE)' };
+  const PAGE = 60, MAXC = 4;
+  const pct = (v) => (v == null ? '—' : Number(v).toFixed(1) + '%');
+  const d1 = (v) => (v == null ? '—' : Number(v).toFixed(1));
+  const num = (v) => (v == null ? '—' : Number(v).toLocaleString('ko-KR'));
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const seats = (s) => (s.enrollment && s.enrollment.grade1 ? Math.round(s.enrollment.grade1 * 0.1) : null);
+  const pick = (s, fam, g) => { const l = (s.bands || []).filter((b) => b.family === fam && b.grade === g && b.a != null); return l.length ? l.sort((x, y) => (y.semester || 0) - (x.semester || 0))[0] : null; };
+
+  // ---- 데이터: 같은 폴더의 data/school-catalog.json.gz (gzip) 또는 window.CATALOG (단일 파일 버전) ----
+  async function gunzipText(buf) { const u = new Uint8Array(buf); return u[0] === 0x1f && u[1] === 0x8b ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : new TextDecoder().decode(buf); }
+  async function load() {
+    if (window.CATALOG) return window.CATALOG;
+    if (window.CATALOG_GZ_B64) { // data/school-catalog.js (gzip 을 base64 로 실은 스크립트) — 단일 파일·아티팩트 공용
+      const bin = atob(window.CATALOG_GZ_B64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return JSON.parse(await gunzipText(u8.buffer));
+    }
+    const res = await fetch('data/school-catalog.json.gz'); if (!res.ok) throw new Error('catalog ' + res.status);
+    const buf = await res.arrayBuffer(); const u = new Uint8Array(buf);
+    const text = u[0] === 0x1f && u[1] === 0x8b ? await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text() : new TextDecoder().decode(buf);
+    return JSON.parse(text);
+  }
+  let cat;
+  try { cat = await load(); } catch (e) { $('#lead').textContent = '데이터를 불러오지 못했습니다: ' + e.message; return; }
+  cat.schools.forEach((s) => { if (s.gender === '녀' || s.gender === '여') s.gender = '여자'; if (s.gender === '남') s.gender = '남자'; });
+  const nH = cat.schools.filter((s) => s.schoolLevel === '고등학교').length, nM = cat.schools.length - nH;
+  $('#lead').textContent = `학교알리미 ${cat.disclosureYear} 공시(${cat.academicYear} 성취도) · 학년별 재적 · EDSS 학급·교원 — 고교 ${num(nH)}곳, 중학 ${num(nM)}곳`;
+
+  const st = { level: '고등학교', q: '', sido: '', sigungu: '', type: '', fond: '', gender: '', sort: 'name', subject: '영어', grade: 1, limit: PAGE, compare: [] };
+  try { const c = JSON.parse(localStorage.getItem('si_compare') || '[]'); if (Array.isArray(c)) st.compare = c.slice(0, MAXC); } catch (e) {}
+
+  function fillSelect(el, vals, keep) { const v = keep ? el.value : ''; el.innerHTML = el.options[0].outerHTML + vals.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join(''); el.value = vals.includes(v) ? v : ''; }
+  function schools() { return cat.schools.filter((s) => s.schoolLevel === st.level); }
+  function refreshSelects() {
+    const S = schools();
+    fillSelect($('#sido'), [...new Set(S.map((s) => s.sido))].sort(), true);
+    const sg = st.sido ? [...new Set(S.filter((s) => s.sido === st.sido).map((s) => s.sigungu))].sort() : [];
+    fillSelect($('#sigungu'), sg, true); $('#sigungu').disabled = !st.sido; st.sigungu = $('#sigungu').value;
+    fillSelect($('#type'), st.level === '고등학교' ? [...new Set(S.map((s) => s.schoolType))].sort() : [], true); $('#type').disabled = st.level !== '고등학교'; st.type = $('#type').value;
+    fillSelect($('#fond'), [...new Set(S.map((s) => s.fond).filter(Boolean))].sort(), true);
+    $('#sort').querySelector('[value=seats]').hidden = st.level !== '고등학교';
+  }
+  function filtered() {
+    const kw = st.q.replace(/\s+/g, '');
+    const list = schools().filter((s) => (!st.sido || s.sido === st.sido) && (!st.sigungu || s.sigungu === st.sigungu) && (!st.type || s.schoolType === st.type) && (!st.fond || s.fond === st.fond) && (!st.gender || s.gender === st.gender) && (!kw || s.schoolName.replace(/\s+/g, '').includes(kw)));
+    const key = (s) => pick(s, st.subject, st.grade);
+    const cmp = (get, desc) => (x, y) => { const a = get(x), b = get(y); if (a == null && b == null) return 0; if (a == null) return 1; if (b == null) return -1; return desc ? b - a : a - b; };
+    const S = { name: (x, y) => x.schoolName.localeCompare(y.schoolName, 'ko'), seats: cmp(seats, true), enroll: cmp((s) => s.enrollment?.total ?? null, true), 'a-desc': cmp((s) => key(s)?.a ?? null, true), 'a-asc': cmp((s) => key(s)?.a ?? null, false), mean: cmp((s) => key(s)?.mean ?? null, true) };
+    return list.sort(S[st.sort] || S.name);
+  }
+  const bar = (b, h) => `<div class="bar5" style="height:${h || 10}px">${KEYS.map((k) => (b[k] ? `<i style="width:${b[k]}%;background:${COL[k]}" title="${k.toUpperCase()} ${b[k]}%"></i>` : '')).join('')}</div>`;
+  const legend = (b) => `<div class="lg">${KEYS.map((k) => `<span><s style="background:${COL[k]}"></s>${k.toUpperCase()} ${pct(b[k])}</span>`).join('')}</div>`;
+
+  let cur = [];
+  function render() {
+    cur = filtered(); const isH = st.level === '고등학교'; const scope = [st.sido || '전국', st.sigungu].filter(Boolean).join(' ');
+    $('#count').innerHTML = `${esc(scope)} ${st.level} <b>${num(cur.length)}곳</b>`;
+    $('#grid').innerHTML = cur.slice(0, st.limit).map((s) => {
+      const b = pick(s, st.subject, st.grade), se = seats(s), inC = st.compare.includes(s.id);
+      return `<div class="card">
+        <div class="ch"><div style="min-width:0"><div class="nm" title="${esc(s.schoolName)}">${esc(s.schoolName)}</div><div class="sub">${esc(s.sido)} ${esc(s.sigungu)} · ${esc(s.schoolType)}</div></div>
+          <button class="sm" data-cmp="${s.id}" aria-pressed="${inC}">${inC ? '담김' : '+ 비교'}</button></div>
+        <div class="badges">${s.gender ? `<span class="bd">${esc(s.gender)}</span>` : ''}${s.fond ? `<span class="bd">${esc(s.fond)}</span>` : ''}
+          ${s.enrollment?.grade1 != null ? `<span class="bd dim">재적 ${s.enrollment.grade1}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)</span>` : s.current?.students != null ? `<span class="bd dim">학생 ${s.current.students}명 · 교원 ${s.current.teachers ?? '—'}명</span>` : ''}</div>
+        ${isH && se != null ? `<div class="seats">1학년 ${s.enrollment.grade1}명 중 1등급권 <b>${se}자리</b> <span class="dim">· 상위 10% 가정</span></div>` : ''}
+        ${s.edss && (s.edss.classes != null || s.edss.teachers != null) ? `<div class="dim">${s.edss.classes != null ? s.edss.classes + '학급' : ''}${s.edss.classes != null && s.edss.teachers != null ? ' · ' : ''}${s.edss.teachers != null ? '교원 ' + s.edss.teachers + '명' : ''}</div>` : ''}
+        <div class="bt">${b ? `${isH ? '고' : '중'}${st.grade} ${esc(b.subject)} · ${esc(b.year || '')} ${b.semester}학기 · A <b>${pct(b.a)}</b> · 평균 <b>${d1(b.mean)}</b>` : `<span class="dim">${st.grade}학년 ${st.subject} 성취도 공시 없음</span>`}</div>
+        ${b ? bar(b) + legend(b) : ''}
+        <button class="lk" data-detail="${s.id}">상세 보기 →</button></div>`;
+    }).join('') || '<p class="lead">조건에 맞는 학교가 없습니다.</p>';
+    const m = $('#more'); m.hidden = cur.length <= st.limit; m.textContent = `더 보기 (${num(Math.max(0, cur.length - st.limit))}곳 남음)`;
+    renderTray();
+  }
+  function renderTray() {
+    const t = $('#tray'); const cs = st.compare.map((id) => cat.schools.find((s) => s.id === id)).filter(Boolean);
+    try { localStorage.setItem('si_compare', JSON.stringify(st.compare)); } catch (e) {}
+    t.hidden = !cs.length; if (!cs.length) return;
+    t.innerHTML = `<b>비교함 ${cs.length}/${MAXC}</b>${cs.map((s) => `<span class="tc">${esc(s.schoolName)}<b data-cmp="${s.id}">×</b></span>`).join('')}<span style="flex:1"></span>${cs.length >= 2 ? '<button class="pri" id="cmp-open">비교 보기</button>' : '<span class="dim">한 곳 더 담으면 비교됩니다</span>'}<button class="lk" id="cmp-clear">비우기</button>`;
+  }
+  function toggleCmp(id) { st.compare = st.compare.includes(id) ? st.compare.filter((x) => x !== id) : st.compare.length >= MAXC ? st.compare : [...st.compare, id]; render(); if ($('#modal').firstChild) { const d = $('#modal [data-cmp]'); if (d) d.setAttribute('aria-pressed', st.compare.includes(id)), d.textContent = st.compare.includes(id) ? '비교함에서 빼기' : '+ 비교함에 담기'; } }
+
+  const table = (rows) => `<div class="tw"><table><thead><tr>${['학년·학기', '과목', '평균', '표준편차', 'A', 'B', 'C', 'D', 'E', '분포'].map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((b) => `<tr><td>${b.grade}학년 ${b.semester}학기</td><td>${esc(b.subject)}</td><td class="n">${d1(b.mean)}</td><td class="n">${d1(b.sd)}</td>${KEYS.map((k) => `<td class="n${k === 'a' ? ' a' : ''}">${pct(b[k])}</td>`).join('')}<td style="min-width:140px">${bar(b, 8)}</td></tr>`).join('')}</tbody></table></div>`;
+  function detail(s) {
+    const isH = s.schoolLevel === '고등학교', se = seats(s), fams = ['국어', '영어', '수학'];
+    const by = (f) => (s.bands || []).filter((b) => (f ? b.family === f : !fams.includes(b.family))).sort((x, y) => x.grade - y.grade || x.semester - y.semester);
+    const stat = (l, v, h) => `<div class="st"><div class="l">${l}</div><div class="v">${v}</div><div class="h">${h || ''}</div></div>`;
+    $('#modal').innerHTML = `<div class="ov" id="ov"><div class="md" role="dialog" aria-label="${esc(s.schoolName)}">
+      <div class="mh"><div><div class="badges" style="align-items:center"><h2 style="margin-right:4px">${esc(s.schoolName)}</h2><span class="bd">${esc(s.schoolType)}</span>${s.gender ? `<span class="bd">${esc(s.gender)}</span>` : ''}${s.fond ? `<span class="bd">${esc(s.fond)}</span>` : ''}</div>
+        <div class="sub">${esc(s.sido)} ${esc(s.sigungu)}${s.address ? ' · ' + esc(s.address) : ''} · 학교알리미 교과별 학업성취 공시${s.achievementChasu ? `(${s.achievementChasu.slice(0, 4)}년 ${s.achievementChasu.slice(4)}차)` : ''}</div></div>
+        <div class="row"><button class="sm" data-cmp="${s.id}" aria-pressed="${st.compare.includes(s.id)}">${st.compare.includes(s.id) ? '비교함에서 빼기' : '+ 비교함에 담기'}</button><button class="sm" id="close">닫기 ✕</button></div></div>
+      <div class="stats">
+        ${stat('전체 재적', s.enrollment?.total != null ? num(s.enrollment.total) + '명' : '—', s.enrollment?.grade1 != null ? `${s.enrollment.grade1}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)` : '재적 공시 없음')}
+        ${isH ? stat('1등급권 자리', se == null ? '—' : se + '개', '1학년 × 10% (5등급제 상위 10%, 반올림)') : ''}
+        ${stat('학급 수', s.edss?.classes != null ? s.edss.classes + '학급' : '—', s.edss ? `${s.edss.classGrade1 ?? '—'}·${s.edss.classGrade2 ?? '—'}·${s.edss.classGrade3 ?? '—'} (1·2·3학년) · EDSS 2025` : 'EDSS 미매칭')}
+        ${stat('교원 수', s.edss?.teachers != null ? s.edss.teachers + '명' : '—', s.edss?.staff != null ? '직원 ' + s.edss.staff + '명' : 'EDSS 2025')}
+        ${s.current ? stat('현재 학생 · 교원', `${num(s.current.students)}명 · ${num(s.current.teachers)}명`, `남 ${num(s.current.male)} · 여 ${num(s.current.female)} · 학교알리미 학교정보(2026)`) : ''}
+      </div>
+      ${fams.map((f) => { const r = by(f); return r.length ? `<h3>${f} 성취도 <span class="dim">(${esc(r[0].year || '')})</span></h3>${table(r)}` : ''; }).join('')}
+      ${by(null).length ? `<h3>기타 과목</h3>${table(by(null))}` : ''}
+      <p class="dim" style="margin-top:14px">A~E = 성취도 비율(%). 3학년 진로선택 과목은 A·B·C 3단계만 공시됩니다. 2026년 공시 표에는 표준편차가 없습니다.</p>
+    </div></div>`;
+  }
+  function compare() {
+    const cs = st.compare.map((id) => cat.schools.find((s) => s.id === id)).filter(Boolean); if (cs.length < 2) return;
+    const isH = cs.every((s) => s.schoolLevel === '고등학교');
+    const rows = [['소재지', (s) => `${s.sido} ${s.sigungu}`], ['유형 · 성별 · 설립', (s) => [s.schoolType, s.gender, s.fond].filter(Boolean).join(' · ')], ['성취도 학년도', (s) => [...new Set((s.bands || []).map((b) => b.year).filter(Boolean))].join(', ') || '—'], ['전체 재적', (s) => (s.enrollment?.total != null ? num(s.enrollment.total) + '명' : '—')], ['1학년 재적', (s) => (s.enrollment?.grade1 != null ? s.enrollment.grade1 + '명' : '—')]];
+    if (isH) rows.push(['1등급권 자리', (s) => (seats(s) == null ? '—' : seats(s) + '개')]);
+    rows.push(['학급 · 교원', (s) => (s.edss ? `${s.edss.classes ?? '—'}학급 · ${s.edss.teachers ?? '—'}명` : '—')]);
+    const br = []; for (const f of SUBJ) for (const g of [1, 2, 3]) { br.push([`${f} ${g}학년 A비율`, (s) => pct(pick(s, f, g)?.a), f === st.subject && g === st.grade]); br.push([`${f} ${g}학년 평균`, (s) => d1(pick(s, f, g)?.mean), f === st.subject && g === st.grade]); }
+    $('#modal').innerHTML = `<div class="ov" id="ov"><div class="md wide" role="dialog" aria-label="학교 비교"><div class="mh"><h2>학교 비교 (${cs.length}곳)</h2><button class="sm" id="close">닫기 ✕</button></div>
+      <div class="tw" style="margin-top:12px"><table><thead><tr><th></th>${cs.map((s) => `<th style="font-size:14px;color:var(--ink)">${esc(s.schoolName)}</th>`).join('')}</tr></thead><tbody>${[...rows, ...br].map((r) => `<tr${r[2] ? ' class="hi"' : ''}><td style="color:var(--ink2);white-space:nowrap">${r[0]}</td>${cs.map((s) => `<td class="n">${esc(r[1](s))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <p class="dim" style="margin-top:12px">강조 행 = 목록에서 고른 과목·학년. 같은 학년은 뒤 학기(2학기) 값을 우선합니다.</p></div></div>`;
+  }
+
+  // ---- 이벤트 ----
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => { st.level = b.dataset.level; document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.sido = ''; st.sigungu = ''; st.type = ''; $('#sido').value = ''; refreshSelects(); st.limit = PAGE; render(); }));
+  document.querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => { if (b.dataset.subject) { st.subject = b.dataset.subject; document.querySelectorAll('[data-subject]').forEach((x) => x.setAttribute('aria-pressed', x === b)); } else { st.grade = +b.dataset.grade; document.querySelectorAll('[data-grade]').forEach((x) => x.setAttribute('aria-pressed', x === b)); } st.limit = PAGE; render(); }));
+  $('#q').addEventListener('input', (e) => { st.q = e.target.value.trim(); st.limit = PAGE; render(); });
+  $('#sido').addEventListener('change', (e) => { st.sido = e.target.value; st.sigungu = ''; refreshSelects(); st.limit = PAGE; render(); });
+  ['sigungu', 'type', 'fond', 'gender', 'sort'].forEach((id) => $('#' + id).addEventListener('change', (e) => { st[id] = e.target.value; st.limit = PAGE; render(); }));
+  $('#more').addEventListener('click', () => { st.limit += PAGE * 2; render(); });
+  document.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-cmp]'); if (c) { toggleCmp(c.dataset.cmp); return; }
+    const d = e.target.closest('[data-detail]'); if (d) { const s = cat.schools.find((x) => x.id === d.dataset.detail); if (s) detail(s); return; }
+    if (e.target.id === 'cmp-open') { compare(); return; }
+    if (e.target.id === 'cmp-clear') { st.compare = []; render(); return; }
+    if (e.target.id === 'close' || e.target.id === 'ov') $('#modal').innerHTML = '';
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#modal').innerHTML = ''; });
+
+  refreshSelects(); render();
+})();
+</script>

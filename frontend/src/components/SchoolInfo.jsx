@@ -203,9 +203,10 @@ export default function SchoolInfo() {
                 </button>
               </div>
               <div style={S.badges}>
-                <span style={S.badge}>{s.gender}</span>
+                {s.gender && <span style={S.badge}>{s.gender}</span>}
                 {s.fond && <span style={S.badge}>{s.fond}</span>}
-                {s.enrollment && <span style={S.badgeDim}>재적 {s.enrollment.grade1 ?? '—'}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년)</span>}
+                {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년)</span>}
+                {s.enrollment?.grade1 == null && s.current?.students != null && <span style={S.badgeDim}>학생 {s.current.students}명 · 교원 {s.current.teachers ?? '—'}명 (2026 학교정보)</span>}
               </div>
               {isHigh && seats !== null && (
                 <div style={S.seats}>1학년 {s.enrollment.grade1}명 중 1등급권 <b>{seats}자리</b> <span style={S.dim}>· 5등급제 상위 10% 가정</span></div>
@@ -289,9 +290,9 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
           <div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
               <h3 style={S.h3}>{s.schoolName}</h3>
-              <span style={S.badge}>{s.schoolType}</span><span style={S.badge}>{s.gender}</span>{s.fond && <span style={S.badge}>{s.fond}</span>}
+              <span style={S.badge}>{s.schoolType}</span>{s.gender && <span style={S.badge}>{s.gender}</span>}{s.fond && <span style={S.badge}>{s.fond}</span>}
             </div>
-            <div style={S.sub}>{s.sido} {s.sigungu} · 학교알리미 교과별 학업성취 공시 · 학교코드 {s.schulCode}</div>
+            <div style={S.sub}>{s.sido} {s.sigungu}{s.address ? ` · ${s.address}` : ''} · 학교알리미 교과별 학업성취 공시{s.achievementChasu ? `(${s.achievementChasu.slice(0, 4)}년 ${s.achievementChasu.slice(4)}차)` : ''}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button style={{ ...S.smallBtn, ...(inCompare ? S.smallBtnOn : {}) }} onClick={onToggleCompare}>{inCompare ? '비교함에서 빼기' : '+ 비교함에 담기'}</button>
@@ -305,6 +306,7 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
           <Stat label="학급 수" value={s.edss?.classes != null ? `${s.edss.classes}학급` : '—'} hint={s.edss ? `${s.edss.classGrade1 ?? '—'}·${s.edss.classGrade2 ?? '—'}·${s.edss.classGrade3 ?? '—'} (1·2·3학년) · EDSS 2025` : 'EDSS 미매칭'} />
           <Stat label="교원 수" value={s.edss?.teachers != null ? `${s.edss.teachers}명` : '—'} hint={s.edss?.staff != null ? `직원 ${s.edss.staff}명` : 'EDSS 2025'} />
           <Stat label="입학생 / 졸업생" value={s.edss ? `${s.edss.entrants ?? '—'} / ${s.edss.graduates ?? '—'}` : '—'} hint="EDSS 조사년도 기준" />
+          {s.current && <Stat label="현재 학생 · 교원" value={`${num(s.current.students)}명 · ${num(s.current.teachers)}명`} hint={`남 ${num(s.current.male)} · 여 ${num(s.current.female)} · 학교알리미 학교정보(2026)${s.current.founded ? ` · 개교 ${s.current.founded}` : ''}`} />}
         </div>
 
         {families.map((fam) => {
@@ -358,6 +360,7 @@ function CompareModal({ schools, subject, grade, onClose }) {
   const rowsSpec = [
     { label: '소재지', get: (s) => `${s.sido} ${s.sigungu}` },
     { label: '유형 · 성별 · 설립', get: (s) => [s.schoolType, s.gender, s.fond].filter(Boolean).join(' · ') },
+    { label: '성취도 학년도', get: (s) => [...new Set((s.bands || []).map((b) => b.year).filter(Boolean))].join(', ') || '—' },
     { label: '전체 재적', get: (s) => (s.enrollment ? `${num(s.enrollment.total)}명` : '—') },
     { label: '1학년 재적', get: (s) => (s.enrollment?.grade1 != null ? `${s.enrollment.grade1}명` : '—') },
     ...(isHigh ? [{ label: '1등급권 자리', get: (s) => (seatsOf(s) === null ? '—' : `${seatsOf(s)}개`) }] : []),
