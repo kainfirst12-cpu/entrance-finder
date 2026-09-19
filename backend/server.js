@@ -40,7 +40,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
   initDb, dbEnabled, vectorEnabled, ensureAdminUser,
-  findActiveUserByCode, createUserCode, setUserActive, deleteUser,
+  findActiveUserByCode, createUserCode, setUserActive, deleteUser, setUserMenus, getUserMenus,
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
 } from './services/db.js';
@@ -306,6 +306,56 @@ function requireAuth(req, res, next) {
 }
 
 // 관리자 전용
+// 학원 코드별 공개 메뉴 — 토큰의 menus(null=전부) 로 1차, 관리자가 그 사이 바꿨을 수 있어 DB 값으로 2차 확인
+const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list'];
+function menuAllowed(menus, key) { return !Array.isArray(menus) || menus.includes(key); }
+function requireMenu(key) {
+  return (req, res, next) => requireAuth(req, res, async () => {
+    if (req.user.role === 'admin') return next();
+    let menus = req.user.menus ?? null;
+    try { if (req.user.userId) { const dbMenus = await getUserMenus(req.user.userId); if (dbMenus !== null) menus = dbMenus; } } catch { /* DB 불통이면 토큰 값으로 */ }
+    if (!menuAllowed(menus, key)) return res.status(403).json({ success: false, message: '이 학원 코드에는 공개되지 않은 메뉴입니다', menuDenied: key });
+    next();
+  });
+}
+app.get('/api/me/menus', requireAuth, async (req, res) => {
+  if (req.user.role === 'admin') return res.json({ success: true, menus: null, all: MENU_KEYS });
+  let menus = req.user.menus ?? null;
+  try { if (req.user.userId) { const m = await getUserMenus(req.user.userId); if (m !== null) menus = m; } } catch { /* 토큰 값 */ }
+  res.json({ success: true, menus, all: MENU_KEYS });
+});
+
+// 경로 앞머리 → 메뉴. 토큰이 있는 이용자(학원 코드)만 검사한다 — 인증 자체는 각 라우트의 requireAuth/optionalAuth 가 맡는다.
+const MENU_BY_PATH = [
+  [/^\/api\/(analyze|refine|generate-pdf|cross-verify|verify)\b/, 'form'],
+  [/^\/api\/assessment\b/, 'assessment'],
+  [/^\/api\/(chat|chat-upload|chat-refine|chat-edit|assistant)\b/, 'chat'],
+  [/^\/api\/admissions\b/, 'admissions'],
+  [/^\/api\/univ-info\b/, 'univinfo'],
+  [/^\/api\/(schoolinfo\/explain|school-reports)\b/, 'schoolinfo'],
+  [/^\/api\/ipgyeol\b/, 'ipgyeol'],
+  [/^\/api\/ratio\b/, 'ratio'],
+  [/^\/api\/suhaeng\b/, 'suharchive'],
+  [/^\/api\/interview\b/, 'interview'],
+  [/^\/api\/(board|roadmap|students)\b/, 'list'],
+];
+app.use('/api', (req, res, next) => {
+  const hit = MENU_BY_PATH.find(([re]) => re.test(req.originalUrl.split('?')[0]));
+  if (!hit) return next();
+  const h = req.headers.authorization;
+  const token = h?.startsWith('Bearer ') ? h.slice(7) : null;
+  if (!token) return next();
+  let user = null;
+  try { user = jwt.verify(token, JWT_SECRET); } catch { return next(); }
+  if (!user || user.role === 'admin') return next();
+  (async () => {
+    let menus = user.menus ?? null;
+    try { if (user.userId) { const m = await getUserMenus(user.userId); if (m !== null) menus = m; } } catch { /* 토큰 값 */ }
+    if (!menuAllowed(menus, hit[1])) return res.status(403).json({ success: false, message: '이 학원 코드에는 공개되지 않은 메뉴입니다', menuDenied: hit[1] });
+    next();
+  })();
+});
+
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
     if (req.user?.role !== 'admin') return res.status(403).json({ success: false, message: '관리자 전용 기능입니다' });
@@ -1241,11 +1291,10 @@ app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
 
 const ACADEMY_VIDEO_URL = (process.env.ACADEMY_VIDEO_URL || 'https://academy-video.vercel.app').replace(/\/+$/, '');
 const ACADEMY_VIDEO_KEY = process.env.ACADEMY_VIDEO_INBOUND_KEY || '';
-// ⚠ '/api/school-reports/:id' 보다 먼저 — 아니면 'send-config' 가 id 로 잡혀 NaN 조회가 된다
+// ⚠ '/api/school-reports/:id' 보다 먼저 — 아니면 'send-config' 가 id 로 잡혀 NaN 조회가 된다. 보내기는 관리자 전용.
 app.get('/api/school-reports/send-config', requireAuth, (req, res) => {
-  res.json({ success: true, enabled: !!ACADEMY_VIDEO_KEY, target: ACADEMY_VIDEO_URL });
+  res.json({ success: true, enabled: !!ACADEMY_VIDEO_KEY && req.user.role === 'admin', adminOnly: true, target: ACADEMY_VIDEO_URL });
 });
-
 // 해설 보고서 보관 CRUD (선생님별)
 app.get('/api/school-reports', requireAuth, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
@@ -1281,37 +1330,61 @@ app.delete('/api/school-reports/:id', requireAuth, async (req, res) => {
   catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ── 학부모에게 보내기 — 나만의 패파(academy-video) 성장 리포트로 본문째 발행 ──
-// academy-video 의 POST /api/inbound/report (학원별 연동 열쇠 x-api-key) 에 { student_name, title, md, data, audience, memo } 를 보내면
-// 그 학생의 성장 리포트에 문서(payload.kind='doc') 로 꽂히고 학부모에게 알림톡/푸시가 나간다. 학부모는 나만의 패파 로그인 안에서만 본다.
-// 열쇠는 나만의 패파 선생님 대시보드 '연동 열쇠' 에서 복사해 Railway 환경변수로 넣는다.
-app.post('/api/school-reports/send', requireAuth, async (req, res) => {
+// ── 나만의 패파(academy-video) 로 보내기 — 모든 보고서 공용. 관리자(패스파인더) 전용 ──
+// academy-video 의 POST /api/inbound/report (학원별 연동 열쇠 x-api-key) 에 { student_name, title, md, data, audience, memo, source } 를 보내면
+// 그 학생의 성장 리포트에 문서(payload.kind='doc') 로 꽂히고 학부모·학생에게 알림톡/푸시가 나간다. 열람은 나만의 패파 로그인 안에서만.
+// 열쇠는 나만의 패파 선생님 대시보드 '연동 열쇠' 에서 복사해 Railway 환경변수로. 면접 전략처럼 관리자만 쓴다(학원 코드 이용자는 못 보냄).
+async function sendToPapa({ studentName, title, markdown, data, audience, memo, source }) {
+  if (!ACADEMY_VIDEO_KEY) throw Object.assign(new Error('나만의 패파 연동 열쇠(ACADEMY_VIDEO_INBOUND_KEY)가 서버에 설정돼 있지 않습니다'), { status: 400 });
+  const name = String(studentName || '').trim();
+  if (!name) throw Object.assign(new Error('학생 이름이 필요합니다'), { status: 400 });
+  if (!markdown?.trim()) throw Object.assign(new Error('보낼 내용이 없습니다'), { status: 400 });
+  const aud = ['student', 'parent', 'both'].includes(audience) ? audience : 'parent';
+  const r = await fetch(`${ACADEMY_VIDEO_URL}/api/inbound/report`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': ACADEMY_VIDEO_KEY }, signal: AbortSignal.timeout(20000),
+    body: JSON.stringify({ items: [{ student_name: name, title: String(title || '보고서').slice(0, 150), md: String(markdown), data: data && Array.isArray(data.schools) ? data : undefined, source: String(source || '입시파인더').slice(0, 60), audience: aud, memo: memo ? String(memo).slice(0, 500) : undefined }] }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw Object.assign(new Error(`나만의 패파 응답: ${j.error || `HTTP ${r.status}`}`), { status: 502 });
+  const miss = (j.unmatched || [])[0];
+  if (miss) throw Object.assign(new Error(`${miss.student_name || name}: ${miss.reason}`), { status: 200, soft: true });
+  const created = (j.items || [])[0] || {};
+  return { academy: j.academy, reportId: created.report_id || null, audience: aud, name };
+}
+app.get('/api/papa/send-config', requireAuth, (req, res) => {
+  res.json({ success: true, enabled: !!ACADEMY_VIDEO_KEY && req.user.role === 'admin', adminOnly: true, target: ACADEMY_VIDEO_URL });
+});
+// 공용: { kind, title, markdown, data?, studentName, audience, memo, source? }
+app.post('/api/papa/send', requireAdmin, async (req, res) => {
   try {
-    if (!ACADEMY_VIDEO_KEY) return res.status(400).json({ success: false, message: '나만의 패파 연동 열쇠(ACADEMY_VIDEO_INBOUND_KEY)가 서버에 설정돼 있지 않습니다' });
-    const { reportId, title, markdown, data, studentName, audience, memo } = req.body || {};
-    const name = String(studentName || '').trim();
-    if (!name) return res.status(400).json({ success: false, message: '학생 이름이 필요합니다' });
-    if (!markdown?.trim()) return res.status(400).json({ success: false, message: '보낼 내용이 없습니다' });
-    if (reportId) { // 남의 보고서로 보내는 걸 막는다
-      const owner = await getSchoolReportOwner(Number(reportId));
-      if (owner !== null && req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
+    const { title, data, studentName, audience, memo, source, kind, interviewId } = req.body || {};
+    let { markdown } = req.body || {};
+    // 면접 전략은 저장본(data JSON)에서 학생용 마크다운을 서버가 만든다 — 화면에는 HTML 만 있다
+    if (interviewId) {
+      const item = await getInterview(Number(interviewId));
+      if (!item) return res.status(404).json({ success: false, message: '면접 리포트를 찾을 수 없습니다' });
+      markdown = interviewMarkdown(item.data || {});
     }
-    const aud = ['student', 'parent', 'both'].includes(audience) ? audience : 'parent';
-    const r = await fetch(`${ACADEMY_VIDEO_URL}/api/inbound/report`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': ACADEMY_VIDEO_KEY }, signal: AbortSignal.timeout(20000),
-      body: JSON.stringify({ items: [{ student_name: name, title: String(title || '학교 입시 해설').slice(0, 150), md: String(markdown), data: data && Array.isArray(data.schools) ? data : undefined, source: '입시파인더 학교 입시 해설', audience: aud, memo: memo ? String(memo).slice(0, 500) : undefined }] }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error) return res.status(502).json({ success: false, message: `나만의 패파 응답: ${j.error || `HTTP ${r.status}`}` });
-    const miss = (j.unmatched || [])[0];
-    if (miss) return res.json({ success: false, message: `${miss.student_name || name}: ${miss.reason}` });
-    const created = (j.items || [])[0] || {};
-    let sent = null;
-    if (reportId) sent = await appendSchoolReportSent(Number(reportId), { studentName: name, audience: aud, memo: memo || '', reportId: created.report_id || null, academy: j.academy || null, at: new Date().toISOString() });
-    res.json({ success: true, academy: j.academy, reportId: created.report_id || null, sent });
+    const out = await sendToPapa({ studentName, title, markdown, data, audience, memo, source: source || `입시파인더 ${kind || '보고서'}` });
+    logEvent({ userId: req.user.userId || null, type: 'papa_send', detail: `${kind || '보고서'} → ${out.name}`, ip: req.ip }).catch?.(() => {});
+    res.json({ success: true, ...out });
   } catch (e) {
+    if (e.soft) return res.json({ success: false, message: e.message });
+    res.status(e.status || 500).json({ success: false, message: e.message });
+  }
+});
+// 학교 해설 보고서용(전송 이력을 보고서에 남긴다) — 관리자 전용. send-config 는 '/:id' 보다 앞(위)에 있다.
+app.post('/api/school-reports/send', requireAdmin, async (req, res) => {
+  try {
+    const { reportId, title, markdown, data, studentName, audience, memo } = req.body || {};
+    const out = await sendToPapa({ studentName, title, markdown, data, audience, memo, source: '입시파인더 학교 입시 해설' });
+    let sent = null;
+    if (reportId) sent = await appendSchoolReportSent(Number(reportId), { studentName: out.name, audience: out.audience, memo: memo || '', reportId: out.reportId, academy: out.academy || null, at: new Date().toISOString() });
+    res.json({ success: true, academy: out.academy, reportId: out.reportId, sent });
+  } catch (e) {
+    if (e.soft) return res.json({ success: false, message: e.message });
     console.error('[school-reports/send] 오류:', e.message);
-    res.status(500).json({ success: false, message: e.message });
+    res.status(e.status || 500).json({ success: false, message: e.message });
   }
 });
 
@@ -4205,7 +4278,7 @@ app.post('/api/login', async (req, res) => {
       const user = await findActiveUserByCode(cred);
       if (user) {
         const token = jwt.sign(
-          { role: 'user', userId: user.id, name: user.name, jti },
+          { role: 'user', userId: user.id, name: user.name, jti, menus: Array.isArray(user.menus) ? user.menus : null },
           JWT_SECRET, { expiresIn: '7d' }
         );
         // 세션 생성 + 위치 조회는 비동기로 (응답 지연 방지)
@@ -4214,7 +4287,7 @@ app.post('/api/login', async (req, res) => {
           await createSession({ userId: user.id, jti, ip, userAgent, geo });
           await logEvent({ userId: user.id, type: 'login', detail: geo || '', ip });
         })().catch(() => {});
-        return res.json({ success: true, token, role: 'user', name: user.name });
+        return res.json({ success: true, token, role: 'user', name: user.name, menus: Array.isArray(user.menus) ? user.menus : null });
       }
     } catch (e) {
       console.error('[login] DB 조회 오류:', e.message);
@@ -4252,10 +4325,11 @@ app.post('/api/admin/users', requireAdmin, async (req, res) => {
   }
 });
 
-// 관리자: 코드 활성/비활성 토글
+// 관리자: 코드 활성/비활성 토글 · 공개 메뉴(menus: null=전부, 배열=그 메뉴만)
 app.patch('/api/admin/users/:id', requireAdmin, async (req, res) => {
   try {
-    await setUserActive(Number(req.params.id), !!req.body.active);
+    if (req.body.active !== undefined) await setUserActive(Number(req.params.id), !!req.body.active);
+    if (req.body.menus !== undefined) await setUserMenus(Number(req.params.id), req.body.menus);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });

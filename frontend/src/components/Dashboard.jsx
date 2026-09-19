@@ -15,10 +15,12 @@ const ACTIONS = [
 ];
 
 import DisclosureNotice from './DisclosureNotice';
+import { menuAllowed } from '../menus';
 
-export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis, onAnalyzeFile, role }) {
-  // 관리자 전용 카드(면접 전략)는 일반 학원 계정에는 보이지 않는다 — 서버도 requireAdmin 으로 막혀 있다
-  const actions = ACTIONS.filter(a => !a.adminOnly || role === 'admin');
+export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis, onAnalyzeFile, role, menus }) {
+  // 관리자 전용 카드(면접 전략)는 일반 학원 계정에는 보이지 않는다 — 서버도 requireAdmin 으로 막혀 있다.
+  // 학원 코드별 공개 메뉴(menus, 관리자가 정함)에 없는 카드도 숨긴다 — 서버도 같은 표로 막는다(MENU_BY_PATH).
+  const actions = ACTIONS.filter(a => (!a.adminOnly || role === 'admin') && (a.key === 'import' ? menuAllowed(menus, role, 'form') : menuAllowed(menus, role, a.key)));
   return (
     <div style={S.page}>
       <h2 style={S.h2}>대시보드</h2>

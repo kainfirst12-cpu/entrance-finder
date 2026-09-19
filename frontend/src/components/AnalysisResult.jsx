@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import SendToPapa from './SendToPapa';
 import { extractScores, extractHighlights, scoreTone, totalScore, radarSvg } from '../analysisMetrics';
 
 // SSE(keepalive 포함) 또는 일반 JSON 응답을 모두 처리해 최종 결과 객체를 반환.
@@ -1459,6 +1460,9 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           <button className="btn-download-pdf" onClick={handleDownloadPDF} disabled={downloading}>
             {downloading ? '⏳ PDF 생성 중...' : '📄 PDF 다운로드'}
           </button>
+          <SendToPapa kind="생기부 분석" title={`${studentData?.name || '학생'} 입시 분석 리포트`} studentName={studentData?.name || ''}
+            markdown={SECTION_MAP.filter(({ key }) => results?.[key]).map(({ key, title }) => `## ${title}\n\n${results[key]}`).join('\n\n')}
+            style={{ marginLeft: 6 }} />
           <button className="btn-secondary" onClick={handleExportJSON}>
             💾 JSON 내보내기
           </button>

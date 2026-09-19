@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import StudentPicker from './StudentPicker';
 import { mdPreview } from '../mdPreview';
+import SendToPapa from './SendToPapa';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -292,6 +293,7 @@ export default function SuhaengArchive({ getActiveKey, selectedModel, aiGroup, o
               </button>
               <button style={S.btn} disabled={assigning} onClick={() => assign(viewItem, 'archive')}>기록으로 배정</button>
               <button style={S.btn} onClick={() => downloadDocx(viewItem)}>Word 다운로드</button>
+              <SendToPapa kind="수행평가 자료" title={viewItem.title} markdown={viewItem.content} studentName={viewItem.student_name || ''} onAuthError={onAuthError} />
               <button style={{ ...S.btn, color: '#f87171', borderColor: 'rgba(248,113,113,0.5)' }} onClick={() => remove(viewItem)}>삭제</button>
             </div>
           </div>

@@ -46,6 +46,8 @@ export async function initDb() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    // 학원 코드별 공개 메뉴 — NULL = 전부 공개, ["form","chat",…] = 그 메뉴만(관리자 대시보드에서 정한다)
+    await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS menus JSONB DEFAULT NULL;`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sessions (
         id           SERIAL PRIMARY KEY,
@@ -355,7 +357,7 @@ export async function ensureAdminUser() {
 export async function findActiveUserByCode(code) {
   if (!dbEnabled() || !code) return null;
   const { rows } = await pool.query(
-    `SELECT id, code, name, role, active FROM app_users WHERE code = $1 AND active = true AND role = 'user' LIMIT 1`,
+    `SELECT id, code, name, role, active, menus FROM app_users WHERE code = $1 AND active = true AND role = 'user' LIMIT 1`,
     [code]
   );
   return rows[0] || null;
@@ -385,6 +387,19 @@ export async function setUserActive(id, active) {
   await pool.query(`UPDATE app_users SET active = $2 WHERE id = $1`, [id, !!active]);
 }
 
+export async function setUserMenus(id, menus) {
+  if (!dbEnabled()) throw new Error('DB 비활성화 상태입니다');
+  // null = 전부 공개. 배열이면 문자열만 남긴다.
+  const val = Array.isArray(menus) ? JSON.stringify(menus.filter((m) => typeof m === 'string').slice(0, 50)) : null;
+  await pool.query(`UPDATE app_users SET menus = $2::jsonb WHERE id = $1`, [id, val]);
+}
+
+export async function getUserMenus(id) {
+  if (!dbEnabled() || !id) return null;
+  const { rows } = await pool.query(`SELECT menus FROM app_users WHERE id = $1`, [id]);
+  return rows[0]?.menus ?? null;
+}
+
 export async function deleteUser(id) {
   if (!dbEnabled()) throw new Error('DB 비활성화 상태입니다');
   await pool.query(`DELETE FROM app_users WHERE id = $1`, [id]);
@@ -395,7 +410,7 @@ export async function listUsersWithStats() {
   if (!dbEnabled()) return [];
   const { rows } = await pool.query(`
     SELECT
-      u.id, u.code, u.name, u.role, u.active, u.created_at,
+      u.id, u.code, u.name, u.role, u.active, u.created_at, u.menus,
       COALESCE(a.analyze_count, 0)  AS analyze_count,
       COALESCE(e.event_count, 0)    AS event_count,
       s.last_seen_at,

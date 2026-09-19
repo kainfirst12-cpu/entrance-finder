@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import SendToPapa from './SendToPapa';
 import StudentPicker from './StudentPicker';
 
 // SSE(keepalive) 또는 JSON 응답 처리
@@ -420,6 +421,7 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
             <div style={{ display: 'flex', gap: 8 }}>
               <button style={S.assignBtn} onClick={assignStudent}>📋 학생에게 배정</button>
               <button style={S.docxBtn} onClick={downloadDocx} disabled={downloading}>{downloading ? '생성 중...' : '📄 Word(.docx) 다운로드'}</button>
+              <SendToPapa kind="수행평가" title={docTitle()} markdown={activeDoc} studentName={studentName} style={{ marginLeft: 6 }} />
               <button style={S.ghostBtn} onClick={copyAll}>{copied ? '복사됨!' : '복사'}</button>
             </div>
           </div>

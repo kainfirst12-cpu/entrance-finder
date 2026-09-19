@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { API_BASE } from '../apiBase';
 import { mdPreview } from '../mdPreview';
 import { parseReport, stripStructured } from '../reportMarkdown';
+import SendToPapa, { AUD_LABEL } from './SendToPapa';
 
 // 고교·중학 공시정보 → 입시·진학 관점 해설 보고서
 //   - explainSchools(): 학교 1곳 또는 비교함(2~4곳)의 공시 수치를 백엔드 /api/schoolinfo/explain 에 보내 AI 해설(마크다운)을 받는다
@@ -282,10 +283,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
   const [mode, setMode] = useState('preview');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
-  const [sendOpen, setSendOpen] = useState(false);
-  const [sendCfg, setSendCfg] = useState(null); // { enabled, target } — 나만의 패파 연동 열쇠가 서버에 있는지
   useEffect(() => { setR(initial); setDirty(!initial.id); }, [initial]);
-  useEffect(() => { api('/api/school-reports/send-config').then((d) => setSendCfg(d.success ? d : { enabled: false })).catch(() => setSendCfg({ enabled: false })); }, []);
 
   const edit = (patch) => { setR((x) => ({ ...x, ...patch })); setDirty(true); };
   const fail = (e) => { if (e.auth) onAuthError?.(); setMsg(e.message); };
@@ -302,11 +300,8 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
       return saved;
     } catch (e) { fail(e); return null; } finally { setBusy(''); }
   };
-  // 학부모에게 보내기 — 저장 전이면 먼저 저장한다(버튼이 잠겨 있어 눌러도 반응이 없던 문제, 원장 제보 2026-09-20)
-  const openSend = async () => {
-    if (dirty || !r.id) { const saved = await save(); if (!saved) return; }
-    setSendOpen(true);
-  };
+  // 나만의 패파에 배정(관리자 전용) — 저장 전이면 먼저 저장한다(버튼이 잠겨 있어 눌러도 반응이 없던 문제, 원장 제보 2026-09-20)
+  const beforeSend = async () => { if (dirty || !r.id) { const saved = await save(); return !!saved; } return true; };
   const remove = async () => {
     if (!window.confirm('이 보고서를 삭제할까요? 되돌릴 수 없습니다.')) return;
     setBusy('delete');
@@ -342,9 +337,10 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
           <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : r.id ? '변경 저장' : '보관함에 저장'}</button>
           <button style={S.btn} disabled={!!busy} onClick={() => dl('docx')}>{busy === 'docx' ? '만드는 중…' : 'Word 다운로드'}</button>
           <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : 'PDF 다운로드'}</button>
-          <button style={S.btn} disabled={!!busy} onClick={openSend} title="저장 전이면 먼저 저장한 뒤 보냅니다">
-            📨 학부모에게 보내기{r.sent?.length ? ` (${r.sent.length})` : ''}
-          </button>
+          <SendToPapa kind={r.kind === 'compare' ? '학교 비교 해설' : '학교 입시 해설'} title={r.title} markdown={r.content} data={r.data || null} studentName={(r.focus || '').match(/^[가-힣]{2,4}(?=[\s,(·])/)?.[0] || ''}
+            endpoint="/api/school-reports/send" extra={{ reportId: r.id }} beforeOpen={beforeSend} onAuthError={onAuthError}
+            label={`📨 나만의 패파에 배정${r.sent?.length ? ` (${r.sent.length})` : ''}`}
+            onSent={(d) => { setR((x) => ({ ...x, sent: d.sent || x.sent })); setMsg('나만의 패파로 보냈습니다'); }} />
           <button style={{ ...S.btn, ...S.danger }} disabled={!!busy} onClick={remove}>{r.id ? '삭제' : '버리기'}</button>
         </div>
         {msg && <div style={S.msg}>{msg}</div>}
@@ -366,55 +362,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
           수정 탭에서 문단을 고치거나 지울 수 있습니다(마크다운: ## 제목, - 목록, | 표 |). 다운로드는 지금 화면의 내용을 그대로 담습니다 —
           보관함에 저장해 두면 나중에 다시 열어 고치거나 내려받을 수 있습니다. 학부모에게 보내면 나만의 패파(academy-video)의 그 학생 성장 리포트에 문서로 들어가고 알림이 갑니다.
         </p>
-        {sendOpen && <SendDialog report={r} cfg={sendCfg} onClose={() => setSendOpen(false)} onAuthError={onAuthError}
-          onSent={(sent) => { setR((x) => ({ ...x, sent: sent || x.sent })); setMsg('학부모에게 보냈습니다'); setSendOpen(false); }} />}
-      </div>
-    </div>
-  );
-}
 
-const AUD_LABEL = { parent: '학부모', student: '학생', both: '학생+학부모' };
-
-// ── 학부모에게 보내기 — 나만의 패파(academy-video) 성장 리포트로 발행 ──
-function SendDialog({ report, cfg, onClose, onSent, onAuthError }) {
-  const [studentName, setStudentName] = useState(() => (report.focus || '').match(/^[가-힣]{2,4}(?=[\s,(·])/)?.[0] || '');
-  const [audience, setAudience] = useState('parent');
-  const [memo, setMemo] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const send = async () => {
-    setBusy(true); setErr('');
-    try {
-      const d = await api('/api/school-reports/send', { method: 'POST', body: { reportId: report.id, title: report.title, markdown: report.content, data: report.data || null, studentName, audience, memo } });
-      if (!d.success) throw new Error(d.message || '전송 실패');
-      onSent(d.sent);
-    } catch (e) { if (e.auth) onAuthError?.(); setErr(e.message); } finally { setBusy(false); }
-  };
-  return (
-    <div style={{ ...S.overlay, zIndex: 1200 }} onClick={onClose}>
-      <div style={{ ...S.modal, maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
-        <div style={S.head}>
-          <div>
-            <h3 style={S.h3}>📨 학부모에게 보내기</h3>
-            <div style={S.sub}>나만의 패파의 학생 이름으로 찾아 그 아이의 성장 리포트에 넣고, 알림톡·푸시로 알립니다. 학부모는 나만의 패파에 로그인해서 봅니다.</div>
-          </div>
-          <button style={S.btn} onClick={onClose}>✕</button>
-        </div>
-        {cfg && !cfg.enabled && <div style={S.warn}>서버에 나만의 패파 연동 열쇠가 없습니다. 나만의 패파 선생님 대시보드 → 연동 열쇠를 복사해 Railway 환경변수 <code style={S.code}>ACADEMY_VIDEO_INBOUND_KEY</code> 에 넣어 주세요.</div>}
-        <label style={S.label}>학생 이름 (나만의 패파에 등록된 이름 그대로)</label>
-        <input style={S.search} value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="예: 김민준" autoFocus />
-        <label style={S.label}>누가 보나요</label>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          {['parent', 'both', 'student'].map((k) => <button key={k} style={{ ...S.btn, ...(audience === k ? S.primary : {}) }} onClick={() => setAudience(k)}>{AUD_LABEL[k]}</button>)}
-        </div>
-        <label style={S.label}>한 줄 메모 (알림에 함께 나갑니다, 선택)</label>
-        <input style={S.search} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 상담 때 말씀드린 두 학교 비교입니다. 읽어 보시고 궁금한 점 연락 주세요." />
-        <div style={S.sub}>보내는 문서: <b>{report.title}</b>{report.data ? ' (수치 차트 포함)' : ''}</div>
-        {err && <div style={{ ...S.msg, color: '#f87171', marginTop: 8 }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-          <button style={S.btn} onClick={onClose}>취소</button>
-          <button style={{ ...S.btn, ...S.primary }} disabled={busy || !studentName.trim() || (cfg && !cfg.enabled)} onClick={send}>{busy ? '보내는 중…' : '보내기'}</button>
-        </div>
       </div>
     </div>
   );

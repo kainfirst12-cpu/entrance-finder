@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
+import SendToPapa from './SendToPapa';
 import StudentPicker from './StudentPicker';
 import { univLabel } from '../univName';
 import { buildInterviewHtml } from '../interviewReport';
@@ -358,6 +359,10 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
                 <button style={S.btn} onClick={() => assign(result.savedId, result.studentId)}>📌 {result.studentName || '학생'} 기록에 배정</button>
               )}
               {result.savedId && !result.studentId && <AssignPicker onAssign={(sid) => assign(result.savedId, sid)} />}
+              {result.savedId && (
+                <SendToPapa kind="면접 전략" title={reportTitle(result.data)} markdown="(서버가 저장본에서 만듭니다)" studentName={result.studentName || ''}
+                  extra={{ interviewId: result.savedId }} onAuthError={onAuthError} />
+              )}
             </div>
           </div>
           <iframe title="면접 전략 리포트" srcDoc={html} style={S.frame} />

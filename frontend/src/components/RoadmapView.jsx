@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import VerifyPanel from './VerifyPanel';
+import SendToPapa from './SendToPapa';
 
 // 생기부 로드맵 체크리스트 — 학생 페이지(라이트)와 선생님 보드(다크) 공용.
 // 데이터는 부모가 들고 있고, 이 컴포넌트는 핸들러만 호출한다(호출 후 부모가 새로 고침).
@@ -171,6 +172,10 @@ export default function RoadmapView({ roadmaps = [], dark = false, editable = tr
               )}
               {onDownloadDocx && (
                 <button onClick={() => onDownloadDocx(rm)} style={linkBtn(t)} title="로드맵을 워드(.docx) 파일로 저장 (프리미엄)">⬇ 워드</button>
+              )}
+              {(rm.body || items.length > 0) && (
+                <SendToPapa kind="생기부 로드맵" title={rm.title || '생기부 로드맵'} studentName={rm.student_name || ''} style={{ ...linkBtn(t) }}
+                  markdown={`${rm.body || ''}\n\n## 실행 항목\n${items.map((it) => `- ${it.done ? '✅ ' : ''}**${it.title}**${it.detail ? ` — ${it.detail}` : ''}${it.note ? ` (메모: ${it.note})` : ''}`).join('\n')}`.trim()} />
               )}
               {onSimplify && (
                 <button onClick={() => onSimplify(rm)} style={linkBtn(t)} title="내용·체크 기록은 그대로 두고 문장만 학생 눈높이로 다시 씁니다">✨ 쉽게 풀어쓰기</button>

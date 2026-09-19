@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import { MENU_ITEMS } from '../menus';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -41,6 +42,7 @@ const LOG_TYPE_LABEL = { login: '로그인', analyze: '분석 실행', logout: '
 
 export default function AdminDashboard({ onAuthError }) {
   const [users, setUsers] = useState([]);
+  const [menuEdit, setMenuEdit] = useState(null); // { id, name, menus: null|[] } — 코드별 공개 메뉴 편집 중
   const [sessions, setSessions] = useState([]);
   const [logs, setLogs] = useState([]);
   const [dbOn, setDbOn] = useState(true);
@@ -294,6 +296,39 @@ export default function AdminDashboard({ onAuthError }) {
           </div>
         )}
 
+        {menuEdit && (
+          <div style={S.overlay} onClick={() => setMenuEdit(null)}>
+            <div style={S.modal} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ margin: '0 0 4px' }}>🔒 공개 메뉴 — {menuEdit.name || '(이름없음)'}</h3>
+              <p style={S.muted}>체크한 메뉴만 이 코드의 대시보드에 보이고, 서버도 같은 표로 막습니다. "전체 공개"면 새 메뉴가 생겨도 자동으로 열립니다.</p>
+              <label style={S.menuRow}>
+                <input type="checkbox" checked={menuEdit.menus === null} onChange={(e) => setMenuEdit({ ...menuEdit, menus: e.target.checked ? null : MENU_ITEMS.map((m) => m.key) })} />
+                <b>전체 공개</b>
+              </label>
+              <div style={{ ...S.menuGrid, opacity: menuEdit.menus === null ? 0.45 : 1 }}>
+                {MENU_ITEMS.map((m) => (
+                  <label key={m.key} style={S.menuRow}>
+                    <input type="checkbox" disabled={menuEdit.menus === null}
+                      checked={menuEdit.menus === null || menuEdit.menus.includes(m.key)}
+                      onChange={(e) => setMenuEdit({ ...menuEdit, menus: e.target.checked ? [...menuEdit.menus, m.key] : menuEdit.menus.filter((k) => k !== m.key) })} />
+                    {m.label}
+                  </label>
+                ))}
+              </div>
+              <p style={S.muted}>면접 전략·나만의 패파 배정은 관리자 전용이라 여기 없습니다. 바뀐 설정은 그 코드의 다음 요청부터 바로 적용됩니다(다시 로그인하면 대시보드도 갱신).</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+                <button style={S.smallBtn} onClick={() => setMenuEdit(null)}>취소</button>
+                <button style={{ ...S.smallBtn, background: '#5b86d6', borderColor: '#5b86d6', color: '#fff' }} onClick={async () => {
+                  try {
+                    await api(`/api/admin/users/${menuEdit.id}`, { method: 'PATCH', body: JSON.stringify({ menus: menuEdit.menus }) });
+                    setUsers((list) => list.map((x) => (x.id === menuEdit.id ? { ...x, menus: menuEdit.menus } : x)));
+                    setMenuEdit(null);
+                  } catch (e) { alert('저장 실패: ' + e.message); }
+                }}>저장</button>
+              </div>
+            </div>
+          </div>
+        )}
         {users.length === 0 ? (
           <div style={S.muted}>{dbOn ? '발급된 이용자 코드가 없습니다.' : ''}</div>
         ) : (
@@ -307,6 +342,7 @@ export default function AdminDashboard({ onAuthError }) {
                 <th style={S.th}>전체 활동</th>
                 <th style={S.th}>최근 접속</th>
                 <th style={S.th}>발급일</th>
+                <th style={S.th}>공개 메뉴</th>
                 <th style={S.th}>관리</th>
               </tr></thead>
               <tbody>
@@ -326,6 +362,12 @@ export default function AdminDashboard({ onAuthError }) {
                     <td style={S.td}>{u.event_count}건</td>
                     <td style={S.td}>{fmtTime(u.last_seen_at)}</td>
                     <td style={S.td}>{fmtTime(u.created_at)}</td>
+                    <td style={S.td}>
+                      <button style={S.smallBtn} onClick={() => setMenuEdit({ id: u.id, name: u.name, menus: Array.isArray(u.menus) ? [...u.menus] : null })}
+                        title="이 코드로 로그인하면 보이는 메뉴">
+                        {Array.isArray(u.menus) ? `${u.menus.length}/${MENU_ITEMS.length}개` : '전체'} ✎
+                      </button>
+                    </td>
                     <td style={S.td}>
                       <button style={S.smallBtn} onClick={() => toggleActive(u)}>
                         {u.active ? '비활성화' : '활성화'}
@@ -482,6 +524,10 @@ const STYLES = {
   offlineBadge: { color: '#6b7d8a', fontSize: 12.5 },
   disabledBadge: { color: '#f87171', fontSize: 12.5 },
   smallBtn: { background: '#131c26', color: '#e8eef3', border: '1px solid #d8d5cc', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, marginRight: 6 },
+  overlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  modal: { background: '#131c26', border: '1px solid #2a3a48', borderRadius: 14, padding: 20, width: '100%', maxWidth: 560, color: '#e8eef3' },
+  menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 4, margin: '6px 0 10px' },
+  menuRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '4px 2px', cursor: 'pointer' },
   dangerBtn: { background: 'rgba(248,113,113,0.14)', borderColor: 'rgba(248,113,113,0.45)', color: '#f87171' },
   kbCounts: { display: 'flex', gap: 12, marginBottom: 14 },
   kbStat: { flex: 1, background: 'rgba(45,212,191,0.15)', border: '1px solid #9fe3d8', borderRadius: 10, padding: '14px 12px', textAlign: 'center' },
