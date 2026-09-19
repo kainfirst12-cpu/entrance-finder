@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import DisclosureNotice from './DisclosureNotice';
+import { explainSchools, ReportEditor, SavedReports, ExplainBox } from './SchoolReport';
 
 // 전국 고교·중학 공시정보 — 학교알리미 교과별 학업성취(A~E 비율·평균) + 학년별 재적 + EDSS 학급·교원.
 // 데이터는 /data/school-catalog.json.gz 하나(정적 파일). 서버·로그인 토큰이 필요 없어 백엔드를 건드리지 않는다.
@@ -65,7 +66,7 @@ function pct(v) { return v === null || v === undefined ? '—' : `${Number(v).to
 function num(v) { return v === null || v === undefined ? '—' : Number(v).toLocaleString('ko-KR'); }
 function dec1(v) { return v === null || v === undefined ? '—' : Number(v).toFixed(1); }
 
-export default function SchoolInfo() {
+export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
   const [cat, setCat] = useState(null);
   const [err, setErr] = useState('');
   const [level, setLevel] = useState('고등학교');
@@ -82,6 +83,13 @@ export default function SchoolInfo() {
   const [detailId, setDetailId] = useState(null);
   const [compare, setCompare] = useState([]);
   const [showCompare, setShowCompare] = useState(false);
+  // 입시 해설 보고서 — 생성 중 표시, 열려 있는 편집기, 보관함
+  const [explaining, setExplaining] = useState('');
+  const [report, setReport] = useState(null);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [savedKey, setSavedKey] = useState(0);
+  const [explainErr, setExplainErr] = useState('');
+  const hasKey = !!getActiveKey?.();
 
   useEffect(() => {
     let dead = false;
@@ -136,6 +144,20 @@ export default function SchoolInfo() {
   const compareSchools = compare.map((id) => (cat?.schools || []).find((s) => s.id === id)).filter(Boolean);
   const toggleCompare = (id) => setCompare((c) => (c.includes(id) ? c.filter((x) => x !== id) : c.length >= MAX_COMPARE ? c : [...c, id]));
 
+  // 학교 1곳(kind school) 또는 비교함(kind compare) → 전 과목 표를 채워 AI 해설을 받는다
+  const startExplain = async (kind, list, focus) => {
+    setExplainErr('');
+    setExplaining(kind === 'compare' ? `비교 해설 생성 중… (${list.length}곳, 1~2분)` : '해설 생성 중… (1~2분)');
+    try {
+      const full = await Promise.all(list.map(async (s) => ({ ...s, bands: (await loadFullBands(s).catch(() => null)) || s.bands || [] })));
+      const r = await explainSchools({ kind, schools: full, focus, apiKey: getActiveKey?.(), aiGroup, selectedModel });
+      setReport(r);
+    } catch (e) {
+      if (e.auth) onAuthError?.();
+      setExplainErr(e.message || '해설 생성 실패');
+    } finally { setExplaining(''); }
+  };
+
   const isHigh = level === '고등학교';
   const scopeLabel = [sido === '전체' ? '전국' : sido, sigungu === '전체' ? '' : sigungu].filter(Boolean).join(' ');
 
@@ -151,10 +173,13 @@ export default function SchoolInfo() {
             학교알리미 {cat.disclosureYear} 공시({cat.academicYear} 성취도) · 학년별 재적 · EDSS 학급·교원 — 전국 고교 {num(cat.schools.filter((s) => s.schoolLevel === '고등학교').length)}곳, 중학 {num(cat.schools.filter((s) => s.schoolLevel === '중학교').length)}곳
           </p>
         </div>
-        <div style={S.levelTabs}>
-          {['고등학교', '중학교'].map((l) => (
-            <button key={l} style={{ ...S.tab, ...(level === l ? S.tabOn : {}) }} onClick={() => setLevel(l)}>{l}</button>
-          ))}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={S.smallBtn} onClick={() => setSavedOpen(true)}>📚 해설 보고서 보관함</button>
+          <div style={S.levelTabs}>
+            {['고등학교', '중학교'].map((l) => (
+              <button key={l} style={{ ...S.tab, ...(level === l ? S.tabOn : {}) }} onClick={() => setLevel(l)}>{l}</button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -267,8 +292,13 @@ export default function SchoolInfo() {
         </div>
       )}
 
-      {detail && <DetailModal school={detail} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)} />}
-      {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)} />}
+      {detail && <DetailModal school={detail} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
+        explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('school', [detail], focus) }} />}
+      {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)}
+        explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('compare', compareSchools, focus) }} />}
+      {report && <ReportEditor report={report} onClose={() => setReport(null)} onAuthError={onAuthError}
+        onSaved={() => setSavedKey((k) => k + 1)} onDeleted={() => setSavedKey((k) => k + 1)} />}
+      {savedOpen && <SavedReports refreshKey={savedKey} onAuthError={onAuthError} onClose={() => setSavedOpen(false)} onOpen={(r) => { setReport(r); setSavedOpen(false); }} />}
     </div>
   );
 }
@@ -296,7 +326,7 @@ function Stat({ label, value, hint }) {
   );
 }
 
-function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
+function DetailModal({ school: s, onClose, inCompare, onToggleCompare, explain }) {
   const isHigh = s.schoolLevel === '고등학교';
   const seats = seatsOf(s);
   // 전 과목 표(기타 과목)는 열릴 때 따로 받는다 — 받기 전엔 catalog 에 실린 국·영·수만 보인다.
@@ -356,6 +386,12 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
             <BandTable rows={others.sort((x, y) => x.grade - y.grade || x.semester - y.semester)} />
           </section>
         )}
+        {explain && (
+          <>
+            <ExplainBox label={`${s.schoolName} 입시·진학 해설`} busy={explain.busy} hasKey={explain.hasKey} onExplain={explain.run} />
+            {explain.err && <p style={{ ...S.dim, color: '#f87171', marginTop: 6 }}>{explain.err}</p>}
+          </>
+        )}
         {fullState === 'loading' && <p style={{ ...S.dim, marginTop: 14 }}>전 과목 성취도를 불러오는 중…</p>}
         {fullState === 'error' && <p style={{ ...S.dim, marginTop: 14 }}>전 과목 성취도를 불러오지 못했습니다. 국·영·수만 표시합니다.</p>}
         <p style={{ ...S.dim, marginTop: 14 }}>A~E = 성취도 비율(%). 평균·표준편차는 학교알리미 공시값. 3학년 진로선택 과목은 A·B·C 3단계만 공시됩니다.</p>
@@ -388,7 +424,7 @@ function BandTable({ rows }) {
   );
 }
 
-function CompareModal({ schools, subject, grade, onClose }) {
+function CompareModal({ schools, subject, grade, onClose, explain }) {
   const isHigh = schools.every((s) => s.schoolLevel === '고등학교');
   const rowsSpec = [
     { label: '소재지', get: (s) => `${s.sido} ${s.sigungu}` },
@@ -429,6 +465,12 @@ function CompareModal({ schools, subject, grade, onClose }) {
           </table>
         </div>
         <p style={{ ...S.dim, marginTop: 12 }}>강조 행 = 목록에서 고른 과목·학년. 같은 학년은 뒤 학기(2학기) 값을 우선합니다.</p>
+        {explain && (
+          <>
+            <ExplainBox label={`${schools.length}개 학교 입시 비교 해설`} busy={explain.busy} hasKey={explain.hasKey} onExplain={explain.run} />
+            {explain.err && <p style={{ ...S.dim, color: '#f87171', marginTop: 6 }}>{explain.err}</p>}
+          </>
+        )}
       </div>
     </div>
   );

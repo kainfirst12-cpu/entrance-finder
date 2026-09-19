@@ -462,7 +462,12 @@ export default function App() {
           <UnivInfo onAuthError={handleLogout} />
         )}
         {view === 'schoolinfo' && (
-          <SchoolInfo />
+          <SchoolInfo
+            getActiveKey={getActiveKey}
+            selectedModel={selectedModel}
+            aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+            onAuthError={handleLogout}
+          />
         )}
         {view === 'ipgyeol' && (
           <IpgyeolConsole onAuthError={handleLogout} />

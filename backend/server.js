@@ -30,7 +30,11 @@ import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissio
 import { runFullAnalysis } from './services/claudeService.js';
 import { placementJudgeRules, caseMatchGuide } from './services/reportUtils.js';
 import { reviewOnce, buildConsensus, applyFixes, VERIFY_KINDS } from './services/crossVerify.js';
-import { generateAnalysisPDF, generateRoadmapPDF } from './services/pdfService.js';
+import { generateAnalysisPDF, generateRoadmapPDF, generateMarkdownPDF } from './services/pdfService.js';
+import {
+  ensureSchoolReportTable, listSchoolReports, getSchoolReport, getSchoolReportOwner,
+  createSchoolReport, updateSchoolReport, deleteSchoolReport,
+} from './services/schoolReportStore.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
@@ -1085,6 +1089,186 @@ app.post('/api/assessment/extract', upload.array('files', 10), async (req, res) 
   } catch (err) {
     console.error('[extract] 오류:', err.message);
     sendDone({ success: false, message: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════
+// 고교·중학 공시정보 — 입시·진학 관점 해설(학교 1곳 / 비교함) + 해설 보고서 보관·Word/PDF
+// ══════════════════════════════════════════════════════
+
+// 화면이 보낸 catalog 학교 항목(전 과목 bands 포함)을 AI 에게 줄 수치 요약으로 만든다 — 토큰을 아끼려고 표 형태로 압축
+function schoolFacts(s) {
+  const n = (v) => (v === null || v === undefined ? '—' : v);
+  const bands = Array.isArray(s.bands) ? s.bands : [];
+  const isHigh = s.schoolLevel === '고등학교';
+  const lines = [];
+  lines.push(`### ${s.schoolName} (${s.schoolLevel})`);
+  lines.push(`- 소재: ${s.sido} ${s.sigungu} · 유형: ${s.schoolType || '—'} · 설립: ${s.fond || '—'} · 남녀: ${s.gender || '—'}${s.address ? ` · 주소: ${s.address}` : ''}`);
+  const e = s.enrollment || {};
+  lines.push(`- 학년별 재적(1·2·3학년/전체): ${n(e.grade1)} · ${n(e.grade2)} · ${n(e.grade3)} / ${n(e.total)}${isHigh && e.grade1 ? ` → 1학년 10%(5등급제 1등급 자리) ≈ ${Math.round(e.grade1 * 0.1)}명` : ''}`);
+  if (s.edss) lines.push(`- 학급 ${n(s.edss.classes)}개(1·2·3학년 ${n(s.edss.classGrade1)}·${n(s.edss.classGrade2)}·${n(s.edss.classGrade3)}) · 교원 ${n(s.edss.teachers)}명 · 입학 ${n(s.edss.entrants)} / 졸업 ${n(s.edss.graduates)} (EDSS)`);
+  if (s.current) lines.push(`- 현재 학생 ${n(s.current.students)}명(남 ${n(s.current.male)} · 여 ${n(s.current.female)}) · 교원 ${n(s.current.teachers)}명${s.current.founded ? ` · 개교 ${s.current.founded}` : ''} (학교알리미 학교정보)`);
+  const year = [...new Set(bands.map((b) => b.year).filter(Boolean))].join(', ') || '—';
+  lines.push(`- 성취도 학년도: ${year}${s.achievementChasu ? ` (공시 ${s.achievementChasu.slice(0, 4)}년)` : ''}`);
+  const fmt = (b) => `${b.grade}-${b.semester} | ${b.subject}${b.credit ? `(${b.credit})` : ''} | ${n(b.mean)} | ${n(b.a)} | ${n(b.b)} | ${n(b.c)} | ${n(b.d)} | ${n(b.e)}`;
+  const sortB = (x, y) => x.grade - y.grade || x.semester - y.semester || x.subject.localeCompare(y.subject, 'ko');
+  const core = bands.filter((b) => b.family).sort(sortB);
+  if (core.length) {
+    lines.push(`- 국어·영어·수학 성취도 (학년-학기 | 과목(단위) | 평균 | A% | B% | C% | D% | E%)`);
+    core.forEach((b) => lines.push(`  ${fmt(b)}`));
+  }
+  const others = bands.filter((b) => !b.family).sort(sortB);
+  if (others.length) {
+    const three = others.filter((b) => b.d === null && b.e === null);
+    lines.push(`- 그 외 개설 과목 ${new Set(others.map((b) => b.subject)).size}개 (A·B·C 3단계만 공시=진로선택·체육예술 ${new Set(three.map((b) => b.subject)).size}개)`);
+    others.forEach((b) => lines.push(`  ${fmt(b)}`));
+  }
+  if (!bands.length) lines.push(`- 교과별 학업성취 공시 없음(신설·공시제외)`);
+  return lines.join('\n');
+}
+
+const SCHOOL_EXPLAIN_SYSTEM = `당신은 한국 고입·대입 컨설팅 전문가입니다. 학교알리미 공시 수치(교과별 학업성취 A~E 비율·평균, 학년별 재적, 학급·교원)를 읽고
+학부모·학생에게 "이 학교가 입시·진학 관점에서 어떤 학교인가, 어떤 학생에게 유리하고 불리한가"를 해설합니다.
+
+[해석 원칙 — 반드시 이 틀로 판단]
+1. 성취도 A~E 는 절대평가(90/80/70/60점 기준) 비율이고, 내신 등급은 상대평가입니다. 두 가지를 섞어서 읽습니다.
+   - A 비율이 높고 평균이 높다 → 시험이 쉽거나 상위권이 두껍다 → 등급 경쟁이 치열하고 한 문제 실수로 등급이 갈린다(내신 불리, 특히 A 30% 이상이면 1등급 10% 안에서 만점권 변별).
+   - E 비율이 높고 평균이 낮다 → 하위권이 두껍다 → 중상위권 학생이 등급을 확보하기 쉽다. 다만 수업 수준·학습 분위기는 별도로 짚는다.
+   - 분포가 A·E 양 끝에 몰리면(양극화) 중간이 비어 2~3등급이 넓게 열린다.
+2. 고교 내신은 2025년 입학생(2022 개정 교육과정)부터 5등급 상대평가: 1등급 10%, 2등급 누적 34%, 3등급 누적 66%, 4등급 누적 90%.
+   1등급 자리 = 1학년 재적 × 10%. 재적이 작을수록(학년 100명 이하) 1등급 자리가 적고 선택과목이 소인수가 되어 등급 산출·변별에 불리하거나 유리해지는 과목이 생긴다. 재적이 크면 자리와 선택 폭이 넓다.
+3. 학년별·학기별 추이를 봅니다: 1학년(공통과목) → 2·3학년(선택과목)으로 갈수록 A 비율이 오르면 상위권 잔류/이탈, 선택과목 소인수화, 시험 난이도 완화 등 원인을 추정합니다. 1·2학기 차이도 언급합니다.
+4. 국어·영어·수학 사이의 균형: 특정 과목만 A 비율이 유독 높으면 그 과목이 강점인 학생에게는 변별이 없어 불리하고, 약점인 학생에게는 등급 방어가 쉽습니다.
+5. A·B·C 3단계만 공시된 과목(진로선택·체육예술)은 등급을 내지 않는 과목이므로 내신 부담이 적고 학생부종합 세특 소재로 봅니다. 개설 과목 수와 종류로 선택 폭(진로 맞춤 과목 개설 여부)을 평가합니다.
+6. 학교 유형(일반고/자율고/특목고/특성화고), 남녀 구성, 설립(사립·공립)에 따른 일반적 특징을 수치와 연결해 말하되 근거 없는 단정은 피합니다.
+   종합고·특성화고는 계열별 줄('[일반계 / 전체학과]' 등)을 구분해 일반계 기준으로 해석합니다.
+7. 중학교는 절대평가 성취도만 있으므로 고입 관점(자사고·특목고·비평준화 지역 내신, 학력 수준·분위기, 고교 선택의 기준)으로 해석합니다.
+8. 판단은 반드시 수치를 인용해 근거를 답니다(예: "고1 공통수학1 A 비율 8.7%, 평균 55.2점"). 자료에 없는 것은 지어내지 않고 "공시 없음"으로 씁니다.
+9. 성취도는 시험 난이도와 학교 재량에 크게 좌우되는 지표이므로 한계를 명시하고, 실제 등급컷·수업·프로그램은 학교 설명회·재학생 확인을 권합니다.
+
+[문체] 합니다체, 이모지 금지, 마크다운(## 제목, 표, 목록). 학부모가 읽어도 이해되게 쓰되 근거는 구체적으로. 분량은 A4 2~3장 수준.`;
+
+const SCHOOL_FORMAT_SINGLE = `[출력 구조 — 이 제목 그대로]
+## 한눈에 보기
+(핵심 3~5줄: 이 학교의 성격과 결론)
+## 성취도 해석 — 국어·영어·수학
+(학년·학기별 A 비율/평균 추이, 과목 간 균형, 시험 난이도·상위권 두께 추정. 표를 하나 넣어도 좋음)
+## 학교 규모와 등급 구조
+(재적·1등급 자리·학급 수·선택과목 개설 폭이 내신에 미치는 영향)
+## 이런 학생에게 유리합니다
+(학생 유형별로 3~5개, 각 항목에 근거 수치)
+## 이런 학생에게 불리합니다
+(학생 유형별로 3~5개, 각 항목에 근거 수치)
+## 입시 전략 제안
+(이 학교에 다닌다면 학생부교과·학생부종합·정시 중 어느 쪽에 무게를 두어야 하는지, 과목 선택·시기별 포인트)
+## 유의사항
+(자료의 한계와 확인해야 할 것)`;
+
+const SCHOOL_FORMAT_COMPARE = `[출력 구조 — 이 제목 그대로]
+## 비교 요약표
+(학교별 열: 유형/남녀 · 1학년 재적 · 1등급 자리 · 고1(중1) 국·영·수 A 비율과 평균 · 개설 과목 수 · 한 줄 평)
+## 항목별 비교
+### 내신 경쟁 강도
+### 1등급 자리와 학교 규모
+### 과목 개설과 선택 폭
+### 학력 수준과 학습 분위기
+(각 항목마다 어느 학교가 어떤 학생에게 유리한지 수치로 비교)
+## 학생 유형별 추천
+(예: 최상위권(의약학·SKY 교과전형 목표) / 중상위권 내신 확보 / 학종 활동 중심 / 정시·수능 중심 / 학습 분위기가 필요한 학생 — 유형마다 추천 학교와 이유)
+## 학교별 유리·불리 정리
+(학교마다 유리한 학생·불리한 학생을 2~3줄씩)
+## 유의사항`;
+
+app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
+  const { kind, schools, focus } = req.body || {};
+  if (!Array.isArray(schools) || !schools.length) return res.status(400).json({ success: false, message: '학교 자료가 없습니다' });
+  if (schools.length > 4) return res.status(400).json({ success: false, message: '비교는 최대 4곳까지입니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+  const isCompare = kind === 'compare' && schools.length > 1;
+  const facts = schools.map(schoolFacts).join('\n\n');
+  const userMsg = [
+    isCompare ? `[요청] 아래 ${schools.length}개 학교를 입시·진학 관점에서 비교하고, 어떤 학생에게 어느 학교가 유리·불리한지 설명해 주세요.` : `[요청] 아래 학교의 공시 수치를 입시·진학 관점에서 해설하고, 어떤 학생에게 유리·불리한지 설명해 주세요.`,
+    focus?.trim() ? `[상담 대상 학생 상황] ${String(focus).trim().slice(0, 1500)}\n→ 위 학생 기준으로 유리·불리와 전략을 맞춰 주세요.` : '',
+    isCompare ? SCHOOL_FORMAT_COMPARE : SCHOOL_FORMAT_SINGLE,
+    `[학교알리미 공시 수치]\n${facts}`,
+  ].filter(Boolean).join('\n\n');
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const content = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: SCHOOL_EXPLAIN_SYSTEM, userMsg, maxTokens: isCompare ? 10000 : 7000 });
+    const names = schools.map((s) => s.schoolName);
+    const title = isCompare ? `${names.join(' vs ')} 입시 비교 해설` : `${names[0]} 입시 해설`;
+    sendDone({ success: true, content: String(content || '').trim(), title, kind: isCompare ? 'compare' : 'school', snapshot: { facts, model: submodel, at: new Date().toISOString() } });
+  } catch (err) {
+    console.error('[schoolinfo/explain] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// 해설 보고서 보관 CRUD (선생님별)
+app.get('/api/school-reports', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    res.json({ success: true, items: await listSchoolReports(req.user.userId, { q: req.query.q }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/school-reports', requireAuth, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try {
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    res.json({ success: true, item: await createSchoolReport(req.user.userId, req.body || {}) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+async function schoolReportGuard(req, res) {
+  const id = Number(req.params.id);
+  const owner = await getSchoolReportOwner(id);
+  if (owner === null) { res.status(404).json({ success: false, message: '보고서 없음' }); return null; }
+  if (req.user.role !== 'admin' && owner !== req.user.userId) { res.status(403).json({ success: false, message: '권한 없음' }); return null; }
+  return id;
+}
+app.get('/api/school-reports/:id', requireAuth, async (req, res) => {
+  try { const id = await schoolReportGuard(req, res); if (id === null) return; res.json({ success: true, item: await getSchoolReport(id) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/school-reports/:id', requireAuth, async (req, res) => {
+  try { const id = await schoolReportGuard(req, res); if (id === null) return; res.json({ success: true, item: await updateSchoolReport(id, req.body || {}) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/school-reports/:id', requireAuth, async (req, res) => {
+  try { const id = await schoolReportGuard(req, res); if (id === null) return; await deleteSchoolReport(id); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 보고서(수정 중인 본문 그대로) → Word / PDF. 저장 여부와 상관없이 화면이 보낸 내용을 내려준다.
+app.post('/api/school-reports/export', requireAuth, async (req, res) => {
+  try {
+    const { title, markdown, format, schoolNames, kind } = req.body || {};
+    if (!markdown?.trim()) return res.status(400).json({ success: false, message: '내용 없음' });
+    const safeTitle = String(title || '학교 입시 해설').trim();
+    const chips = [kind === 'compare' ? '비교 해설' : '학교 해설', schoolNames ? `학교: ${String(schoolNames).slice(0, 80)}` : ''];
+    if (format === 'pdf') {
+      const pdf = await generateMarkdownPDF({ title: safeTitle, subtitle: '입시-Finder  |  고교·중학 공시정보 입시 해설', chips, markdown });
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.pdf`);
+      return res.end(pdf);
+    }
+    const { markdownToDocxBuffer } = await import('./services/docxService.js');
+    const buf = await markdownToDocxBuffer(safeTitle, markdown);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.docx`);
+    res.end(buf);
+  } catch (e) {
+    console.error('[school-reports/export] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
   }
 });
 
@@ -4224,6 +4408,7 @@ app.delete('/api/admin/admissions', requireAdmin, async (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
   await initDb();
+  await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
   // 📈 실시간 경쟁률 자동 수집 — 접수 기간에만 실제로 돈다(스스로 판단한다).
   startRatioCron().catch((e) => console.warn('[ratio] 예약 실패:', e.message));
   await refreshKbCount();

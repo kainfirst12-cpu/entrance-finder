@@ -612,4 +612,45 @@ function generateRoadmapPDF(rm) {
   });
 }
 
-export { generateAnalysisPDF, generateRoadmapPDF };
+// 마크다운 보고서 → PDF (고교·중학 공시정보 '입시 해설 보고서' 등 본문이 마크다운 하나인 문서 공용)
+//   { title, subtitle, chips: ['학교: …', …], markdown }
+function generateMarkdownPDF({ title, subtitle, chips = [], markdown }) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margins: { top: 20, bottom: 20, left: 20, right: 20 }, bufferPages: true });
+      const fontPath = findKoreanFont();
+      if (fontPath) { doc.registerFont('Korean', fontPath); doc.font('Korean'); }
+      const chunks = [];
+      doc.on('data', c => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      const PW = doc.page.width;
+      const ML = 20, MR = 20, BODY_W = PW - ML - MR;
+
+      // 커버 헤더(로드맵 PDF 와 같은 톤)
+      doc.rect(0, 0, PW, 120).fill(C.NAVY);
+      doc.rect(0, 0, 8, 120).fill(C.BLUE);
+      doc.fontSize(8).fillColor(C.ACCENT).text(subtitle || '입시-Finder  |  고교·중학 공시정보 해설', ML + 8, 18);
+      doc.fontSize(16).fillColor(C.WHITE).text(title || '학교 입시 해설 보고서', ML + 8, 34, { width: BODY_W - 16 });
+      let chipX = ML + 8;
+      chips.filter(Boolean).forEach(chip => {
+        const tw = doc.fontSize(7).widthOfString(chip) + 14;
+        if (chipX + tw > PW - MR) return;
+        doc.roundedRect(chipX, 88, tw, 18, 3).fill('#1e3a6e');
+        doc.fontSize(7).fillColor(C.WHITE).text(chip, chipX + 7, 94);
+        chipX += tw + 6;
+      });
+      doc.fontSize(7).fillColor('#94a3b8').text(`작성 ${new Date().toLocaleDateString('ko-KR')} · 자료: 학교알리미 교과별 학업성취(절대평가 A~E 비율)·학년별 재적·EDSS`, ML + 8, 108, { lineBreak: false });
+
+      let y = 136;
+      // 나눔고딕에 로마숫자(Ⅰ·Ⅱ·Ⅲ…) 글리프가 없어 '수학Ⅰ' 이 빈칸으로 찍힌다 → 라틴 문자로 바꿔 그린다
+      const ROMAN = { 'Ⅰ': 'I', 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV', 'Ⅴ': 'V', 'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X' };
+      const md = String(markdown || '').replace(/[Ⅰ-Ⅹ]/g, (c) => ROMAN[c] || c);
+      y = _rmDrawMarkdown(doc, md, ML, y, BODY_W);
+      _drawFooters(doc, ML, PW, MR);
+      doc.end();
+    } catch (err) { reject(err); }
+  });
+}
+
+export { generateAnalysisPDF, generateRoadmapPDF, generateMarkdownPDF };
