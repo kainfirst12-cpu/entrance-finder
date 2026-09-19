@@ -85,6 +85,13 @@ Claude 가 할 일(순서):
 진행 현황(2026-09-20): **전국 완료** — 고교 2,283 + 중학 3,413 = 5,696곳 수집, 공시제외(신설·'입력된 데이터가 없습니다') 236곳 → 학교 목록 5,932곳 전부 처리.
 집 PC 수집분은 `achievement-raw-<지역>-<날짜>.json`(`{exportedAt, count, records[]}`) 묶음으로 넘어와 학교당 파일로 풀어 넣었다.
 
+## 정기 자동 갱신 (보안문자 없는 부분만)
+
+`.github/workflows/schoolinfo-refresh.yml` — 3·6·9·12월 1일 03:00 KST 자동 + GitHub Actions 탭에서 수동 실행(Run workflow).
+1. `fetch-school-list.mjs` → 2. `fetch-school-info.mjs --refresh`(24h 내 받은 건 건너뜀) → 3. `ci-changed.mjs` 로 fetchedAt 외에
+실제 바뀐 게 있는지 판정 → 있으면 `build-catalog.mjs` 후 `out/school-list.json`·`out/school-info.json`·`frontend/public/data/` 커밋·푸시
+→ Vercel 배포. 바뀐 게 없으면 아무것도 안 한다. 성취도(`achievement-raw/`)는 손대지 않는다(아래 알림 참고).
+
 ## 새 공시 알림 (자동 갱신 대신)
 
 성취도는 자동 갱신이 안 되므로, 대신 **새 공시가 올라오면 입시파인더 대시보드·공시정보 화면에 배너**가 뜬다.

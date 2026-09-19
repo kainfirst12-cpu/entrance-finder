@@ -2,6 +2,8 @@
 //   GET /ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=<uuid> 상단에 설립구분·학교특성(일반고/특성화고…)·학생수(남/여)·교원수·주소가 있다.
 //   특성화고처럼 예전 catalog 에 없던 학교의 성별·유형·재적 합계를 여기서 채운다(학년별 재적은 공개용데이터 xlsx 로).
 //   node fetch-school-info.mjs [부천시]   # 시군구 이름을 주면 그 지역만
+//   node fetch-school-info.mjs --refresh  # 이미 받은 학교도 다시(정기 갱신용, .github/workflows/schoolinfo-refresh.yml).
+//                                         # 24시간 안에 받은 건 건너뛰어 중단돼도 이어받는다.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -27,13 +29,17 @@ export function parseInfo(html) {
 }
 
 async function main() {
-  const only = process.argv[2] || null;
+  const args = process.argv.slice(2);
+  const refresh = args.includes('--refresh');
+  const only = args.find((a) => !a.startsWith('--')) || null;
+  const FRESH_MS = 24 * 60 * 60 * 1000;
   const list = JSON.parse(fs.readFileSync(path.join(here, 'out', 'school-list.json'), 'utf8')).schools.filter((s) => !only || s.sigungu === only || s.sido === only);
   const outFile = path.join(here, 'out', 'school-info.json');
   const info = fs.existsSync(outFile) ? JSON.parse(fs.readFileSync(outFile, 'utf8')) : {};
   let n = 0;
   for (const s of list) {
-    if (info[s.shlIdfCd]) continue;
+    const have = info[s.shlIdfCd];
+    if (have && (!refresh || Date.now() - Date.parse(have.fetchedAt || 0) < FRESH_MS)) continue;
     try {
       const res = await fetch(`${BASE}/ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=${s.shlIdfCd}`, { headers: { 'User-Agent': 'Mozilla/5.0 entrance-finder schoolinfo' } });
       // 응답이 euc-kr 이라 text() 로 읽으면 깨진다
