@@ -11,8 +11,8 @@ const BAND_COLORS = { a: '#2dd4bf', b: '#60a5fa', c: '#a78bfa', d: '#fbbf24', e:
 const PAGE = 60;
 const MAX_COMPARE = 4;
 
-async function loadCatalog() {
-  const res = await fetch(CATALOG_URL);
+async function fetchGzJson(url) {
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`데이터를 불러오지 못했습니다 (${res.status})`);
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -25,7 +25,11 @@ async function loadCatalog() {
   } else {
     text = new TextDecoder().decode(buf);
   }
-  const cat = JSON.parse(text);
+  return JSON.parse(text);
+}
+
+async function loadCatalog() {
+  const cat = await fetchGzJson(CATALOG_URL);
   cat.schools = cat.schools.map((s) => ({
     ...s,
     gender: s.gender === '녀' || s.gender === '여' ? '여자' : s.gender === '남' ? '남자' : s.gender,
@@ -33,11 +37,24 @@ async function loadCatalog() {
   return cat;
 }
 
+// catalog 의 bands 는 국·영·수만 실려 있다(전국 45만 줄을 다 실으면 84MB). 전 과목 표는 학교의 bandsFile
+// (시도×급별 파일, { [school.id]: bands[] }) 에 있어 상세 모달이 열릴 때 한 번 받아 두고 같은 시도는 재사용한다.
+const bandFileCache = new Map();
+function loadFullBands(school) {
+  if (!school.bandsFile) return Promise.resolve(null);
+  const url = CATALOG_URL.replace(/[^/]+$/, school.bandsFile);
+  if (!bandFileCache.has(url)) bandFileCache.set(url, fetchGzJson(url).catch((e) => { bandFileCache.delete(url); throw e; }));
+  return bandFileCache.get(url).then((m) => m[school.id] || null);
+}
+
 // 과목군(국어/영어/수학)·학년의 성취도 — 같은 학년이면 뒤 학기(2학기)를 우선한다.
+// 종합고·특성화고는 '과목 [일반계 / 전체학과]' 처럼 계열별 줄만 있고 전체 줄이 없는 곳이 있다(493곳) →
+// 전체계열 줄 > 일반계 줄 > 나머지 순으로 고른다.
+function trackRank(subject) { return !/\[/.test(subject) ? 0 : /일반계/.test(subject) ? 1 : 2; }
 function pickBand(school, subject, grade) {
   const list = (school.bands || []).filter((b) => b.family === subject && b.grade === grade && b.a !== null);
   if (!list.length) return null;
-  return list.sort((x, y) => (y.semester || 0) - (x.semester || 0))[0];
+  return list.sort((x, y) => trackRank(x.subject) - trackRank(y.subject) || (y.semester || 0) - (x.semester || 0))[0];
 }
 function seatsOf(s) {
   const g1 = s.enrollment?.grade1;
@@ -279,10 +296,21 @@ function Stat({ label, value, hint }) {
 function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
   const isHigh = s.schoolLevel === '고등학교';
   const seats = seatsOf(s);
+  // 전 과목 표(기타 과목)는 열릴 때 따로 받는다 — 받기 전엔 catalog 에 실린 국·영·수만 보인다.
+  const [full, setFull] = useState(null);
+  const [fullState, setFullState] = useState(s.bandsFile ? 'loading' : 'none');
+  useEffect(() => {
+    let dead = false;
+    setFull(null); setFullState(s.bandsFile ? 'loading' : 'none');
+    if (!s.bandsFile) return undefined;
+    loadFullBands(s).then((b) => { if (!dead) { setFull(b); setFullState(b ? 'ok' : 'none'); } }).catch(() => { if (!dead) setFullState('error'); });
+    return () => { dead = true; };
+  }, [s]);
+  const bands = full || s.bands || [];
   // 과목군 → 학년·학기 순으로 표를 만든다. 3학년 선택과목은 A~C 만 있는 것도 있어 null 은 '—' 로 둔다.
   const families = ['국어', '영어', '수학'];
-  const bandsBy = (fam) => (s.bands || []).filter((b) => b.family === fam).sort((x, y) => x.grade - y.grade || x.semester - y.semester);
-  const others = (s.bands || []).filter((b) => !families.includes(b.family));
+  const bandsBy = (fam) => bands.filter((b) => b.family === fam).sort((x, y) => x.grade - y.grade || x.semester - y.semester);
+  const others = bands.filter((b) => !families.includes(b.family));
   return (
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
@@ -321,10 +349,12 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare }) {
         })}
         {others.length > 0 && (
           <section style={{ marginTop: 18 }}>
-            <h4 style={S.h4}>기타 과목</h4>
+            <h4 style={S.h4}>기타 과목 <span style={S.dim}>({others[0].year})</span></h4>
             <BandTable rows={others.sort((x, y) => x.grade - y.grade || x.semester - y.semester)} />
           </section>
         )}
+        {fullState === 'loading' && <p style={{ ...S.dim, marginTop: 14 }}>전 과목 성취도를 불러오는 중…</p>}
+        {fullState === 'error' && <p style={{ ...S.dim, marginTop: 14 }}>전 과목 성취도를 불러오지 못했습니다. 국·영·수만 표시합니다.</p>}
         <p style={{ ...S.dim, marginTop: 14 }}>A~E = 성취도 비율(%). 평균·표준편차는 학교알리미 공시값. 3학년 진로선택 과목은 A·B·C 3단계만 공시됩니다.</p>
       </div>
     </div>
