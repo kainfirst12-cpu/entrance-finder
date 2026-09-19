@@ -322,6 +322,30 @@ const pdfFields = upload.fields([
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+// ── 학교알리미 새 공시 감지 ──────────────────────────────
+// 교과별 학업성취는 보안문자 때문에 자동 갱신이 안 된다(scripts/schoolinfo/README.md). 대신 학교 공시 팝업(인증 없음)의
+// '공시기준년 선택' <select id="gsYear"> 최신값을 하루 한 번 읽어, catalog 의 disclosureYear 보다 크면 화면이 배너를 띄운다.
+// 어느 학교든 같은 값이라 부천 중산고(00f989f9…) 하나만 본다.
+const DISCLOSURE_PROBE = 'https://www.schoolinfo.go.kr/ei/ss/Pneiss_b01_s0.do?SHL_IDF_CD=00f989f9-07ce-4e17-abb1-68b6d60cc1ed';
+let disclosureCache = { checkedAt: 0, result: null };
+app.get('/api/schoolinfo/disclosure', async (req, res) => {
+  const TTL = 24 * 60 * 60 * 1000;
+  if (disclosureCache.result?.ok && Date.now() - disclosureCache.checkedAt < TTL) return res.json(disclosureCache.result);
+  try {
+    const r = await fetch(DISCLOSURE_PROBE, { headers: { 'User-Agent': 'Mozilla/5.0 entrance-finder' }, signal: AbortSignal.timeout(15000) });
+    if (!r.ok) throw new Error(`schoolinfo ${r.status}`);
+    const html = new TextDecoder('euc-kr').decode(await r.arrayBuffer()); // 학교알리미는 euc-kr
+    const sel = html.match(/<select[^>]*id="gsYear"[^>]*>([\s\S]*?)<\/select>/);
+    const years = [...(sel ? sel[1] : '').matchAll(/value="(\d{4})"/g)].map((m) => Number(m[1]));
+    if (!years.length) throw new Error('gsYear 선택 상자를 못 찾음(페이지 구조 변경?)');
+    disclosureCache = { checkedAt: Date.now(), result: { ok: true, latestYear: Math.max(...years), years: years.sort(), checkedAt: new Date().toISOString() } };
+  } catch (e) {
+    console.warn('[schoolinfo] 공시 감지 실패:', e.message);
+    disclosureCache = { checkedAt: Date.now(), result: { ok: false, error: e.message, checkedAt: new Date().toISOString() } };
+  }
+  res.json(disclosureCache.result);
+});
+
 // ── PDF 진단 엔드포인트 ──────────────────────────────
 import pdfParse from 'pdf-parse';
 app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {

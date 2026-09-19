@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import DisclosureNotice from './DisclosureNotice';
 
 // 전국 고교·중학 공시정보 — 학교알리미 교과별 학업성취(A~E 비율·평균) + 학년별 재적 + EDSS 학급·교원.
 // 데이터는 /data/school-catalog.json.gz 하나(정적 파일). 서버·로그인 토큰이 필요 없어 백엔드를 건드리지 않는다.
@@ -156,6 +157,8 @@ export default function SchoolInfo() {
           ))}
         </div>
       </div>
+
+      <DisclosureNotice compact />
 
       {/* 필터 */}
       <div style={S.filters}>

@@ -15,6 +15,9 @@ dist/
 !backend/data/adiga/ipgyeol-index.json
 !backend/data/adiga/ipgyeol/*.json
 
+# 학교알리미 공시 연도 메타(대시보드 '새 공시' 배너용) — build-catalog.mjs 가 catalog 와 같이 만든다
+!frontend/public/data/school-catalog-meta.json
+
 # 2027 수시 대학별 지원 시 유의사항(SKYPASS) — 입결 판정 보정에 쓰이므로 배포에 포함
 !backend/data/skypass/*.json
 

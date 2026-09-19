@@ -157,6 +157,9 @@ async function main() {
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, zlib.gzipSync(Buffer.from(JSON.stringify(cat), 'utf8'), { level: 9 }));
+  // 대시보드의 '새 공시' 배너용 — 2.8MB catalog 를 안 받고도 지금 실린 공시 연도를 알 수 있게 작은 메타 파일을 같이 쓴다
+  const meta = { disclosureYear: cat.disclosureYear, academicYear: cat.academicYear, generatedAt: cat.generatedAt, achievementUpdate: cat.achievementUpdate, schools: cat.schools.length };
+  fs.writeFileSync(OUT.replace(/\.json\.gz$/, '-meta.json'), JSON.stringify(meta), 'utf8');
   console.log(`전 과목 밴드 ${fullBands}줄 → ${BANDS_DIR} (${chunks.size}개 파일, ${(fs.readdirSync(BANDS_DIR).reduce((a, f) => a + fs.statSync(path.join(BANDS_DIR, f)).size, 0) / 1024).toFixed(0)}KB)`);
   console.log(`학교 ${cat.schools.length}곳 (신규 ${added}, 학교정보 반영 ${infoApplied}) · 성취도 교체 ${replaced}곳 (${[...years].join(',')}) · 재적 갱신 ${enrollUpdated}곳 → ${OUT} ${(fs.statSync(OUT).size / 1024).toFixed(0)}KB`);
   if (missing.length) console.log('catalog 에 못 맞춘 학교:', missing.join(', '));
