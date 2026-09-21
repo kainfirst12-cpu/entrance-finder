@@ -341,7 +341,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
           {canStore && <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : r.id ? '변경 저장' : '보관함에 저장'}</button>}
           <button style={S.btn} disabled={!!busy} onClick={() => dl('docx')}>{busy === 'docx' ? '만드는 중…' : 'Word 다운로드'}</button>
           <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : 'PDF 다운로드'}</button>
-          <SendToPapa kind={r.kind === 'compare' ? '학교 비교 해설' : '학교 입시 해설'} title={r.title} markdown={r.content} data={r.data || null} studentName={(r.focus || '').match(/^[가-힣]{2,4}(?=[\s,(·])/)?.[0] || ''}
+          <SendToPapa kind={r.kind === 'compare' ? '학교 비교 해설' : '학교 입시 해설'} menu="schoolinfo" title={r.title} markdown={r.content} data={r.data || null} studentName={(r.focus || '').match(/^[가-힣]{2,4}(?=[\s,(·])/)?.[0] || ''}
             endpoint="/api/school-reports/send" extra={{ reportId: r.id }} beforeOpen={beforeSend} onAuthError={onAuthError}
             label={`📨 나만의 패파에 배정${r.sent?.length ? ` (${r.sent.length})` : ''}`}
             onSent={(d) => { setR((x) => ({ ...x, sent: d.sent || x.sent })); setMsg('나만의 패파로 보냈습니다'); }} />

@@ -48,6 +48,8 @@ export async function initDb() {
     `);
     // 학원 코드별 공개 메뉴 — NULL = 전부 공개, ["form","chat",…] = 그 메뉴만(관리자 대시보드에서 정한다)
     await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS menus JSONB DEFAULT NULL;`);
+    // 학원별 나만의 패파(academy-video) 연동 열쇠 — 학원마다 자기 나만의 패파에서 발급한 것을 설정 화면에서 등록한다
+    await pool.query(`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS papa_key TEXT DEFAULT NULL, ADD COLUMN IF NOT EXISTS papa_academy TEXT DEFAULT NULL;`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS sessions (
         id           SERIAL PRIMARY KEY,
@@ -398,6 +400,16 @@ export async function getUserMenus(id) {
   if (!dbEnabled() || !id) return null;
   const { rows } = await pool.query(`SELECT menus FROM app_users WHERE id = $1`, [id]);
   return rows[0]?.menus ?? null;
+}
+
+export async function getPapaKey(userId) {
+  if (!dbEnabled() || !userId) return null;
+  const { rows } = await pool.query(`SELECT papa_key, papa_academy FROM app_users WHERE id = $1`, [userId]);
+  return rows[0] || null;
+}
+export async function setPapaKey(userId, key, academy) {
+  if (!dbEnabled()) throw new Error('DB 비활성화 상태입니다');
+  await pool.query(`UPDATE app_users SET papa_key = $2, papa_academy = $3 WHERE id = $1`, [userId, key || null, academy || null]);
 }
 
 export async function deleteUser(id) {

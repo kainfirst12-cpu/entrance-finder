@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import PapaLinkSettings from './PapaLinkSettings';
 import { API_BASE } from '../apiBase';
 
 export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
@@ -190,7 +191,9 @@ export default function Settings({ apiKey, geminiKey, gptKey, onSave }) {
         </div>
       </div>
 
-      <p className="settings-hint">API 키와 로고는 브라우저에만 저장됩니다.</p>
+      <PapaLinkSettings />
+
+      <p className="settings-hint">API 키와 로고는 브라우저에만 저장됩니다. 나만의 패파 열쇠는 서버에 학원별로 저장됩니다.</p>
 
       <button onClick={handleSave} className="save-btn">
         {saved ? '저장됨!' : '저장'}

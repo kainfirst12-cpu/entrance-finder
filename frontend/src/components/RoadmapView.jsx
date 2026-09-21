@@ -174,7 +174,7 @@ export default function RoadmapView({ roadmaps = [], dark = false, editable = tr
                 <button onClick={() => onDownloadDocx(rm)} style={linkBtn(t)} title="로드맵을 워드(.docx) 파일로 저장 (프리미엄)">⬇ 워드</button>
               )}
               {(rm.body || items.length > 0) && (
-                <SendToPapa kind="생기부 로드맵" title={rm.title || '생기부 로드맵'} studentName={rm.student_name || ''} style={{ ...linkBtn(t) }}
+                <SendToPapa kind="생기부 로드맵" menu="list" title={rm.title || '생기부 로드맵'} studentName={rm.student_name || ''} style={{ ...linkBtn(t) }}
                   markdown={`${rm.body || ''}\n\n## 실행 항목\n${items.map((it) => `- ${it.done ? '✅ ' : ''}**${it.title}**${it.detail ? ` — ${it.detail}` : ''}${it.note ? ` (메모: ${it.note})` : ''}`).join('\n')}`.trim()} />
               )}
               {onSimplify && (

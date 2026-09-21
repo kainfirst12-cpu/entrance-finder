@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { API_BASE } from '../apiBase';
 
-// 📨 나만의 패파(academy-video)에 배정 — 모든 보고서 공용 버튼+창. 관리자(패스파인더)만 보인다(면접 전략과 같은 규칙).
-//   <SendToPapa kind="생기부 분석" title=… markdown=… data?=… studentName?=… onSent?=… endpoint?=… extra?=… />
-// 서버 /api/papa/send(관리자 전용) → academy-video inbound → 그 학생의 성장 리포트에 문서로 + 학부모·학생 알림.
+// 📨 나만의 패파(academy-video)에 배정 — 모든 보고서 공용 버튼+창.
+//   <SendToPapa kind="생기부 분석" menu="form" title=… markdown=… data?=… studentName?=… onSent?=… endpoint?=… extra?=… adminOnly?=… />
+// 학원마다 자기 나만의 패파 열쇠를 설정에서 등록하면 자기 학원으로 보낸다(관리자는 서버 열쇠). 열쇠가 없으면 창에서 안내만.
+// 서버 /api/papa/send → academy-video inbound → 그 학생의 성장 리포트에 문서로 + 학부모·학생 알림. menu 는 서버가 공개 메뉴인지 확인하는 데 쓴다.
 // 학교 해설 보고서는 endpoint='/api/school-reports/send' + extra={reportId} 로 전송 이력을 보고서에 남긴다.
 
 const token = () => localStorage.getItem('ef_token');
@@ -20,7 +21,7 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-export function SendToPapaDialog({ kind, title, markdown, data = null, studentName: initialName = '', endpoint = '/api/papa/send', extra = {}, onClose, onSent, onAuthError }) {
+export function SendToPapaDialog({ kind, menu, title, markdown, data = null, studentName: initialName = '', endpoint = '/api/papa/send', extra = {}, onClose, onSent, onAuthError }) {
   const [studentName, setStudentName] = useState(initialName || '');
   const [audience, setAudience] = useState('parent');
   const [memo, setMemo] = useState('');
@@ -31,7 +32,7 @@ export function SendToPapaDialog({ kind, title, markdown, data = null, studentNa
   const send = async () => {
     setBusy(true); setErr('');
     try {
-      const d = await api(endpoint, { method: 'POST', body: { kind, title, markdown, data, studentName, audience, memo, ...extra } });
+      const d = await api(endpoint, { method: 'POST', body: { kind, menu, title, markdown, data, studentName, audience, memo, ...extra } });
       if (!d.success) throw new Error(d.message || '전송 실패');
       onSent?.(d);
     } catch (e) { if (e.auth) onAuthError?.(); setErr(e.message); } finally { setBusy(false); }
@@ -46,7 +47,8 @@ export function SendToPapaDialog({ kind, title, markdown, data = null, studentNa
           </div>
           <button style={S.btn} onClick={onClose}>✕</button>
         </div>
-        {cfg && !cfg.enabled && <div style={S.warn}>서버에 나만의 패파 연동 열쇠가 없거나 관리자 계정이 아닙니다. (Railway 환경변수 <code style={S.code}>ACADEMY_VIDEO_INBOUND_KEY</code>)</div>}
+        {cfg && !cfg.enabled && <div style={S.warn}>나만의 패파 연동 열쇠가 아직 없습니다. <b>설정 → 나만의 패파 연동</b>에서 우리 학원 나만의 패파(선생님 대시보드 → 연동 열쇠)의 열쇠를 등록해 주세요.</div>}
+        {cfg?.enabled && cfg.academy && <div style={S.sub}>보내는 곳: <b>{cfg.academy}</b> 나만의 패파</div>}
         <label style={S.label}>학생 이름 (나만의 패파에 등록된 이름 그대로)</label>
         <input style={S.input} value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="예: 김민준" autoFocus />
         <label style={S.label}>누가 보나요</label>
@@ -66,16 +68,16 @@ export function SendToPapaDialog({ kind, title, markdown, data = null, studentNa
   );
 }
 
-/** 버튼 — 관리자가 아니면 아무것도 그리지 않는다. onSent 가 없으면 성공 메시지만 잠깐 보여 준다. */
-export default function SendToPapa({ kind, title, markdown, data, studentName, endpoint, extra, onSent, onAuthError, style, label = '📨 나만의 패파에 배정', beforeOpen }) {
+/** 버튼 — adminOnly 면 관리자에게만(면접 전략). onSent 가 없으면 성공 메시지만 잠깐 보여 준다. */
+export default function SendToPapa({ kind, menu, title, markdown, data, studentName, endpoint, extra, onSent, onAuthError, style, label = '📨 나만의 패파에 배정', beforeOpen, adminOnly = false }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
-  if (!isAdmin()) return null;
+  if (adminOnly && !isAdmin()) return null;
   const openIt = async () => { if (beforeOpen) { const ok = await beforeOpen(); if (ok === false) return; } setOpen(true); };
   return (
     <>
-      <button style={{ ...S.btn, ...style }} onClick={openIt} disabled={!markdown} title={markdown ? '학생·학부모의 나만의 패파 성장 리포트로 보냅니다(관리자 전용)' : '보낼 내용이 아직 없습니다'}>{label}{msg ? ` · ${msg}` : ''}</button>
-      {open && <SendToPapaDialog kind={kind} title={title} markdown={markdown} data={data} studentName={studentName} endpoint={endpoint} extra={extra} onAuthError={onAuthError}
+      <button style={{ ...S.btn, ...style }} onClick={openIt} disabled={!markdown} title={markdown ? '학생·학부모의 나만의 패파 성장 리포트로 보냅니다' : '보낼 내용이 아직 없습니다'}>{label}{msg ? ` · ${msg}` : ''}</button>
+      {open && <SendToPapaDialog kind={kind} menu={menu} title={title} markdown={markdown} data={data} studentName={studentName} endpoint={endpoint} extra={extra} onAuthError={onAuthError}
         onClose={() => setOpen(false)} onSent={(d) => { setOpen(false); setMsg('보냈습니다'); setTimeout(() => setMsg(''), 4000); onSent?.(d); }} />}
     </>
   );

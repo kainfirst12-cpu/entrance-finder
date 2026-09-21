@@ -40,7 +40,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
   initDb, dbEnabled, vectorEnabled, ensureAdminUser,
-  findActiveUserByCode, createUserCode, setUserActive, deleteUser, setUserMenus, getUserMenus,
+  findActiveUserByCode, createUserCode, setUserActive, deleteUser, setUserMenus, getUserMenus, getPapaKey, setPapaKey,
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
 } from './services/db.js';
@@ -1300,8 +1300,9 @@ app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
 const ACADEMY_VIDEO_URL = (process.env.ACADEMY_VIDEO_URL || 'https://academy-video.vercel.app').replace(/\/+$/, '');
 const ACADEMY_VIDEO_KEY = process.env.ACADEMY_VIDEO_INBOUND_KEY || '';
 // ⚠ '/api/school-reports/:id' 보다 먼저 — 아니면 'send-config' 가 id 로 잡혀 NaN 조회가 된다. 보내기는 관리자 전용.
-app.get('/api/school-reports/send-config', requireAuth, (req, res) => {
-  res.json({ success: true, enabled: !!ACADEMY_VIDEO_KEY && req.user.role === 'admin', adminOnly: true, target: ACADEMY_VIDEO_URL });
+app.get('/api/school-reports/send-config', requireAuth, async (req, res) => {
+  const k = await papaKeyFor(req.user);
+  res.json({ success: true, enabled: !!k, own: !!k?.own, academy: k?.academy || null, target: ACADEMY_VIDEO_URL });
 });
 // 해설 보고서 보관 CRUD (선생님별)
 app.get('/api/school-reports', requireAuth, async (req, res) => {
@@ -1342,14 +1343,54 @@ app.delete('/api/school-reports/:id', requireAuth, async (req, res) => {
 // academy-video 의 POST /api/inbound/report (학원별 연동 열쇠 x-api-key) 에 { student_name, title, md, data, audience, memo, source } 를 보내면
 // 그 학생의 성장 리포트에 문서(payload.kind='doc') 로 꽂히고 학부모·학생에게 알림톡/푸시가 나간다. 열람은 나만의 패파 로그인 안에서만.
 // 열쇠는 나만의 패파 선생님 대시보드 '연동 열쇠' 에서 복사해 Railway 환경변수로. 면접 전략처럼 관리자만 쓴다(학원 코드 이용자는 못 보냄).
-async function sendToPapa({ studentName, title, markdown, data, audience, memo, source }) {
-  if (!ACADEMY_VIDEO_KEY) throw Object.assign(new Error('나만의 패파 연동 열쇠(ACADEMY_VIDEO_INBOUND_KEY)가 서버에 설정돼 있지 않습니다'), { status: 400 });
+// 열쇠 결정: 학원 코드 이용자 = 설정에서 등록한 자기 학원 열쇠(app_users.papa_key), 관리자 = 등록한 게 있으면 그것, 없으면 서버 환경변수
+async function papaKeyFor(user) {
+  const row = user?.userId ? await getPapaKey(user.userId).catch(() => null) : null;
+  if (row?.papa_key) return { key: row.papa_key, academy: row.papa_academy || null, own: true };
+  if (user?.role === 'admin' && ACADEMY_VIDEO_KEY) return { key: ACADEMY_VIDEO_KEY, academy: null, own: false };
+  return null;
+}
+// 열쇠가 살아 있는지 — 없는 학생 이름으로 보내 보면 학원 이름만 돌아오고 아무것도 만들어지지 않는다
+async function probePapaKey(key) {
+  const r = await fetch(`${ACADEMY_VIDEO_URL}/api/inbound/report`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key }, signal: AbortSignal.timeout(15000),
+    body: JSON.stringify({ items: [{ student_name: '__입시파인더_연동확인__', title: '연동 확인', md: '## 확인' }] }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 || r.status === 403) throw Object.assign(new Error('열쇠가 올바르지 않거나 만료되었습니다(나만의 패파에서 다시 복사해 주세요)'), { status: 400 });
+  if (!r.ok || j.error) throw Object.assign(new Error(`나만의 패파 응답: ${j.error || `HTTP ${r.status}`}`), { status: 502 });
+  return { academy: j.academy || null };
+}
+// 학원별 열쇠 등록·조회·해제 (설정 화면). 열쇠는 절대 그대로 돌려주지 않는다(앞 6자만).
+app.get('/api/papa/config', requireAuth, async (req, res) => {
+  const k = await papaKeyFor(req.user);
+  res.json({ success: true, configured: !!k, own: !!k?.own, academy: k?.academy || null, keyPrefix: k ? `${k.key.slice(0, 6)}…` : null, target: ACADEMY_VIDEO_URL });
+});
+app.put('/api/papa/config', requireAuth, async (req, res) => {
+  try {
+    if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+    if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    const key = String(req.body?.key || '').trim();
+    if (!/^av_[A-Za-z0-9]{16,}$/.test(key)) return res.status(400).json({ success: false, message: '열쇠 모양이 아닙니다(av_ 로 시작)' });
+    const { academy } = await probePapaKey(key);
+    await setPapaKey(req.user.userId, key, academy);
+    logEvent({ userId: req.user.userId, type: 'papa_key', detail: `등록 → ${academy || '?'}`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true, academy, keyPrefix: `${key.slice(0, 6)}…` });
+  } catch (e) { res.status(e.status || 500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/papa/config', requireAuth, async (req, res) => {
+  try { if (req.user.userId) await setPapaKey(req.user.userId, null, null); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+async function sendToPapa({ key, studentName, title, markdown, data, audience, memo, source }) {
+  if (!key) throw Object.assign(new Error('나만의 패파 연동 열쇠가 없습니다 — 설정 → 나만의 패파 연동에서 등록해 주세요'), { status: 400 });
   const name = String(studentName || '').trim();
   if (!name) throw Object.assign(new Error('학생 이름이 필요합니다'), { status: 400 });
   if (!markdown?.trim()) throw Object.assign(new Error('보낼 내용이 없습니다'), { status: 400 });
   const aud = ['student', 'parent', 'both'].includes(audience) ? audience : 'parent';
   const r = await fetch(`${ACADEMY_VIDEO_URL}/api/inbound/report`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': ACADEMY_VIDEO_KEY }, signal: AbortSignal.timeout(20000),
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key }, signal: AbortSignal.timeout(20000),
     body: JSON.stringify({ items: [{ student_name: name, title: String(title || '보고서').slice(0, 150), md: String(markdown), data: data && Array.isArray(data.schools) ? data : undefined, source: String(source || '입시파인더').slice(0, 60), audience: aud, memo: memo ? String(memo).slice(0, 500) : undefined }] }),
   });
   const j = await r.json().catch(() => ({}));
@@ -1359,22 +1400,31 @@ async function sendToPapa({ studentName, title, markdown, data, audience, memo, 
   const created = (j.items || [])[0] || {};
   return { academy: j.academy, reportId: created.report_id || null, audience: aud, name };
 }
-app.get('/api/papa/send-config', requireAuth, (req, res) => {
-  res.json({ success: true, enabled: !!ACADEMY_VIDEO_KEY && req.user.role === 'admin', adminOnly: true, target: ACADEMY_VIDEO_URL });
+// 보내기 가능 여부 — 학원 코드도 자기 열쇠를 등록했으면 된다(열린 메뉴 안에서 만든 보고서만 만들 수 있으니 그 범위가 곧 한도)
+app.get('/api/papa/send-config', requireAuth, async (req, res) => {
+  const k = await papaKeyFor(req.user);
+  res.json({ success: true, enabled: !!k, own: !!k?.own, academy: k?.academy || null, target: ACADEMY_VIDEO_URL });
 });
-// 공용: { kind, title, markdown, data?, studentName, audience, memo, source? }
-app.post('/api/papa/send', requireAdmin, async (req, res) => {
+// 공용: { kind, menu?, title, markdown, data?, studentName, audience, memo, source? }
+app.post('/api/papa/send', requireAuth, async (req, res) => {
   try {
-    const { title, data, studentName, audience, memo, source, kind, interviewId } = req.body || {};
+    const { title, data, studentName, audience, memo, source, kind, interviewId, menu } = req.body || {};
     let { markdown } = req.body || {};
+    // 학원 코드: 그 보고서의 메뉴가 공개돼 있어야 보낼 수 있다(관리자는 전부)
+    if (req.user.role !== 'admin') {
+      if (interviewId) return res.status(403).json({ success: false, message: '면접 전략은 관리자 전용입니다' });
+      const menus = (await getUserMenus(req.user.userId).catch(() => null)) ?? req.user.menus ?? null;
+      if (menu && !menuAllowed(menus, menu)) return res.status(403).json({ success: false, message: '이 학원 코드에는 공개되지 않은 메뉴입니다', menuDenied: menu });
+    }
+    const k = await papaKeyFor(req.user);
     // 면접 전략은 저장본(data JSON)에서 학생용 마크다운을 서버가 만든다 — 화면에는 HTML 만 있다
     if (interviewId) {
       const item = await getInterview(Number(interviewId));
       if (!item) return res.status(404).json({ success: false, message: '면접 리포트를 찾을 수 없습니다' });
       markdown = interviewMarkdown(item.data || {});
     }
-    const out = await sendToPapa({ studentName, title, markdown, data, audience, memo, source: source || `입시파인더 ${kind || '보고서'}` });
-    logEvent({ userId: req.user.userId || null, type: 'papa_send', detail: `${kind || '보고서'} → ${out.name}`, ip: req.ip }).catch?.(() => {});
+    const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, audience, memo, source: source || `입시파인더 ${kind || '보고서'}` });
+    logEvent({ userId: req.user.userId || null, type: 'papa_send', detail: `${kind || '보고서'} → ${out.name}`, ip: req.ip })?.catch?.(() => {});
     res.json({ success: true, ...out });
   } catch (e) {
     if (e.soft) return res.json({ success: false, message: e.message });
@@ -1382,10 +1432,11 @@ app.post('/api/papa/send', requireAdmin, async (req, res) => {
   }
 });
 // 학교 해설 보고서용(전송 이력을 보고서에 남긴다) — 관리자 전용. send-config 는 '/:id' 보다 앞(위)에 있다.
-app.post('/api/school-reports/send', requireAdmin, async (req, res) => {
+app.post('/api/school-reports/send', requireAuth, async (req, res) => {
   try {
     const { reportId, title, markdown, data, studentName, audience, memo } = req.body || {};
-    const out = await sendToPapa({ studentName, title, markdown, data, audience, memo, source: '입시파인더 학교 입시 해설' });
+    const k = await papaKeyFor(req.user);
+    const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, audience, memo, source: '입시파인더 학교 입시 해설' });
     let sent = null;
     if (reportId) sent = await appendSchoolReportSent(Number(reportId), { studentName: out.name, audience: out.audience, memo: memo || '', reportId: out.reportId, academy: out.academy || null, at: new Date().toISOString() });
     res.json({ success: true, academy: out.academy, reportId: out.reportId, sent });

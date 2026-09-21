@@ -1474,7 +1474,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
           <button className="btn-download-pdf" onClick={handleDownloadPDF} disabled={downloading}>
             {downloading ? '⏳ PDF 생성 중...' : '📄 PDF 다운로드'}
           </button>
-          <SendToPapa kind="생기부 분석" title={`${studentData?.name || '학생'} 입시 분석 리포트`} studentName={studentData?.name || ''}
+          <SendToPapa kind="생기부 분석" menu="form" title={`${studentData?.name || '학생'} 입시 분석 리포트`} studentName={studentData?.name || ''}
             markdown={SECTION_MAP.filter(({ key }) => results?.[key]).map(({ key, title }) => `## ${title}\n\n${results[key]}`).join('\n\n')}
             style={{ marginLeft: 6 }} />
           <button className="btn-secondary" onClick={handleExportJSON}>
