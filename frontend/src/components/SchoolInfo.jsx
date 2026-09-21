@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox } from './SchoolReport';
+import { menuAllowed, readMenus } from '../menus';
 
 // 전국 고교·중학 공시정보 — 학교알리미 교과별 학업성취(A~E 비율·평균) + 학년별 재적 + EDSS 학급·교원.
 // 데이터는 /data/school-catalog.json.gz 하나(정적 파일). 서버·로그인 토큰이 필요 없어 백엔드를 건드리지 않는다.
@@ -174,7 +175,10 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button style={S.smallBtn} onClick={() => setSavedOpen(true)}>📚 해설 보고서 보관함</button>
+          {/* 보관함(서버 저장)은 관리자가 코드마다 열어 준 경우만 — 용량 때문에 기본 잠금(2026-09-21) */}
+          {menuAllowed(readMenus(), localStorage.getItem('ef_role'), 'schoolreports') && (
+            <button style={S.smallBtn} onClick={() => setSavedOpen(true)}>📚 해설 보고서 보관함</button>
+          )}
           <div style={S.levelTabs}>
             {['고등학교', '중학교'].map((l) => (
               <button key={l} style={{ ...S.tab, ...(level === l ? S.tabOn : {}) }} onClick={() => setLevel(l)}>{l}</button>

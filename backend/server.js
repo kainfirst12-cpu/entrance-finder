@@ -307,8 +307,14 @@ function requireAuth(req, res, next) {
 
 // 관리자 전용
 // 학원 코드별 공개 메뉴 — 토큰의 menus(null=전부) 로 1차, 관리자가 그 사이 바꿨을 수 있어 DB 값으로 2차 확인
-const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list'];
-function menuAllowed(menus, key) { return !Array.isArray(menus) || menus.includes(key); }
+const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list', 'schoolreports'];
+// optIn 메뉴는 '전체 공개(null)'여도 닫혀 있다 — 관리자가 코드마다 직접 넣어야 열린다(frontend/src/menus.js 와 같은 표).
+// 'schoolreports' = 입시 해설 보고서 보관(ef_school_reports 저장·목록·열기) — DB 용량을 쓰므로 기본 잠금(원장 지시 2026-09-21).
+const OPT_IN_MENUS = new Set(['schoolreports']);
+function menuAllowed(menus, key) {
+  if (OPT_IN_MENUS.has(key)) return Array.isArray(menus) && menus.includes(key);
+  return !Array.isArray(menus) || menus.includes(key);
+}
 function requireMenu(key) {
   return (req, res, next) => requireAuth(req, res, async () => {
     if (req.user.role === 'admin') return next();
@@ -332,7 +338,9 @@ const MENU_BY_PATH = [
   [/^\/api\/(chat|chat-upload|chat-refine|chat-edit|assistant)\b/, 'chat'],
   [/^\/api\/admissions\b/, 'admissions'],
   [/^\/api\/univ-info\b/, 'univinfo'],
-  [/^\/api\/(schoolinfo\/explain|school-reports)\b/, 'schoolinfo'],
+  // 해설 생성·Word/PDF 내려받기·보내기 설정은 공시정보 메뉴, 보관함(저장·목록·열기·고치기·지우기)은 따로 잠근다.
+  [/^\/api\/(schoolinfo\/explain|school-reports\/(export|send-config|send))\b/, 'schoolinfo'],
+  [/^\/api\/school-reports\b/, 'schoolreports'],
   [/^\/api\/ipgyeol\b/, 'ipgyeol'],
   [/^\/api\/ratio\b/, 'ratio'],
   [/^\/api\/suhaeng\b/, 'suharchive'],

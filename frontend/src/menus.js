@@ -11,7 +11,11 @@ export const MENU_ITEMS = [
   { key: 'ipgyeol', label: '입결 콘솔' },
   { key: 'ratio', label: '실시간 경쟁률' },
   { key: 'suharchive', label: '수행평가 아카이브' },
+  // ⚠ optIn: '전체 공개'여도 열리지 않는다 — 관리자가 코드마다 직접 체크해야 한다.
+  //   해설 보고서 보관은 서버 DB 용량을 쓰므로(원장 지시 2026-09-21) 기본 잠금. 생성·수정·Word/PDF 내려받기는 그대로 된다.
+  { key: 'schoolreports', label: '입시 해설 보고서 보관함(서버 저장 — 용량 사용, 기본 잠금)', optIn: true },
 ];
+export const OPT_IN_MENUS = MENU_ITEMS.filter((m) => m.optIn).map((m) => m.key);
 // view 이름 → 메뉴 key (같은 메뉴에 딸린 화면들)
 const VIEW_MENU = { form: 'form', analyzing: 'form', result: 'form', list: 'list', board: 'list', interview: 'interview' };
 export function menuOfView(view) { return VIEW_MENU[view] || view; }
@@ -25,5 +29,6 @@ export function menuAllowed(menus, role, view) {
   const key = menuOfView(view);
   if (['dashboard', 'settings', 'admin'].includes(key)) return true;
   if (key === 'interview') return false; // 면접 전략은 관리자 전용
+  if (OPT_IN_MENUS.includes(key)) return Array.isArray(menus) && menus.includes(key); // 직접 체크한 코드만
   return !Array.isArray(menus) || menus.includes(key);
 }

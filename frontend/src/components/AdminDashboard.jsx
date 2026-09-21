@@ -302,18 +302,23 @@ export default function AdminDashboard({ onAuthError }) {
               <h3 style={{ margin: '0 0 4px' }}>🔒 공개 메뉴 — {menuEdit.name || '(이름없음)'}</h3>
               <p style={S.muted}>체크한 메뉴만 이 코드의 대시보드에 보이고, 서버도 같은 표로 막습니다. "전체 공개"면 새 메뉴가 생겨도 자동으로 열립니다.</p>
               <label style={S.menuRow}>
-                <input type="checkbox" checked={menuEdit.menus === null} onChange={(e) => setMenuEdit({ ...menuEdit, menus: e.target.checked ? null : MENU_ITEMS.map((m) => m.key) })} />
-                <b>전체 공개</b>
+                <input type="checkbox" checked={menuEdit.menus === null} onChange={(e) => setMenuEdit({ ...menuEdit, menus: e.target.checked ? null : MENU_ITEMS.filter((m) => !m.optIn).map((m) => m.key) })} />
+                <b>전체 공개</b> <span style={S.muted}>(🔒 표시 항목은 전체 공개여도 잠김 — 직접 체크해야 열림)</span>
               </label>
-              <div style={{ ...S.menuGrid, opacity: menuEdit.menus === null ? 0.45 : 1 }}>
-                {MENU_ITEMS.map((m) => (
-                  <label key={m.key} style={S.menuRow}>
-                    <input type="checkbox" disabled={menuEdit.menus === null}
-                      checked={menuEdit.menus === null || menuEdit.menus.includes(m.key)}
-                      onChange={(e) => setMenuEdit({ ...menuEdit, menus: e.target.checked ? [...menuEdit.menus, m.key] : menuEdit.menus.filter((k) => k !== m.key) })} />
-                    {m.label}
-                  </label>
-                ))}
+              <div style={S.menuGrid}>
+                {MENU_ITEMS.map((m) => {
+                  // optIn 항목은 '전체 공개'여도 닫혀 있다. 체크하면 전체 공개를 풀고 나머지 전부 + 이 항목으로 바꾼다.
+                  const on = m.optIn ? Array.isArray(menuEdit.menus) && menuEdit.menus.includes(m.key) : menuEdit.menus === null || menuEdit.menus.includes(m.key);
+                  const base = () => (menuEdit.menus === null ? MENU_ITEMS.filter((x) => !x.optIn).map((x) => x.key) : menuEdit.menus);
+                  return (
+                    <label key={m.key} style={{ ...S.menuRow, opacity: !m.optIn && menuEdit.menus === null ? 0.45 : 1 }}>
+                      <input type="checkbox" disabled={!m.optIn && menuEdit.menus === null}
+                        checked={on}
+                        onChange={(e) => setMenuEdit({ ...menuEdit, menus: e.target.checked ? [...base(), m.key] : base().filter((k) => k !== m.key) })} />
+                      {m.optIn ? '🔒 ' : ''}{m.label}
+                    </label>
+                  );
+                })}
               </div>
               <p style={S.muted}>면접 전략·나만의 패파 배정은 관리자 전용이라 여기 없습니다. 바뀐 설정은 그 코드의 다음 요청부터 바로 적용됩니다(다시 로그인하면 대시보드도 갱신).</p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
@@ -365,7 +370,7 @@ export default function AdminDashboard({ onAuthError }) {
                     <td style={S.td}>
                       <button style={S.smallBtn} onClick={() => setMenuEdit({ id: u.id, name: u.name, menus: Array.isArray(u.menus) ? [...u.menus] : null })}
                         title="이 코드로 로그인하면 보이는 메뉴">
-                        {Array.isArray(u.menus) ? `${u.menus.length}/${MENU_ITEMS.length}개` : '전체'} ✎
+                        {Array.isArray(u.menus) ? `${u.menus.length}/${MENU_ITEMS.length}개` : '전체'}{Array.isArray(u.menus) && u.menus.includes('schoolreports') ? ' · 📚보관' : ''} ✎
                       </button>
                     </td>
                     <td style={S.td}>

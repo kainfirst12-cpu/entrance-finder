@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { menuAllowed, readMenus } from '../menus';
 import { API_BASE } from '../apiBase';
 import { mdPreview } from '../mdPreview';
 import { parseReport, stripStructured } from '../reportMarkdown';
@@ -280,6 +281,9 @@ async function download(report, format) {
 export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onAuthError }) {
   const [r, setR] = useState(initial);
   const [dirty, setDirty] = useState(!initial.id); // 새로 만든 건 아직 저장 전
+  // 보관함(서버 저장)은 관리자가 코드마다 열어 준 경우만 — DB 용량 때문에 기본 잠금(원장 지시 2026-09-21).
+  // 잠긴 코드는 고쳐서 Word·PDF 로 내려받는 것까지만 된다(서버도 /api/school-reports 저장을 막는다).
+  const canStore = menuAllowed(readMenus(), localStorage.getItem('ef_role'), 'schoolreports');
   const [mode, setMode] = useState('preview');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
@@ -334,7 +338,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
             ))}
           </div>
           <div style={{ flex: 1 }} />
-          <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : r.id ? '변경 저장' : '보관함에 저장'}</button>
+          {canStore && <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : r.id ? '변경 저장' : '보관함에 저장'}</button>}
           <button style={S.btn} disabled={!!busy} onClick={() => dl('docx')}>{busy === 'docx' ? '만드는 중…' : 'Word 다운로드'}</button>
           <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : 'PDF 다운로드'}</button>
           <SendToPapa kind={r.kind === 'compare' ? '학교 비교 해설' : '학교 입시 해설'} title={r.title} markdown={r.content} data={r.data || null} studentName={(r.focus || '').match(/^[가-힣]{2,4}(?=[\s,(·])/)?.[0] || ''}
@@ -360,7 +364,7 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
         )}
         <p style={S.hint}>
           수정 탭에서 문단을 고치거나 지울 수 있습니다(마크다운: ## 제목, - 목록, | 표 |). 다운로드는 지금 화면의 내용을 그대로 담습니다 —
-          보관함에 저장해 두면 나중에 다시 열어 고치거나 내려받을 수 있습니다. 학부모에게 보내면 나만의 패파(academy-video)의 그 학생 성장 리포트에 문서로 들어가고 알림이 갑니다.
+          {canStore ? '보관함에 저장해 두면 나중에 다시 열어 고치거나 내려받을 수 있습니다.' : '이 코드에는 보관함(서버 저장)이 열려 있지 않습니다 — 고쳐서 Word·PDF 로 내려받아 보관해 주세요(보관함은 관리자가 코드별로 엽니다).'} 학부모에게 보내면 나만의 패파(academy-video)의 그 학생 성장 리포트에 문서로 들어가고 알림이 갑니다.
         </p>
 
       </div>
