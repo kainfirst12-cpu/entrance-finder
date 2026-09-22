@@ -14,13 +14,22 @@ const ACTIONS = [
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];
 
+import { useState } from 'react';
 import DisclosureNotice from './DisclosureNotice';
 import { menuAllowed } from '../menus';
 
 export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis, onAnalyzeFile, role, menus }) {
-  // 관리자 전용 카드(면접 전략)는 일반 학원 계정에는 보이지 않는다 — 서버도 requireAdmin 으로 막혀 있다.
-  // 학원 코드별 공개 메뉴(menus, 관리자가 정함)에 없는 카드도 숨긴다 — 서버도 같은 표로 막는다(MENU_BY_PATH).
-  const actions = ACTIONS.filter(a => (!a.adminOnly || role === 'admin') && (a.key === 'import' ? menuAllowed(menus, role, 'form') : menuAllowed(menus, role, a.key)));
+  // 학원 코드에 열리지 않은 메뉴도 카드는 **보이되 잠긴 채**로 둔다(원장 지시 2026-09-22) — 나중에 추가 신청을 하려면
+  // 어떤 메뉴가 있는지 보여야 하기 때문. 누르면 화면 전환 없이 안내만. 열리는 건 관리자가 코드별로 체크했을 때뿐이고,
+  // 서버도 같은 표(MENU_BY_PATH·requireAdmin)로 막으니 화면을 억지로 열어도 자료는 나오지 않는다.
+  const [lockedMsg, setLockedMsg] = useState('');
+  const isLocked = (a) => (a.adminOnly && role !== 'admin') || !(a.key === 'import' ? menuAllowed(menus, role, 'form') : menuAllowed(menus, role, a.key));
+  const actions = ACTIONS.map(a => ({ ...a, locked: isLocked(a) }));
+  const onCard = (a) => {
+    if (a.locked) { setLockedMsg(`🔒 '${a.label}' 메뉴는 이 학원 코드에 아직 열려 있지 않습니다. 이용을 원하시면 패스파인더에 추가 신청해 주세요.`); return; }
+    setLockedMsg('');
+    if (a.key === 'import') onImport?.(); else onNav?.(a.key);
+  };
   return (
     <div style={S.page}>
       <h2 style={S.h2}>대시보드</h2>
@@ -29,19 +38,22 @@ export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis
 
       <div style={S.actions}>
         {actions.map(a => (
-          <button key={a.key} style={{ ...S.actionCard, background: a.bg }}
-            onClick={() => (a.key === 'import' ? onImport?.() : onNav?.(a.key))}>
+          <button key={a.key} style={{ ...S.actionCard, background: a.bg, ...(a.locked ? S.actionLocked : {}) }} aria-disabled={a.locked}
+            title={a.locked ? '열려 있지 않은 메뉴 — 패스파인더에 추가 신청' : undefined}
+            onClick={() => onCard(a)}>
+            {a.locked && <span style={S.lockBadge}>🔒 신청 필요</span>}
             <span style={{ ...S.actionIcon, color: a.color }}>{a.icon}</span>
             <span style={S.actionLabel}>{a.label}</span>
-            <span style={S.actionDesc}>{a.desc}</span>
+            <span style={S.actionDesc}>{a.locked ? '이 학원 코드에는 열려 있지 않은 메뉴' : a.desc}</span>
           </button>
         ))}
       </div>
+      {lockedMsg && <p style={S.lockedMsg}>{lockedMsg}</p>}
 
       {/* 학생 관리 보드는 여기 있지 않다 — 대시보드가 끝없이 길어져서 '학생 목록' 안으로 옮겼다
           (원장 요청 2026-09-07). 없어진 게 아니라 자리를 옮긴 것이므로 그렇다고 적어 둔다. */}
       <p style={S.moved}>
-        📋 학생 관리 보드는 <b style={S.movedLink} onClick={() => onNav?.('list')}>학생 목록</b> 안으로 옮겼습니다 — 목록과 보드를 위에서 골라 보세요.
+        📋 학생 관리 보드는 <b style={S.movedLink} onClick={() => onCard(actions.find(a => a.key === 'list'))}>학생 목록</b> 안으로 옮겼습니다 — 목록과 보드를 위에서 골라 보세요.
       </p>
     </div>
   );
@@ -56,6 +68,9 @@ const S = {
   actionIcon: { fontSize: 24 },
   actionLabel: { fontSize: 15, fontWeight: 700, color: '#e8eef3', marginTop: 4 },
   actionDesc: { fontSize: 12, color: '#9db0bd' },
+  actionLocked: { position: 'relative', opacity: 0.45, filter: 'grayscale(0.7)', cursor: 'not-allowed', borderStyle: 'dashed' },
+  lockBadge: { position: 'absolute', top: 10, right: 10, fontSize: 10.5, fontWeight: 800, color: '#fbbf24', background: 'rgba(0,0,0,0.45)', borderRadius: 999, padding: '2px 8px' },
+  lockedMsg: { margin: '0 0 8px', padding: '10px 12px', borderRadius: 10, fontSize: 12.5, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.4)' },
   moved: { marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.08)', color: '#7f93a3', fontSize: 12.5 },
   movedLink: { color: '#5b86d6', cursor: 'pointer' },
 };
