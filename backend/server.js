@@ -44,7 +44,7 @@ import {
   createSchoolReport, updateSchoolReport, deleteSchoolReport, appendSchoolReportSent,
 } from './services/schoolReportStore.js';
 import { buildReportData } from './services/schoolReportData.js';
-import { listLibrary, libraryOwners, getLibraryItem, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
+import { listLibrary, libraryOwners, getLibraryItem, updateLibraryItem, deleteLibraryItem, BODY_EDITABLE, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
@@ -4469,7 +4469,8 @@ app.get('/api/admin/library/:kind/:id', requireAdmin, async (req, res) => {
     if (kind === 'interview') item.markdown = interviewMarkdown(item.data || {});
     logEvent({ userId: req.user.userId || null, type: 'library_view', detail: `${KIND_LABEL[kind]} #${id} · ${item.ownerName}`, ip: req.ip })?.catch?.(() => {});
     const { raw, ...safe } = item; // raw 는 칼럼 그대로 — 화면엔 필요 없다
-    res.json({ success: true, item: safe });
+    // bodyEditable=false 면 화면이 본문 수정칸을 잠근다(면접 전략은 본문이 구조화 JSON)
+    res.json({ success: true, item: { ...safe, bodyEditable: BODY_EDITABLE(kind) } });
   } catch (e) {
     console.error('[admin/library/:kind/:id] 오류:', e.message);
     res.status(500).json({ success: false, message: e.message });
@@ -4508,6 +4509,43 @@ app.post('/api/admin/library/:kind/:id/copy', requireAdmin, async (req, res) => 
     res.json({ success: true, where });
   } catch (e) {
     console.error('[admin/library/copy] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 고치기 — 제목·본문을 그 자리에서 바꾼다(남의 학원 자료도 관리자는 고칠 수 있다, 원장 지시 2026-09-22).
+//   면접 전략은 본문이 구조화 JSON 이라 제목만 바뀐다.
+app.patch('/api/admin/library/:kind/:id', requireAdmin, async (req, res) => {
+  try {
+    const { kind, id } = req.params;
+    if (!LIBRARY_KINDS.includes(kind)) return res.status(400).json({ success: false, message: '알 수 없는 종류입니다' });
+    const { title, markdown } = req.body || {};
+    if (title === undefined && markdown === undefined) return res.status(400).json({ success: false, message: '고칠 내용이 없습니다' });
+    const before = await getLibraryItem(kind, id);
+    if (!before) return res.status(404).json({ success: false, message: '자료를 찾을 수 없습니다' });
+    const body = BODY_EDITABLE(kind) ? markdown : undefined;
+    const done = await updateLibraryItem(kind, id, { title, markdown: body });
+    if (!done) return res.status(400).json({ success: false, message: '고칠 수 있는 항목이 없습니다' });
+    logEvent({ userId: req.user.userId || null, type: 'library_edit', detail: `${KIND_LABEL[kind]} #${id} · ${before.ownerName}`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true, bodyEditable: BODY_EDITABLE(kind) });
+  } catch (e) {
+    console.error('[admin/library/edit] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+// 지우기 — 되돌릴 수 없다. 그 학원 화면에서도 사라지므로 화면이 한 번 더 묻는다.
+app.delete('/api/admin/library/:kind/:id', requireAdmin, async (req, res) => {
+  try {
+    const { kind, id } = req.params;
+    if (!LIBRARY_KINDS.includes(kind)) return res.status(400).json({ success: false, message: '알 수 없는 종류입니다' });
+    const item = await getLibraryItem(kind, id);
+    if (!item) return res.status(404).json({ success: false, message: '자료를 찾을 수 없습니다' });
+    const ok = await deleteLibraryItem(kind, id);
+    if (!ok) return res.status(500).json({ success: false, message: '삭제하지 못했습니다' });
+    logEvent({ userId: req.user.userId || null, type: 'library_delete', detail: `${KIND_LABEL[kind]} #${id} · ${item.ownerName} · ${String(item.title).slice(0, 60)}`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[admin/library/delete] 오류:', e.message);
     res.status(500).json({ success: false, message: e.message });
   }
 });

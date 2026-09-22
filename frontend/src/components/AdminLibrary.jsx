@@ -5,8 +5,10 @@ import { mdPreview } from '../mdPreview';
 
 // 🗄 전체 자료함 (관리자 전용) — 학원 코드마다 따로 쌓이는 자료를 한자리에서 본다.
 //   · 무엇을: 학교 입시 해설 · 수행평가 아카이브 · 면접 전략 · 생기부 로드맵 · 학생 기록/분석
-//   · 무엇을 할 수 있나: 열어 보기 → 📥 내 보관함으로 복사(원본은 그대로) → 💾 Word/PDF·📁 JSON 으로 따로 저장
-//   · 남의 자료를 고치거나 지우지는 않는다. 열람·복사는 서버가 기록(events)으로 남긴다.
+//   · 무엇을 할 수 있나: 열어 보기 → ✏️ 수정 · 🗑 삭제(관리자만, 그 학원 화면에도 그대로 반영) →
+//     📥 내 보관함으로 복사(원본은 그대로) → 💾 Word/PDF·📁 JSON 으로 따로 저장
+//   · 남의 자료를 직접 고치고 지우는 자리이므로 화면이 한 번 더 묻고, 서버가 누가 무엇을 했는지 기록(events)에 남긴다.
+//   · 참고: '입시 해설 보고서 보관함'은 코드마다 기본 잠금이라, 열어 주지 않은 학원의 학교 해설은 애초에 서버에 쌓이지 않는다.
 
 const token = () => localStorage.getItem('ef_token');
 async function api(path, opts = {}) {
@@ -26,9 +28,12 @@ export default function AdminLibrary() {
   const [kind, setKind] = useState('');
   const [owner, setOwner] = useState('');
   const [q, setQ] = useState('');
-  const [others, setOthers] = useState(true); // 기본은 '다른 학원 자료만' — 내 것은 내 보관함에서 본다
+  // 기본은 '전체' — 다른 학원만 켜면 내 자료가 빠져 '아무것도 없다'로 보인다(학교 해설은 보관함이 기본 잠금이라 남의 코드엔 거의 없다)
+  const [others, setOthers] = useState(false);
   const [items, setItems] = useState(null);
   const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({});
+  const [hiddenMine, setHiddenMine] = useState(0);
   const [owners, setOwners] = useState([]);
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null); // 열어 본 자료
@@ -43,7 +48,7 @@ export default function AdminLibrary() {
       if (others) p.set('others', '1');
       const d = await api(`/api/admin/library?${p.toString()}`);
       if (!d.success) throw new Error(d.message || '목록을 불러오지 못했습니다');
-      setItems(d.items || []); setTotal(d.total || 0);
+      setItems(d.items || []); setTotal(d.total || 0); setCounts(d.counts || {}); setHiddenMine(d.hiddenMine || 0);
     } catch (e) { setMsg(e.message); setItems([]); }
   };
   useEffect(() => { api('/api/admin/library/owners').then((d) => setOwners(d.owners || [])).catch(() => setOwners([])); }, []);
@@ -54,7 +59,7 @@ export default function AdminLibrary() {
       <div style={S.head}>
         <div>
           <h2 style={S.h2}>🗄 전체 자료함</h2>
-          <p style={S.sub}>학원 코드마다 만든 자료를 모두 봅니다. 열어 보고, 쓸 만한 것은 <b>내 보관함으로 복사</b>하거나 파일로 저장하세요. 원본은 건드리지 않습니다.</p>
+          <p style={S.sub}>학원 코드마다 만든 자료를 모두 봅니다. 열어서 <b>수정·삭제</b>하거나(그 학원 원본이 바뀝니다), <b>내 보관함으로 복사</b>하거나(원본은 그대로), Word·PDF·JSON으로 따로 저장하세요.</p>
         </div>
         <button style={S.btn} onClick={load}>새로고침</button>
       </div>
@@ -72,9 +77,14 @@ export default function AdminLibrary() {
 
       <div style={S.filters}>
         <div style={S.seg}>
-          {[['', '전체'], ...Object.entries(KIND_LABEL)].map(([k, l]) => (
-            <button key={k || 'all'} style={{ ...S.segBtn, ...(kind === k ? S.segOn : {}) }} onClick={() => setKind(k)}>{l}</button>
-          ))}
+          {[['', '전체'], ...Object.entries(KIND_LABEL)].map(([k, l]) => {
+            const n = k ? (counts[k] || 0) : Object.values(counts).reduce((a, b) => a + b, 0);
+            return (
+              <button key={k || 'all'} style={{ ...S.segBtn, ...(kind === k ? S.segOn : {}), ...(k && !n ? S.segEmpty : {}) }} onClick={() => setKind(k)}>
+                {l} <b style={{ opacity: 0.75 }}>{n}</b>
+              </button>
+            );
+          })}
         </div>
         <input style={S.search} value={q} onChange={(e) => setQ(e.target.value)} placeholder="제목·학생·학교·본문 검색" />
         <label style={S.check}>
@@ -83,6 +93,18 @@ export default function AdminLibrary() {
       </div>
 
       {msg && <div style={S.err}>{msg}</div>}
+      {others && hiddenMine > 0 && (
+        <div style={S.hint}>
+          ‘다른 학원 자료만’으로 보는 중입니다 — 내 자료 <b>{hiddenMine}건</b>이 빠져 있습니다.{' '}
+          <button style={S.linkBtn} onClick={() => setOthers(false)}>내 자료도 함께 보기</button>
+        </div>
+      )}
+      {kind === 'report' && !counts.report && (
+        <div style={S.hint}>
+          학교 해설이 안 보이나요? <b>입시 해설 보고서 보관함</b>은 코드마다 기본 잠금이라, 열어 주지 않은 학원은 해설을 만들어도 서버에 저장되지 않습니다(그 학원에서 Word·PDF로만 내려받습니다).
+          아래 <b>이용자 코드</b> 표에서 그 코드의 메뉴를 열어 주면 그때부터 여기에 쌓입니다.
+        </div>
+      )}
       {items === null ? <p style={S.sub}>불러오는 중…</p> : !items.length ? <p style={S.sub}>조건에 맞는 자료가 없습니다.</p> : (
         <>
           <div style={S.sub}>{total.toLocaleString('ko-KR')}건 중 {items.length}건</div>
@@ -99,7 +121,7 @@ export default function AdminLibrary() {
                       <div style={S.title}>{it.title}</div>
                       {(it.sub || it.snippet) && <div style={S.snippet}>{it.sub ? `${it.sub} · ` : ''}{(it.snippet || '').replace(/[#*|>-]/g, ' ').replace(/\s+/g, ' ').slice(0, 90)}</div>}
                     </td>
-                    <td style={S.td}>{it.owner_name || '—'}</td>
+                    <td style={S.td}>{it.owner_name || '—'}{it.owner_role === 'admin' ? <span style={S.mine}>내 자료</span> : ''}</td>
                     <td style={S.td}>{it.student_name || '—'}</td>
                     <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{when(it.at)}</td>
                     <td style={S.td}><button style={S.btn} onClick={() => setOpen({ kind: it.kind, id: it.id })}>열기</button></td>
@@ -111,22 +133,57 @@ export default function AdminLibrary() {
         </>
       )}
 
-      {open && <Viewer kind={open.kind} id={open.id} onClose={() => setOpen(null)} onCopied={(w) => setMsg(`내 ${w}(으)로 복사했습니다`)} />}
+      {open && (
+        <Viewer kind={open.kind} id={open.id}
+          onClose={() => setOpen(null)}
+          onCopied={(w) => setMsg(`내 ${w}(으)로 복사했습니다`)}
+          onChanged={(what) => { setMsg(what); load(); }}
+          onDeleted={() => { setOpen(null); setMsg('삭제했습니다'); load(); }} />
+      )}
     </section>
   );
 }
 
-// ── 한 건 열어 보기 ──
-function Viewer({ kind, id, onClose, onCopied }) {
+// ── 한 건 열어 보기 · 고치기 · 지우기 ──
+function Viewer({ kind, id, onClose, onCopied, onChanged, onDeleted }) {
   const [item, setItem] = useState(null);
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
+  const [mode, setMode] = useState('preview');       // preview | edit
+  const [draft, setDraft] = useState({ title: '', markdown: '' });
+  const [dirty, setDirty] = useState(false);
   useEffect(() => {
     api(`/api/admin/library/${kind}/${id}`).then((d) => {
       if (!d.success) { setMsg(d.message || '열지 못했습니다'); setItem({}); return; }
-      setItem(d.item);
+      setItem(d.item); setDraft({ title: d.item.title || '', markdown: d.item.markdown || '' }); setDirty(false);
     }).catch((e) => { setMsg(e.message); setItem({}); });
   }, [kind, id]);
+
+  const edit = (patch) => { setDraft((x) => ({ ...x, ...patch })); setDirty(true); };
+  // 저장 — 남의 학원 자료를 그 자리에서 바꾼다. 면접 전략은 본문이 구조화 JSON 이라 제목만 간다.
+  const save = async () => {
+    setBusy('save'); setMsg('');
+    try {
+      const body = { title: draft.title };
+      if (item.bodyEditable) body.markdown = draft.markdown;
+      const d = await api(`/api/admin/library/${kind}/${id}`, { method: 'PATCH', body });
+      if (!d.success) throw new Error(d.message || '저장 실패');
+      setItem((x) => ({ ...x, title: draft.title, markdown: item.bodyEditable ? draft.markdown : x.markdown }));
+      setDirty(false); setMsg('저장했습니다 — 그 학원 화면에도 바뀐 내용이 보입니다');
+      onChanged?.('자료를 수정했습니다');
+    } catch (e) { setMsg(e.message); } finally { setBusy(''); }
+  };
+  // 삭제 — 되돌릴 수 없다. 제목·학원을 보여 주고 한 번 더 확인한다.
+  const remove = async () => {
+    if (!window.confirm(`정말 삭제할까요?\n\n${item.title}\n${item.ownerName} 학원의 자료입니다. 그 학원 화면에서도 사라지고 되돌릴 수 없습니다.`)) return;
+    setBusy('delete'); setMsg('');
+    try {
+      const d = await api(`/api/admin/library/${kind}/${id}`, { method: 'DELETE' });
+      if (!d.success) throw new Error(d.message || '삭제 실패');
+      onDeleted?.();
+    } catch (e) { setMsg(e.message); setBusy(''); }
+  };
+  const close = () => { if (dirty && !window.confirm('저장하지 않은 수정이 있습니다. 닫을까요?')) return; onClose(); };
 
   const copy = async () => {
     setBusy('copy'); setMsg('');
@@ -172,19 +229,41 @@ function Viewer({ kind, id, onClose, onCopied }) {
                   {item.meta?.length ? ` · ${item.meta.join(' · ')}` : ''}
                 </div>
               </div>
-              <button style={S.btn} onClick={onClose}>닫기 ✕</button>
+              <button style={S.btn} onClick={close}>닫기 ✕</button>
             </div>
             <div style={S.toolbar}>
+              <div style={S.seg}>
+                {[['preview', '미리보기'], ['edit', '✏️ 수정']].map(([k, l]) => (
+                  <button key={k} style={{ ...S.segBtn, ...(mode === k ? S.segOn : {}) }} onClick={() => setMode(k)}>{l}</button>
+                ))}
+              </div>
+              {mode === 'edit' && <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : '변경 저장'}</button>}
               <button style={{ ...S.btn, ...S.primary }} disabled={!!busy} onClick={copy}>{busy === 'copy' ? '복사 중…' : '📥 내 보관함으로 복사'}</button>
               <button style={S.btn} disabled={!!busy} onClick={() => dl('docx')}>{busy === 'docx' ? '만드는 중…' : '💾 Word'}</button>
               <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : '💾 PDF'}</button>
               <button style={S.btn} onClick={saveJson}>📁 JSON 저장</button>
+              <div style={{ flex: 1 }} />
+              <button style={{ ...S.btn, ...S.danger }} disabled={!!busy} onClick={remove}>{busy === 'delete' ? '삭제 중…' : '🗑 삭제'}</button>
             </div>
             {msg && <div style={S.msg}>{msg}</div>}
-            <div style={S.preview}>
-              {item.markdown ? <div dangerouslySetInnerHTML={{ __html: mdPreview(item.markdown) }} /> : <p style={S.sub}>본문이 없는 자료입니다(첨부·구조 자료).</p>}
-            </div>
-            <p style={S.sub}>복사본은 내 보관함에 새로 만들어집니다 — 원본은 그 학원 화면에 그대로 남습니다.</p>
+            {mode === 'edit' ? (
+              <>
+                <input style={S.titleInput} value={draft.title} onChange={(e) => edit({ title: e.target.value })} placeholder="제목" />
+                {item.bodyEditable ? (
+                  <textarea style={S.textarea} value={draft.markdown} onChange={(e) => edit({ markdown: e.target.value })} spellCheck={false} />
+                ) : (
+                  <div style={S.hint}>이 자료는 본문이 구조화된 저장본(면접 전략)이라 여기서는 <b>제목만</b> 고칠 수 있습니다. 본문은 면접 전략 화면에서 다시 만들어 주세요.</div>
+                )}
+              </>
+            ) : (
+              <div style={S.preview}>
+                {item.markdown ? <div dangerouslySetInnerHTML={{ __html: mdPreview(item.markdown) }} /> : <p style={S.sub}>본문이 없는 자료입니다(첨부·구조 자료).</p>}
+              </div>
+            )}
+            <p style={S.sub}>
+              수정·삭제는 <b>그 학원의 원본</b>을 바로 바꿉니다(되돌릴 수 없고, 그 학원 화면에도 그대로 보입니다).
+              건드리지 않고 가져오려면 📥 복사를 쓰세요 — 복사본만 내 보관함에 새로 만들어집니다.
+            </p>
           </>
         )}
       </div>
@@ -222,4 +301,11 @@ const S = {
   preview: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', fontSize: 13.5, lineHeight: 1.65, color: 'var(--text)', maxHeight: '60vh', overflowY: 'auto' },
   msg: { fontSize: 12, color: 'var(--accent)', margin: '0 0 8px' },
   err: { fontSize: 12, color: '#f87171', margin: '6px 0' },
+  segEmpty: { opacity: 0.45 },
+  hint: { fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 11px', margin: '4px 0 8px', lineHeight: 1.7 },
+  linkBtn: { background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' },
+  mine: { fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: 'var(--accent-bg)', color: 'var(--accent)', fontWeight: 700, whiteSpace: 'nowrap' },
+  danger: { color: '#f87171', borderColor: 'rgba(248,113,113,0.5)' },
+  textarea: { width: '100%', boxSizing: 'border-box', minHeight: 360, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical' },
+  titleInput: { width: '100%', boxSizing: 'border-box', fontSize: 15, fontWeight: 800, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 },
 };
