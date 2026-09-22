@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { API_BASE } from '../apiBase';
 
 // 📨 나만의 패파(academy-video)에 배정 — 모든 보고서 공용 버튼+창.
-//   <SendToPapa kind="생기부 분석" menu="form" title=… markdown=… data?=… studentName?=… onSent?=… endpoint?=… extra?=… adminOnly?=… />
+//   <SendToPapa kind="생기부 분석" menu="form" title=… markdown=… data?=… html?=… studentName?=… onSent?=… endpoint?=… extra?=… adminOnly?=… />
+// html 을 주면(학교 해설의 '프리미엄 디자인') 마크다운과 함께 인쇄본 HTML 한 벌도 보낸다 — 나만의 패파가 그대로 그려 준다.
 // 학원마다 자기 나만의 패파 열쇠를 설정에서 등록하면 자기 학원으로 보낸다(관리자는 서버 열쇠). 열쇠가 없으면 창에서 안내만.
 // 서버 /api/papa/send → academy-video inbound → 그 학생의 성장 리포트에 문서로 + 학부모·학생 알림. menu 는 서버가 공개 메뉴인지 확인하는 데 쓴다.
 // 학교 해설 보고서는 endpoint='/api/school-reports/send' + extra={reportId} 로 전송 이력을 보고서에 남긴다.
@@ -21,7 +22,7 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-export function SendToPapaDialog({ kind, menu, title, markdown, data = null, studentName: initialName = '', endpoint = '/api/papa/send', extra = {}, onClose, onSent, onAuthError }) {
+export function SendToPapaDialog({ kind, menu, title, markdown, data = null, html = null, studentName: initialName = '', endpoint = '/api/papa/send', extra = {}, onClose, onSent, onAuthError }) {
   const [studentName, setStudentName] = useState(initialName || '');
   const [audience, setAudience] = useState('parent');
   const [memo, setMemo] = useState('');
@@ -32,7 +33,7 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
   const send = async () => {
     setBusy(true); setErr('');
     try {
-      const d = await api(endpoint, { method: 'POST', body: { kind, menu, title, markdown, data, studentName, audience, memo, ...extra } });
+      const d = await api(endpoint, { method: 'POST', body: { kind, menu, title, markdown, data, html, studentName, audience, memo, ...extra } });
       if (!d.success) throw new Error(d.message || '전송 실패');
       onSent?.(d);
     } catch (e) { if (e.auth) onAuthError?.(); setErr(e.message); } finally { setBusy(false); }
@@ -43,7 +44,7 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
   const exportJson = async () => {
     setBusy(true); setErr(''); setSaved(false);
     try {
-      const d = await api('/api/papa/export', { method: 'POST', body: { kind, menu, title, markdown, data, studentName, audience, memo, ...extra } });
+      const d = await api('/api/papa/export', { method: 'POST', body: { kind, menu, title, markdown, data, html, studentName, audience, memo, ...extra } });
       if (!d.success) throw new Error(d.message || '파일 만들기 실패');
       const blob = new Blob([JSON.stringify(d.file, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -73,7 +74,8 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
         </div>
         <label style={S.label}>한 줄 메모 (알림에 함께 나갑니다, 선택)</label>
         <input style={S.input} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 상담 때 말씀드린 내용입니다. 읽어 보시고 궁금한 점 연락 주세요." />
-        <div style={S.sub}>보내는 문서: <b>{title}</b> · {kind}{data ? ' (수치 차트 포함)' : ''}</div>
+        <div style={S.sub}>보내는 문서: <b>{title}</b> · {kind}{data ? ' (수치 차트 포함)' : ''}{html ? ' · ✨ 프리미엄 디자인' : ''}</div>
+        {html && <div style={S.sub}>나만의 패파에서도 프리미엄 인쇄본 그대로 열립니다(학부모·학생 화면에서 ✨ 프리미엄 / 🧾 기본 전환).</div>}
         {err && <div style={{ ...S.err, marginTop: 8 }}>{err}</div>}
         {saved && <div style={{ ...S.sub, color: 'var(--accent, #2dd4bf)', marginTop: 8 }}>파일을 저장했습니다. 나만의 패파 → 학생 상세 → <b>📄 상담 리포트 → 📁 입시파인더 JSON 올리기</b>로 넣으면 같은 보고서가 됩니다.</div>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12, flexWrap: 'wrap' }}>
@@ -87,7 +89,7 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
 }
 
 /** 버튼 — adminOnly 면 관리자에게만(면접 전략). onSent 가 없으면 성공 메시지만 잠깐 보여 준다. */
-export default function SendToPapa({ kind, menu, title, markdown, data, studentName, endpoint, extra, onSent, onAuthError, style, label = '📨 나만의 패파에 배정', beforeOpen, adminOnly = false }) {
+export default function SendToPapa({ kind, menu, title, markdown, data, html, studentName, endpoint, extra, onSent, onAuthError, style, label = '📨 나만의 패파에 배정', beforeOpen, adminOnly = false }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState('');
   if (adminOnly && !isAdmin()) return null;
@@ -95,7 +97,7 @@ export default function SendToPapa({ kind, menu, title, markdown, data, studentN
   return (
     <>
       <button style={{ ...S.btn, ...style }} onClick={openIt} disabled={!markdown} title={markdown ? '학생·학부모의 나만의 패파 성장 리포트로 보냅니다' : '보낼 내용이 아직 없습니다'}>{label}{msg ? ` · ${msg}` : ''}</button>
-      {open && <SendToPapaDialog kind={kind} menu={menu} title={title} markdown={markdown} data={data} studentName={studentName} endpoint={endpoint} extra={extra} onAuthError={onAuthError}
+      {open && <SendToPapaDialog kind={kind} menu={menu} title={title} markdown={markdown} data={data} html={html} studentName={studentName} endpoint={endpoint} extra={extra} onAuthError={onAuthError}
         onClose={() => setOpen(false)} onSent={(d) => { setOpen(false); setMsg('보냈습니다'); setTimeout(() => setMsg(''), 4000); onSent?.(d); }} />}
     </>
   );

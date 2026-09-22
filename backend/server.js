@@ -1396,7 +1396,11 @@ app.delete('/api/papa/config', requireAuth, async (req, res) => {
   catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-async function sendToPapa({ key, studentName, title, markdown, data, audience, memo, source }) {
+// 프리미엄 인쇄본(HTML) 상한 — 학교 4곳·긴 본문이어도 100KB 안쪽이다. 넘으면 조용히 빼고 마크다운만 보낸다(문서는 어떻게든 가야 한다).
+const PAPA_HTML_MAX = 400_000;
+const papaHtml = (html) => (typeof html === 'string' && html.trim().length > 40 && html.length <= PAPA_HTML_MAX ? html : undefined);
+
+async function sendToPapa({ key, studentName, title, markdown, data, html, audience, memo, source }) {
   if (!key) throw Object.assign(new Error('나만의 패파 연동 열쇠가 없습니다 — 설정 → 나만의 패파 연동에서 등록해 주세요'), { status: 400 });
   const name = String(studentName || '').trim();
   if (!name) throw Object.assign(new Error('학생 이름이 필요합니다'), { status: 400 });
@@ -1404,7 +1408,7 @@ async function sendToPapa({ key, studentName, title, markdown, data, audience, m
   const aud = ['student', 'parent', 'both'].includes(audience) ? audience : 'parent';
   const r = await fetch(`${ACADEMY_VIDEO_URL}/api/inbound/report`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key }, signal: AbortSignal.timeout(20000),
-    body: JSON.stringify({ items: [{ student_name: name, title: String(title || '보고서').slice(0, 150), md: String(markdown), data: data && Array.isArray(data.schools) ? data : undefined, source: String(source || '입시파인더').slice(0, 60), audience: aud, memo: memo ? String(memo).slice(0, 500) : undefined }] }),
+    body: JSON.stringify({ items: [{ student_name: name, title: String(title || '보고서').slice(0, 150), md: String(markdown), data: data && Array.isArray(data.schools) ? data : undefined, html: papaHtml(html), source: String(source || '입시파인더').slice(0, 60), audience: aud, memo: memo ? String(memo).slice(0, 500) : undefined }] }),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw Object.assign(new Error(`나만의 패파 응답: ${j.error || `HTTP ${r.status}`}`), { status: 502 });
@@ -1421,7 +1425,7 @@ app.get('/api/papa/send-config', requireAuth, async (req, res) => {
 // 공용: { kind, menu?, title, markdown, data?, studentName, audience, memo, source? }
 app.post('/api/papa/send', requireAuth, async (req, res) => {
   try {
-    const { title, data, studentName, audience, memo, source, kind, interviewId, menu } = req.body || {};
+    const { title, data, html, studentName, audience, memo, source, kind, interviewId, menu } = req.body || {};
     let { markdown } = req.body || {};
     // 학원 코드: 그 보고서의 메뉴가 공개돼 있어야 보낼 수 있다(관리자는 전부)
     if (req.user.role !== 'admin') {
@@ -1436,7 +1440,7 @@ app.post('/api/papa/send', requireAuth, async (req, res) => {
       if (!item) return res.status(404).json({ success: false, message: '면접 리포트를 찾을 수 없습니다' });
       markdown = interviewMarkdown(item.data || {});
     }
-    const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, audience, memo, source: source || `입시파인더 ${kind || '보고서'}` });
+    const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, html, audience, memo, source: source || `입시파인더 ${kind || '보고서'}` });
     logEvent({ userId: req.user.userId || null, type: 'papa_send', detail: `${kind || '보고서'} → ${out.name}`, ip: req.ip })?.catch?.(() => {});
     res.json({ success: true, ...out });
   } catch (e) {
@@ -1449,7 +1453,7 @@ app.post('/api/papa/send', requireAuth, async (req, res) => {
 // 몸통은 /api/papa/send 와 같다(면접 전략은 저장본에서 마크다운을 만들고, 학원 코드는 공개 메뉴만·면접 제외).
 app.post('/api/papa/export', requireAuth, async (req, res) => {
   try {
-    const { title, data, studentName, audience, memo, source, kind, interviewId, menu } = req.body || {};
+    const { title, data, html, studentName, audience, memo, source, kind, interviewId, menu } = req.body || {};
     let { markdown } = req.body || {};
     if (req.user.role !== 'admin') {
       if (interviewId) return res.status(403).json({ success: false, message: '면접 전략은 관리자 전용입니다' });
@@ -1469,6 +1473,7 @@ app.post('/api/papa/export', requireAuth, async (req, res) => {
         student_name: String(studentName || '').trim() || undefined,
         title: String(title || '보고서').slice(0, 150), md: String(markdown),
         data: data && Array.isArray(data.schools) ? data : undefined,
+        html: papaHtml(html),
         source: String(source || `입시파인더 ${kind || '보고서'}`).slice(0, 60), audience: aud,
         memo: memo ? String(memo).slice(0, 500) : undefined,
       }],
@@ -1480,9 +1485,9 @@ app.post('/api/papa/export', requireAuth, async (req, res) => {
 // 학교 해설 보고서용(전송 이력을 보고서에 남긴다) — 관리자 전용. send-config 는 '/:id' 보다 앞(위)에 있다.
 app.post('/api/school-reports/send', requireAuth, async (req, res) => {
   try {
-    const { reportId, title, markdown, data, studentName, audience, memo } = req.body || {};
+    const { reportId, title, markdown, data, html, studentName, audience, memo } = req.body || {};
     const k = await papaKeyFor(req.user);
-    const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, audience, memo, source: '입시파인더 학교 입시 해설' });
+    const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, html, audience, memo, source: '입시파인더 학교 입시 해설' });
     let sent = null;
     if (reportId) sent = await appendSchoolReportSent(Number(reportId), { studentName: out.name, audience: out.audience, memo: memo || '', reportId: out.reportId, academy: out.academy || null, at: new Date().toISOString() });
     res.json({ success: true, academy: out.academy, reportId: out.reportId, sent });
