@@ -273,7 +273,9 @@ app.set('trust proxy', true); // Railway 프록시 뒤에서 실제 클라이언
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+// 비밀키가 없으면 매 기동마다 무작위 키 — 'secret' 같은 고정 기본값은 누구나 관리자 토큰을 위조할 수 있어 절대 두지 않는다.
+// (무작위 키면 재시작 때 로그인이 풀리는 불편만 있고 위조는 못 한다. Railway 에는 JWT_SECRET 을 꼭 둘 것.)
+const JWT_SECRET = process.env.JWT_SECRET || (() => { console.error('⚠️ JWT_SECRET 환경변수가 없습니다 — 임시 무작위 키로 기동합니다(재시작마다 로그인 풀림). Railway 변수에 JWT_SECRET 을 넣어 주세요.'); return crypto.randomBytes(32).toString('hex'); })();
 
 // multipart 한글 파일명 보정 (multer가 latin1로 해석 → utf8 복원)
 const fixFilename = (n) => {
@@ -339,7 +341,10 @@ app.get('/api/me/menus', requireAuth, async (req, res) => {
   res.json({ success: true, menus, all: MENU_KEYS });
 });
 
-// 경로 앞머리 → 메뉴. 토큰이 있는 이용자(학원 코드)만 검사한다 — 인증 자체는 각 라우트의 requireAuth/optionalAuth 가 맡는다.
+// 경로 앞머리 → 메뉴. 토큰이 있는 이용자(학원 코드)만 검사한다 — 인증 자체는 각 라우트의 requireAuth 가 맡는다.
+// ⚠ 그래서 **메뉴에 딸린 라우트는 전부 requireAuth 여야 한다.** 토큰을 아예 안 보내면 이 검사를 그냥 지나가므로,
+//   optionalAuth·무인증 라우트가 하나라도 있으면 잠긴 학원(또는 코드도 없는 사람)이 헤더만 떼고 직접 호출해 뚫린다
+//   (2026-09-22 점검: analyze·chat·assessment·refine·verify·generate-pdf 가 그랬다 → 전부 requireAuth 로).
 const MENU_BY_PATH = [
   [/^\/api\/(analyze|refine|generate-pdf|cross-verify|verify)\b/, 'form'],
   [/^\/api\/assessment\b/, 'assessment'],
@@ -419,7 +424,7 @@ app.get('/api/schoolinfo/disclosure', async (req, res) => {
 
 // ── PDF 진단 엔드포인트 ──────────────────────────────
 import pdfParse from 'pdf-parse';
-app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
+app.post('/api/test-pdf', requireAdmin, upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.json({ success: false, message: 'PDF 파일이 수신되지 않았습니다' });
     const { buffer, size, originalname, mimetype } = req.file;
@@ -462,7 +467,7 @@ app.post('/api/test-pdf', upload.single('pdf'), async (req, res) => {
   }
 });
 
-app.get('/api/drive/test', async (req, res) => {
+app.get('/api/drive/test', requireAdmin, async (req, res) => {
   const major = req.query.major || '컴퓨터공학/SW';
   try {
     const kb = await loadKnowledgeBase(major);
@@ -485,7 +490,7 @@ app.get('/api/drive/test', async (req, res) => {
   }
 });
 // ── 검증 결과 반영 최종 리포트 재생성 ──────────────────────
-app.post('/api/refine', async (req, res) => {
+app.post('/api/refine', requireAuth, async (req, res) => {
   const { studentData, analysisText, verifyText, sectionKey } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -630,7 +635,7 @@ ${kb.합격자사례 || '(자료 없음)'}`;
 });
 
 // ── AI 채팅 수정 (대화형 — 특정 부분만 수정) ──────────────
-app.post('/api/chat-edit', async (req, res) => {
+app.post('/api/chat-edit', requireAuth, async (req, res) => {
   const { studentData, currentResults, userMessage, imageData } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -787,7 +792,7 @@ const SECTION_MAP_SERVER = [
 ];
 
 // ── AI 연결 테스트 ──────────────────────────────────────
-app.post('/api/test-connection', async (req, res) => {
+app.post('/api/test-connection', requireAuth, async (req, res) => {
   const { aiModel = 'claude' } = req.body;
   const apiKey = req.headers['x-api-key'];
   if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음' });
@@ -989,7 +994,7 @@ function friendlyAIError(err, group = 'claude') {
 }
 
 // ── 수행평가: 결과물 작성 / 첨삭·평가 (SSE keepalive) ──────
-app.post('/api/assessment/generate', optionalAuth, async (req, res) => {
+app.post('/api/assessment/generate', requireAuth, async (req, res) => {
   const { mode = 'create', subject, grade, kind, topic, requirements, referenceText, submissionText, rubric, images, current, instruction } = req.body || {};
   const imgList = Array.isArray(images) ? images.slice(0, 8) : [];
   const aiModel = req.headers['x-ai-model'] || 'claude';
@@ -1096,7 +1101,7 @@ ${grade || ''} 학생 수준에 맞춰 완성도 높은 수행평가 결과물�
 // ── 수행평가·아카이브: 업로드 파일에서 텍스트 추출 (pdf/docx/hwp/hwpx/txt) ──
 // 스캔 PDF는 AI 키가 헤더로 오면 비전 OCR까지 폴백. OCR이 오래 걸려 SSE+keepalive로 응답
 // (프론트 postForResult가 JSON/SSE 둘 다 처리하므로 구버전과도 호환).
-app.post('/api/assessment/extract', upload.array('files', 10), async (req, res) => {
+app.post('/api/assessment/extract', requireAuth, upload.array('files', 10), async (req, res) => {
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'] || '';
@@ -1981,7 +1986,7 @@ function interviewMarkdown(d) {
 }
 
 // ── 수행평가/분석 결과 → Word(.docx) 다운로드 ──────────────
-app.post('/api/assessment/docx', async (req, res) => {
+app.post('/api/assessment/docx', requireAuth, async (req, res) => {
   try {
     const { title, markdown } = req.body || {};
     if (!markdown) return res.status(400).json({ success: false, message: '내용 없음' });
@@ -2798,7 +2803,7 @@ app.delete('/api/board/files/:id', requireAuth, async (req, res) => {
 
 // ── 채팅 파일 업로드 (PDF 텍스트 추출 / 이미지 base64 변환) ──
 const chatUpload = upload.array('files', 5);
-app.post('/api/chat-upload', chatUpload, async (req, res) => {
+app.post('/api/chat-upload', requireAuth, chatUpload, async (req, res) => {
   try {
     const files = req.files || [];
     const results = [];
@@ -2874,7 +2879,7 @@ function buildStudentSection(sc) {
 }
 
 // ── 채팅 엔드포인트 (파일 컨텍스트 + 분석 컨텍스트 + 학생 보드 자료 지원) ──
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', requireAuth, async (req, res) => {
   const { message, history = [], analysisContext, fileContents, imageData, studentContext } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -3026,7 +3031,7 @@ ${kb.합격자사례 || '(자료 없음)'}${studentSection}${analysisSection}${f
 });
 
 // ── 채팅 검증 결과 반영 ──────────────────────────
-app.post('/api/chat-refine', async (req, res) => {
+app.post('/api/chat-refine', requireAuth, async (req, res) => {
   const { question, originalAnswer, verifyText, studentData } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -3082,7 +3087,7 @@ app.post('/api/chat-refine', async (req, res) => {
 });
 
 // ── AI 교차 검증 엔드포인트 ──────────────────────────
-app.post('/api/verify', async (req, res) => {
+app.post('/api/verify', requireAuth, async (req, res) => {
   const { studentData, analysisText, originalModel } = req.body;
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -3209,7 +3214,7 @@ priority 설명:
   }
 });
 
-app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
+app.post('/api/analyze', requireAuth, pdfFields, async (req, res) => {
   let studentData;
   let reusedPdfTexts = '';
   let pdfPassword = '';   // 비밀번호 걸린 정부24 생기부용
@@ -3524,7 +3529,7 @@ app.post('/api/analyze', optionalAuth, pdfFields, async (req, res) => {
     res.end();
   }
 });
-app.post('/api/generate-pdf', async (req, res) => {
+app.post('/api/generate-pdf', requireAuth, async (req, res) => {
   try {
     const { analysisData, studentData } = req.body;
     if (!analysisData || !studentData) {
@@ -3541,7 +3546,7 @@ app.post('/api/generate-pdf', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-app.get('/api/students', async (req, res) => {
+app.get('/api/students', requireAdmin, async (req, res) => {
   try {
     const { listStudents } = await import('./services/notionService.js');
     const students = await listStudents();
@@ -4362,11 +4367,21 @@ ${picked.section}
 // ── 로그인 (코드 기반) ────────────────────────────────
 // - 관리자: ADMIN_CODE(환경변수) 또는 기존 APP_PASSWORD
 // - 이용자: 관리자가 발급한 코드 (DB 조회)
+// 로그인 실패 제한 — IP 당 10분에 20번, 전체(모든 IP 합산) 10분에 300번. 코드(특히 관리자 코드)를 스크립트로 무한히 찍어 보는 걸 막는다.
+// 전체 상한을 따로 두는 이유: X-Forwarded-For 는 클라이언트가 지어낼 수 있어 IP 별 상한만으로는 헤더를 바꿔 가며 우회한다.
+// 성공한 로그인은 세지 않는다(정상 이용자가 자주 들어와도 안 걸린다).
+const LOGIN_FAILS = new Map(); // ip → { n, until }   ('*' = 전체)
+const LOGIN_WINDOW_MS = 10 * 60 * 1000, LOGIN_MAX_IP = 20, LOGIN_MAX_ALL = 300;
+function _failEntry(key) { const now = Date.now(); let e = LOGIN_FAILS.get(key); if (!e || e.until < now) { e = { n: 0, until: now + LOGIN_WINDOW_MS }; LOGIN_FAILS.set(key, e); } return e; }
+const loginBlocked = (ip) => _failEntry(ip).n >= LOGIN_MAX_IP || _failEntry('*').n >= LOGIN_MAX_ALL;
+const loginFailed = (ip) => { _failEntry(ip).n += 1; _failEntry('*').n += 1; };
+setInterval(() => { const now = Date.now(); for (const [k, v] of LOGIN_FAILS) if (v.until < now) LOGIN_FAILS.delete(k); }, LOGIN_WINDOW_MS).unref?.();
 app.post('/api/login', async (req, res) => {
   const cred = (req.body.code || req.body.password || '').trim();
   if (!cred) return res.json({ success: false, message: '코드를 입력해주세요' });
 
   const ip = getIp(req);
+  if (loginBlocked(ip)) return res.status(429).json({ success: false, message: '로그인 시도가 너무 많습니다. 10분 뒤에 다시 해 주세요.' });
   const userAgent = req.headers['user-agent'] || '';
   const jti = crypto.randomBytes(12).toString('hex');
 
@@ -4401,6 +4416,7 @@ app.post('/api/login', async (req, res) => {
     }
   }
 
+  loginFailed(ip);
   return res.json({ success: false, message: '유효하지 않은 코드입니다' });
 });
 

@@ -327,6 +327,7 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
         headers: {
           'Content-Type': 'application/json',
           'x-api-key': localStorage.getItem('ef_apikey') || '',
+          Authorization: `Bearer ${localStorage.getItem('ef_token') || ''}`,
         },
         // 표지 편집칸의 학원 이름·로고를 서버 PDF 머리말·꼬리말에도 — 화면 인쇄와 다운로드 PDF 가 같은 브랜드를 달도록
         body: JSON.stringify({ analysisData: results, studentData, brand: { name: coverEdit.brandName, sub: coverEdit.brandSub, reportTitle: coverEdit.reportTitle, logo: coverEdit.logoData || undefined } }),
