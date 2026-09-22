@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import { MENU_ITEMS } from '../menus';
+import AdminLibrary from './AdminLibrary';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -235,6 +236,9 @@ export default function AdminDashboard({ onAuthError }) {
       )}
       {error && <div style={S.error}>{error}</div>}
       {loading && <div style={S.muted}>불러오는 중...</div>}
+
+      {/* 🗄 전체 자료함 — 학원 코드마다 쌓인 자료를 보고, 내 보관함으로 복사하고, 파일로 저장 */}
+      {dbOn && <AdminLibrary />}
 
       {/* 현재 접속자 */}
       <section style={S.card}>

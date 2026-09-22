@@ -44,6 +44,7 @@ import {
   createSchoolReport, updateSchoolReport, deleteSchoolReport, appendSchoolReportSent,
 } from './services/schoolReportStore.js';
 import { buildReportData } from './services/schoolReportData.js';
+import { listLibrary, libraryOwners, getLibraryItem, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
@@ -4434,6 +4435,83 @@ app.post('/api/heartbeat', requireAuth, async (req, res) => {
 });
 
 // ── 관리자: 이용자 코드 목록 + 사용량 ──────────────────
+// ══════════════════════════════════════════════════════
+// 🗄 전체 자료함 (관리자 전용) — 학원 코드마다 쌓인 자료를 한자리에서 보고, 내 보관함으로 복사하고, 파일로 내려받는다
+//   · 원본은 건드리지 않는다(읽기 + 복사만). 삭제·수정은 각 학원 화면에서만.
+//   · 학생 이름 같은 개인정보가 그대로 보이므로 열람·복사를 events 에 남긴다.
+// ══════════════════════════════════════════════════════
+app.get('/api/admin/library', requireAdmin, async (req, res) => {
+  try {
+    const { kind, owner, q, limit, offset, others } = req.query;
+    const out = await listLibrary({
+      kind, ownerId: owner || null, q: (q || '').trim() || null,
+      exceptOwner: others === '1' ? req.user.userId : null,
+      limit: limit || 200, offset: offset || 0,
+    });
+    res.json({ success: true, kinds: LIBRARY_KINDS.map((k) => ({ kind: k, label: KIND_LABEL[k] })), ...out });
+  } catch (e) {
+    console.error('[admin/library] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+// 어느 학원이 얼마나 쌓았는지 — 목록 위 요약 + 소유자 고르기
+app.get('/api/admin/library/owners', requireAdmin, async (req, res) => {
+  try { res.json({ success: true, owners: await libraryOwners() }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 한 건 열기 — 면접 전략은 저장본(JSON)에서 마크다운을 만들어 같은 모양으로 돌려준다
+app.get('/api/admin/library/:kind/:id', requireAdmin, async (req, res) => {
+  try {
+    const { kind, id } = req.params;
+    if (!LIBRARY_KINDS.includes(kind)) return res.status(400).json({ success: false, message: '알 수 없는 종류입니다' });
+    const item = await getLibraryItem(kind, id);
+    if (!item) return res.status(404).json({ success: false, message: '자료를 찾을 수 없습니다' });
+    if (kind === 'interview') item.markdown = interviewMarkdown(item.data || {});
+    logEvent({ userId: req.user.userId || null, type: 'library_view', detail: `${KIND_LABEL[kind]} #${id} · ${item.ownerName}`, ip: req.ip })?.catch?.(() => {});
+    const { raw, ...safe } = item; // raw 는 칼럼 그대로 — 화면엔 필요 없다
+    res.json({ success: true, item: safe });
+  } catch (e) {
+    console.error('[admin/library/:kind/:id] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+// 내 보관함으로 복사 — 원본은 그대로 두고 관리자 소유의 새 자료를 만든다.
+//   report → 보고서 보관함 · suhaeng → 수행평가 아카이브 · interview → 면접 전략 보관함
+//   roadmap·record 는 따로 담을 보관함이 없어 보고서 보관함에 문서로 넣는다(마크다운 본문 그대로).
+app.post('/api/admin/library/:kind/:id/copy', requireAdmin, async (req, res) => {
+  try {
+    const { kind, id } = req.params;
+    if (!LIBRARY_KINDS.includes(kind)) return res.status(400).json({ success: false, message: '알 수 없는 종류입니다' });
+    const me = req.user.userId;
+    if (!me) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
+    const item = await getLibraryItem(kind, id);
+    if (!item) return res.status(404).json({ success: false, message: '자료를 찾을 수 없습니다' });
+    if (item.ownerId === me) return res.status(400).json({ success: false, message: '이미 내 자료입니다' });
+    const r = item.raw;
+    const mark = `${item.title} (${item.ownerName} 자료 복사)`.slice(0, 200);
+    let where = '';
+    if (kind === 'report') {
+      await createSchoolReport(me, { kind: r.kind, title: mark, schoolIds: r.school_ids || [], schoolNames: r.school_names || '', focus: r.focus || '', content: r.content || '', snapshot: r.snapshot || {} });
+      where = '학교 해설 보고서 보관함';
+    } else if (kind === 'suhaeng') {
+      await createSuhaeng(me, { title: mark, school: r.school, subject: r.subject, topic: r.topic, grade: r.grade, kind: r.kind, content: r.content, sourceName: r.source_name || item.ownerName, studentName: r.student_name });
+      where = '수행평가 아카이브';
+    } else if (kind === 'interview') {
+      await createInterview(me, { studentName: r.student_name || '', title: mark, cards: r.cards || [], data: r.data || {} });
+      where = '면접 전략 보관함';
+    } else {
+      const body = [item.markdown || '', item.meta?.length ? `\n\n---\n출처: ${item.ownerName} · ${item.meta.join(' · ')}` : ''].join('');
+      await createSchoolReport(me, { kind: 'school', title: mark, schoolIds: [], schoolNames: item.meta?.join(' · ') || '', focus: '', content: body, snapshot: {} });
+      where = '학교 해설 보고서 보관함(문서)';
+    }
+    logEvent({ userId: me, type: 'library_copy', detail: `${KIND_LABEL[kind]} #${id} ← ${item.ownerName}`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true, where });
+  } catch (e) {
+    console.error('[admin/library/copy] 오류:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     res.json({ success: true, dbEnabled: dbEnabled(), users: await listUsersWithStats() });
