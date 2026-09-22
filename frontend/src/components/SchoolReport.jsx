@@ -4,6 +4,7 @@ import { API_BASE } from '../apiBase';
 import { readBrand } from '../brand';
 import { mdPreview } from '../mdPreview';
 import { parseReport, stripStructured } from '../reportMarkdown';
+import { buildPremiumHtml, openPremiumWindow } from '../premiumSchoolReport';
 import SendToPapa, { AUD_LABEL } from './SendToPapa';
 
 // 고교·중학 공시정보 → 입시·진학 관점 해설 보고서
@@ -289,6 +290,10 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
   // 잠긴 코드는 고쳐서 Word·PDF 로 내려받는 것까지만 된다(서버도 /api/school-reports 저장을 막는다).
   const canStore = menuAllowed(readMenus(), localStorage.getItem('ef_role'), 'schoolreports');
   const [mode, setMode] = useState('preview');
+  // 디자인 — 베이직(지금까지의 화면·서버 PDF/Word) · 프리미엄(A4 매거진형 인쇄 HTML, premiumSchoolReport.js)
+  // 마지막에 고른 디자인을 기억한다(원장은 보통 한 가지만 쓴다).
+  const [design, setDesign] = useState(() => (localStorage.getItem('ef_report_design') === 'premium' ? 'premium' : 'basic'));
+  const pickDesign = (d) => { setDesign(d); try { localStorage.setItem('ef_report_design', d); } catch { /* 저장 실패는 무시 */ } };
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   useEffect(() => { setR(initial); setDirty(!initial.id); }, [initial]);
@@ -320,6 +325,8 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
     } catch (e) { fail(e); } finally { setBusy(''); }
   };
   const dl = async (format) => { setBusy(format); setMsg(''); try { await download(r, format); } catch (e) { fail(e); } finally { setBusy(''); } };
+  // 프리미엄 PDF — 서버 PDF(pdfkit)는 베이직 한 벌뿐이라, 프리미엄은 만든 HTML 을 새 창에 띄워 브라우저 인쇄로 PDF 저장한다.
+  const printPremium = () => { setMsg(''); if (!openPremiumWindow(r, readBrand())) setMsg('팝업이 차단되었습니다 — 이 사이트의 팝업을 허용해 주세요'); };
   const close = () => { if (dirty && !window.confirm('저장하지 않은 수정이 있습니다. 닫을까요?')) return; onClose(); };
 
   return (
@@ -342,10 +349,17 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
               <button key={k} style={{ ...S.segBtn, ...(mode === k ? S.segOn : {}) }} onClick={() => setMode(k)}>{l}</button>
             ))}
           </div>
+          <div style={S.seg} title="보고서 디자인 — 베이직: 지금까지의 화면·PDF, 프리미엄: A4 매거진형 인쇄본">
+            {[['basic', '🧾 베이직'], ['premium', '✨ 프리미엄']].map(([k, l]) => (
+              <button key={k} style={{ ...S.segBtn, ...(design === k ? S.segOn : {}) }} onClick={() => pickDesign(k)}>{l}</button>
+            ))}
+          </div>
           <div style={{ flex: 1 }} />
           {canStore && <button style={{ ...S.btn, ...S.primary }} disabled={!!busy || !dirty} onClick={save}>{busy === 'save' ? '저장 중…' : r.id ? '변경 저장' : '보관함에 저장'}</button>}
           <button style={S.btn} disabled={!!busy} onClick={() => dl('docx')}>{busy === 'docx' ? '만드는 중…' : 'Word 다운로드'}</button>
-          <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : 'PDF 다운로드'}</button>
+          {design === 'premium'
+            ? <button style={S.btn} disabled={!!busy} onClick={printPremium}>🖨 프리미엄 PDF(인쇄)</button>
+            : <button style={S.btn} disabled={!!busy} onClick={() => dl('pdf')}>{busy === 'pdf' ? '만드는 중…' : 'PDF 다운로드'}</button>}
           <SendToPapa kind={r.kind === 'compare' ? '학교 비교 해설' : '학교 입시 해설'} menu="schoolinfo" title={r.title} markdown={r.content} data={r.data || null} studentName={(r.focus || '').match(/^[가-힣]{2,4}(?=[\s,(·])/)?.[0] || ''}
             endpoint="/api/school-reports/send" extra={{ reportId: r.id }} beforeOpen={beforeSend} onAuthError={onAuthError}
             label={`📨 나만의 패파에 배정${r.sent?.length ? ` (${r.sent.length})` : ''}`}
@@ -356,6 +370,9 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
 
         {mode === 'edit' ? (
           <textarea style={S.textarea} value={r.content} onChange={(e) => edit({ content: e.target.value })} spellCheck={false} />
+        ) : design === 'premium' ? (
+          // 프리미엄은 완성된 인쇄용 HTML 한 벌이라 iframe 안에서 그대로 보여 준다(본문 스타일이 앱 화면과 섞이지 않게)
+          <iframe title="프리미엄 미리보기" style={S.frame} srcDoc={buildPremiumHtml(r, readBrand())} />
         ) : (
           <div style={S.preview}>
             {r.data && <ReportVisual data={r.data} />}
@@ -368,6 +385,11 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
           </div>
         )}
         <p style={S.hint}>
+          디자인은 두 가지입니다 — <b>베이직</b>은 지금까지의 화면·PDF·Word,{' '}
+          <b>프리미엄</b>은 학부모에게 그대로 건네는 A4 매거진형 인쇄본(표지 · 성취도 화보 · 유리/불리 카드 · 마무리 체크)입니다.
+          프리미엄은 &lsquo;프리미엄 PDF(인쇄)&rsquo; 버튼으로 새 창을 열어 <b>인쇄 → PDF로 저장</b>하면 됩니다(Word는 베이직 서식만 나옵니다).
+          본문 글은 두 디자인이 같으니 수정 탭에서 한 번만 고치면 됩니다.
+          <br />
           수정 탭에서 문단을 고치거나 지울 수 있습니다(마크다운: ## 제목, - 목록, | 표 |). 다운로드는 지금 화면의 내용을 그대로 담습니다 —
           {canStore ? '보관함에 저장해 두면 나중에 다시 열어 고치거나 내려받을 수 있습니다.' : '이 코드에는 보관함(서버 저장)이 열려 있지 않습니다 — 고쳐서 Word·PDF 로 내려받아 보관해 주세요(보관함은 관리자가 코드별로 엽니다).'} 학부모에게 보내면 나만의 패파(academy-video)의 그 학생 성장 리포트에 문서로 들어가고 알림이 갑니다.
         </p>
@@ -474,6 +496,7 @@ const S = {
   msg: { fontSize: 12, color: 'var(--accent)', margin: '0 0 8px' },
   textarea: { width: '100%', minHeight: 520, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical', boxSizing: 'border-box' },
   preview: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px 14px', fontSize: 13.5, lineHeight: 1.65, color: 'var(--text)' },
+  frame: { width: '100%', height: '70vh', minHeight: 520, border: '1px solid var(--border)', borderRadius: 10, background: '#d9dde1' },
   hint: { fontSize: 12, color: 'var(--text3)', marginTop: 10 },
   search: { width: '100%', boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', fontSize: 13, marginBottom: 10 },
   list: { display: 'flex', flexDirection: 'column', gap: 6 },
