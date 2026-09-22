@@ -10,31 +10,32 @@
 // 학생 이름 등 개인정보가 그대로 보이므로 열람·복사는 events 에 남긴다(server.js 에서 logEvent).
 import { getPool, dbEnabled } from './db.js';
 
-// 종류별 한 줄 = { kind, id, owner_id, title, sub, student_name, at, snippet }
+// 종류별 한 줄 = { kind, id, owner_id, title, sub, student_name, at, snippet, origin }
+//   origin = 자동 사본일 때 '진짜 만든 학원' 이름(소유자는 관리자라서 owner_name 만으로는 누가 만든지 모른다)
 const UNION = `
   SELECT 'report'::text AS kind, r.id, r.owner_id, r.title,
          COALESCE(r.school_names, '') AS sub, ''::text AS student_name,
-         r.updated_at AS at, LEFT(COALESCE(r.content, ''), 180) AS snippet
+         r.updated_at AS at, LEFT(COALESCE(r.content, ''), 180) AS snippet, COALESCE(r.auto_from, '') AS origin
     FROM ef_school_reports r
   UNION ALL
   SELECT 'suhaeng', s.id, s.owner_id, s.title,
          CONCAT_WS(' · ', NULLIF(s.school, ''), NULLIF(s.subject, ''), NULLIF(s.topic, '')), COALESCE(s.student_name, ''),
-         s.created_at, LEFT(COALESCE(s.content, ''), 180)
+         s.created_at, LEFT(COALESCE(s.content, ''), 180), ''
     FROM ef_suhaeng s
   UNION ALL
   SELECT 'interview', i.id, i.owner_id, i.title,
          '면접 전략', COALESCE(i.student_name, ''),
-         i.created_at, ''
+         i.created_at, '', ''
     FROM ef_interviews i
   UNION ALL
   SELECT 'roadmap', m.id, st.owner_id, m.title,
          COALESCE(m.summary, ''), COALESCE(st.name, ''),
-         m.updated_at, LEFT(COALESCE(m.body, ''), 180)
+         m.updated_at, LEFT(COALESCE(m.body, ''), 180), ''
     FROM ef_roadmaps m JOIN ef_students st ON st.id = m.student_id
   UNION ALL
   SELECT 'record', c.id, st.owner_id, COALESCE(NULLIF(c.title, ''), NULLIF(c.type, ''), '학생 기록'),
          COALESCE(c.type, ''), COALESCE(st.name, ''),
-         c.created_at, LEFT(COALESCE(c.content, ''), 180)
+         c.created_at, LEFT(COALESCE(c.content, ''), 180), ''
     FROM ef_records c JOIN ef_students st ON st.id = c.student_id
 `;
 
@@ -54,7 +55,7 @@ export async function listLibrary({ kind, ownerId, q, exceptOwner, limit = 200, 
   // 종류를 뺀 공통 조건(소유자·검색어) — counts 와 목록이 같은 잣대를 쓰게 한다
   const baseWhere = []; const baseParams = [];
   if (ownerId) { baseParams.push(Number(ownerId)); baseWhere.push(`x.owner_id = $${baseParams.length}`); }
-  if (q) { baseParams.push(`%${q}%`); const p = `$${baseParams.length}`; baseWhere.push(`(x.title ILIKE ${p} OR x.sub ILIKE ${p} OR x.student_name ILIKE ${p} OR x.snippet ILIKE ${p})`); }
+  if (q) { baseParams.push(`%${q}%`); const p = `$${baseParams.length}`; baseWhere.push(`(x.title ILIKE ${p} OR x.sub ILIKE ${p} OR x.student_name ILIKE ${p} OR x.snippet ILIKE ${p} OR x.origin ILIKE ${p})`); }
 
   const where = [...baseWhere]; const params = [...baseParams];
   if (kind && LIBRARY_KINDS.includes(kind)) { params.push(kind); where.push(`x.kind = $${params.length}`); }
@@ -120,7 +121,8 @@ export async function getLibraryItem(kind, id) {
   const base = { kind, id: r.id, ownerId: r.owner_id, ownerName: owner?.name || '(주인 없음)', ownerCode: owner?.code || '', raw: r };
   if (kind === 'report') {
     return { ...base, title: r.title, markdown: r.content || '', data: r.snapshot?.data || null, at: r.updated_at,
-      meta: [r.kind === 'compare' ? '비교 해설' : '학교 해설', r.school_names, r.focus ? `학생 상황: ${r.focus}` : ''].filter(Boolean) };
+      origin: r.auto_from || '',
+      meta: [r.kind === 'compare' ? '비교 해설' : '학교 해설', r.auto_from ? `만든 곳: ${r.auto_from}(자동 사본)` : '', r.school_names, r.focus ? `학생 상황: ${r.focus}` : ''].filter(Boolean) };
   }
   if (kind === 'suhaeng') {
     return { ...base, title: r.title, markdown: r.content || '', data: null, at: r.created_at,

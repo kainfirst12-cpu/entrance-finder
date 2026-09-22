@@ -23,9 +23,12 @@ export async function ensureSchoolReportTable() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_school_reports_owner ON ef_school_reports(owner_id);`);
   // 학부모 전송 이력 — 나만의 패파(academy-video) 로 보낸 기록 [{studentName, audience, reportId, at}]
   await pool.query(`ALTER TABLE ef_school_reports ADD COLUMN IF NOT EXISTS sent JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+  // 자동 사본이면 '진짜 만든 곳'(학원 이름) — 보관함이 잠긴 학원이 만든 해설을 관리자 앞으로 한 벌 떠 둘 때 채운다.
+  // 소유자(owner_id)는 관리자이므로, 이 칸이 없으면 누가 만든 자료인지 알 수 없다.
+  await pool.query(`ALTER TABLE ef_school_reports ADD COLUMN IF NOT EXISTS auto_from TEXT DEFAULT NULL;`);
 }
 
-const COLS = 'id, owner_id, kind, title, school_ids, school_names, focus, created_at, updated_at';
+const COLS = 'id, owner_id, kind, title, school_ids, school_names, focus, auto_from, created_at, updated_at';
 
 export async function listSchoolReports(ownerId, { q } = {}) {
   if (!dbEnabled() || !ownerId) return [];
@@ -44,11 +47,12 @@ export async function getSchoolReportOwner(id) {
 }
 export async function createSchoolReport(ownerId, f = {}) {
   const { rows } = await getPool().query(
-    `INSERT INTO ef_school_reports (owner_id, kind, title, school_ids, school_names, focus, content, snapshot)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    `INSERT INTO ef_school_reports (owner_id, kind, title, school_ids, school_names, focus, content, snapshot, auto_from)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
     [ownerId, f.kind === 'compare' ? 'compare' : 'school', String(f.title || '학교 입시 해설').slice(0, 200),
      JSON.stringify(Array.isArray(f.schoolIds) ? f.schoolIds : []), String(f.schoolNames || '').slice(0, 500),
-     String(f.focus || '').slice(0, 2000), String(f.content || ''), JSON.stringify(f.snapshot || {})],
+     String(f.focus || '').slice(0, 2000), String(f.content || ''), JSON.stringify(f.snapshot || {}),
+     f.autoFrom ? String(f.autoFrom).slice(0, 120) : null],
   );
   return rows[0];
 }

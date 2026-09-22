@@ -76,6 +76,14 @@ export async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, created_at);`);
 
     // 학생 관리 보드 (ef_ 접두어 — 같은 Supabase의 다른 앱 표와 충돌 방지)
+    // 관리자 스위치 한 벌 — 화면에서 켜고 끄는 설정을 담는다(예: autoArchive = 학원 해설 자동 사본)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_settings (
+        key        TEXT PRIMARY KEY,
+        value      JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ef_students (
         id          SERIAL PRIMARY KEY,
@@ -353,6 +361,31 @@ export async function ensureAdminUser() {
     console.warn('[DB] ensureAdminUser 실패:', e.message);
     return null;
   }
+}
+
+// ── 관리자 스위치(ef_settings) ────────────────────────
+export async function getSetting(key, fallback = null) {
+  if (!dbEnabled()) return fallback;
+  try {
+    const { rows } = await pool.query(`SELECT value FROM ef_settings WHERE key = $1`, [key]);
+    return rows[0] ? rows[0].value : fallback;
+  } catch { return fallback; }
+}
+export async function setSetting(key, value) {
+  if (!dbEnabled()) return null;
+  const { rows } = await pool.query(
+    `INSERT INTO ef_settings (key, value, updated_at) VALUES ($1, $2::jsonb, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now() RETURNING value`,
+    [key, JSON.stringify(value)]);
+  return rows[0]?.value ?? null;
+}
+/** 관리자(패스파인더) 소유자 id — 학원 자료의 사본을 누구 앞으로 둘지 정할 때 쓴다 */
+export async function adminOwnerId() {
+  if (!dbEnabled()) return null;
+  try {
+    const { rows } = await pool.query(`SELECT id FROM app_users WHERE role = 'admin' ORDER BY id LIMIT 1`);
+    return rows[0]?.id ?? null;
+  } catch { return null; }
 }
 
 // ── 사용자 코드 CRUD ──────────────────────────────────

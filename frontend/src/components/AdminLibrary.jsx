@@ -35,6 +35,7 @@ export default function AdminLibrary() {
   const [counts, setCounts] = useState({});
   const [hiddenMine, setHiddenMine] = useState(0);
   const [owners, setOwners] = useState([]);
+  const [autoArchive, setAutoArchive] = useState(null); // 학원 해설 자동 사본 켬/끔
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null); // 열어 본 자료
 
@@ -51,7 +52,19 @@ export default function AdminLibrary() {
       setItems(d.items || []); setTotal(d.total || 0); setCounts(d.counts || {}); setHiddenMine(d.hiddenMine || 0);
     } catch (e) { setMsg(e.message); setItems([]); }
   };
-  useEffect(() => { api('/api/admin/library/owners').then((d) => setOwners(d.owners || [])).catch(() => setOwners([])); }, []);
+  useEffect(() => {
+    api('/api/admin/library/owners').then((d) => setOwners(d.owners || [])).catch(() => setOwners([]));
+    api('/api/admin/settings').then((d) => setAutoArchive(d.autoArchive !== false)).catch(() => setAutoArchive(null));
+  }, []);
+  // 자동 사본 스위치 — 끄면 그때부터 새 해설의 사본을 만들지 않는다(이미 쌓인 건 그대로 남는다)
+  const toggleAuto = async (on) => {
+    setAutoArchive(on);
+    try {
+      const d = await api('/api/admin/settings', { method: 'PATCH', body: { autoArchive: on } });
+      if (!d.success) throw new Error(d.message || '설정 저장 실패');
+      setMsg(on ? '학원이 만드는 학교 해설을 자동으로 사본 보관합니다' : '자동 사본을 껐습니다 — 이미 쌓인 자료는 그대로 있습니다');
+    } catch (e) { setMsg(e.message); setAutoArchive(!on); }
+  };
   useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t); }, [kind, owner, q, others]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -61,7 +74,14 @@ export default function AdminLibrary() {
           <h2 style={S.h2}>🗄 전체 자료함</h2>
           <p style={S.sub}>학원 코드마다 만든 자료를 모두 봅니다. 열어서 <b>수정·삭제</b>하거나(그 학원 원본이 바뀝니다), <b>내 보관함으로 복사</b>하거나(원본은 그대로), Word·PDF·JSON으로 따로 저장하세요.</p>
         </div>
-        <button style={S.btn} onClick={load}>새로고침</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          {autoArchive !== null && (
+            <label style={{ ...S.check, ...S.autoBox }} title="보관함이 잠긴 학원이 학교 해설을 만들면, 만들어지는 순간 내 자료함에 사본을 한 벌 보관합니다(학원 화면은 그대로).">
+              <input type="checkbox" checked={autoArchive} onChange={(e) => toggleAuto(e.target.checked)} /> 학원 해설 자동 사본
+            </label>
+          )}
+          <button style={S.btn} onClick={load}>새로고침</button>
+        </div>
       </div>
 
       {owners.length > 0 && (
@@ -101,8 +121,9 @@ export default function AdminLibrary() {
       )}
       {kind === 'report' && !counts.report && (
         <div style={S.hint}>
-          학교 해설이 안 보이나요? <b>입시 해설 보고서 보관함</b>은 코드마다 기본 잠금이라, 열어 주지 않은 학원은 해설을 만들어도 서버에 저장되지 않습니다(그 학원에서 Word·PDF로만 내려받습니다).
-          아래 <b>이용자 코드</b> 표에서 그 코드의 메뉴를 열어 주면 그때부터 여기에 쌓입니다.
+          {autoArchive
+            ? <>학교 해설이 아직 없습니다. <b>학원 해설 자동 사본</b>이 켜져 있으니, 학원이 해설을 <b>새로 만드는 순간부터</b> 여기에 쌓입니다(이미 만들어 둔 것은 서버에 없어 가져올 수 없습니다).</>
+            : <>학교 해설이 안 보이나요? <b>입시 해설 보고서 보관함</b>은 코드마다 기본 잠금이라, 열어 주지 않은 학원은 해설을 만들어도 서버에 남지 않습니다. 위 <b>학원 해설 자동 사본</b>을 켜면 학원 화면은 그대로 둔 채 내 자료함에만 사본이 쌓입니다.</>}
         </div>
       )}
       {items === null ? <p style={S.sub}>불러오는 중…</p> : !items.length ? <p style={S.sub}>조건에 맞는 자료가 없습니다.</p> : (
@@ -111,7 +132,7 @@ export default function AdminLibrary() {
           <div style={S.tableWrap}>
             <table style={S.table}>
               <thead>
-                <tr><th style={S.th}>종류</th><th style={S.th}>제목</th><th style={S.th}>학원</th><th style={S.th}>학생</th><th style={S.th}>날짜</th><th style={S.th} /></tr>
+                <tr><th style={S.th}>종류</th><th style={S.th}>제목</th><th style={S.th}>만든 곳</th><th style={S.th}>학생</th><th style={S.th}>날짜</th><th style={S.th} /></tr>
               </thead>
               <tbody>
                 {items.map((it) => (
@@ -121,7 +142,17 @@ export default function AdminLibrary() {
                       <div style={S.title}>{it.title}</div>
                       {(it.sub || it.snippet) && <div style={S.snippet}>{it.sub ? `${it.sub} · ` : ''}{(it.snippet || '').replace(/[#*|>-]/g, ' ').replace(/\s+/g, ' ').slice(0, 90)}</div>}
                     </td>
-                    <td style={S.td}>{it.owner_name || '—'}{it.owner_role === 'admin' ? <span style={S.mine}>내 자료</span> : ''}</td>
+                    <td style={S.td}>
+                      {/* 자동 사본은 소유자가 나(관리자)라서, 실제로 만든 학원(origin)을 앞에 세운다 */}
+                      {it.origin ? (
+                        <>
+                          <div>{it.origin}<span style={S.auto}>자동 사본</span></div>
+                          <div style={S.snippet}>보관: {it.owner_name || '—'}</div>
+                        </>
+                      ) : (
+                        <>{it.owner_name || '—'}{it.owner_role === 'admin' ? <span style={S.mine}>내 자료</span> : ''}</>
+                      )}
+                    </td>
                     <td style={S.td}>{it.student_name || '—'}</td>
                     <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{when(it.at)}</td>
                     <td style={S.td}><button style={S.btn} onClick={() => setOpen({ kind: it.kind, id: it.id })}>열기</button></td>
@@ -305,6 +336,8 @@ const S = {
   hint: { fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 11px', margin: '4px 0 8px', lineHeight: 1.7 },
   linkBtn: { background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' },
   mine: { fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: 'var(--accent-bg)', color: 'var(--accent)', fontWeight: 700, whiteSpace: 'nowrap' },
+  auto: { fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: 'rgba(129,140,248,0.15)', color: '#818cf8', fontWeight: 700, whiteSpace: 'nowrap' },
+  autoBox: { border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px', background: 'var(--surface2)' },
   danger: { color: '#f87171', borderColor: 'rgba(248,113,113,0.5)' },
   textarea: { width: '100%', boxSizing: 'border-box', minHeight: 360, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, fontSize: 13, lineHeight: 1.6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical' },
   titleInput: { width: '100%', boxSizing: 'border-box', fontSize: 15, fontWeight: 800, background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 },

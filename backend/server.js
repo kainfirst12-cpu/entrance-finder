@@ -52,6 +52,7 @@ import {
   findActiveUserByCode, createUserCode, setUserActive, deleteUser, setUserMenus, getUserMenus, getPapaKey, setPapaKey,
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
+  getSetting, setSetting, adminOwnerId,
 } from './services/db.js';
 import { startRatioCron, runInBackground as ratioRunInBackground, refreshSources as ratioRefreshSources, ratioStatus, selfCheck as ratioSelfCheck, upcomingDeadlines } from './services/ratioCron.js';
 import { listUnivs as ratioListUnivs, currentOf as ratioCurrentOf, seriesOf as ratioSeriesOf } from './services/ratioStore.js';
@@ -1200,6 +1201,31 @@ function schoolFacts(s) {
   return lines.join('\n');
 }
 
+// 학원 코드가 만든 학교 해설을 관리자 보관함에 한 벌 떠 둔다(자동 사본).
+//   · 관리자 자신이 만든 것은 그대로 자기 보관함에 저장하므로 건너뛴다.
+//   · 스위치(ef_settings.autoArchive)가 꺼져 있으면 아무것도 하지 않는다. 기본은 켬.
+//   · 실패해도 해설 생성은 그대로 끝난다 — 사본은 덤이다.
+async function archiveForAdmin({ user, title, kind, schools, focus, content, snapshot }) {
+  try {
+    if (!dbEnabled() || !content) return;
+    if (user?.role === 'admin') return;
+    const on = await getSetting('autoArchive', { on: true });
+    if (on && on.on === false) return;
+    const adminId = await adminOwnerId();
+    if (!adminId) return;
+    const from = user?.name || user?.code || '학원 코드';
+    await createSchoolReport(adminId, {
+      kind, title: String(title || '학교 입시 해설').slice(0, 200),
+      schoolIds: (schools || []).map((x) => x.id).filter(Boolean),
+      schoolNames: (schools || []).map((x) => x.schoolName).filter(Boolean).join(', '),
+      focus: focus || '', content, snapshot, autoFrom: from,
+    });
+    logEvent({ userId: user?.userId || null, type: 'library_auto', detail: `학교 해설 자동 사본 · ${from} · ${String(title).slice(0, 60)}`, ip: null })?.catch?.(() => {});
+  } catch (e) {
+    console.warn('[archiveForAdmin] 사본 실패(무시):', e.message);
+  }
+}
+
 const SCHOOL_EXPLAIN_SYSTEM = `당신은 한국 고입·대입 컨설팅 전문가입니다. 학교알리미 공시 수치(교과별 학업성취 A~E 비율·평균, 학년별 재적, 학급·교원)를 읽고
 학부모·학생에게 "이 학교가 입시·진학 관점에서 어떤 학교인가, 어떤 학생에게 유리하고 불리한가"를 해설합니다.
 
@@ -1304,7 +1330,13 @@ app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
     const names = schools.map((s) => s.schoolName);
     const title = isCompare ? `${names.join(' vs ')} 입시 비교 해설` : `${names[0]} 입시 해설`;
     const data = buildReportData(isCompare ? 'compare' : 'school', schools); // 표·차트용 수치 블록 — 모든 출력이 같은 걸 그린다
-    sendDone({ success: true, content: String(content || '').trim(), title, kind: isCompare ? 'compare' : 'school', data, snapshot: { data, facts, model: submodel, at: new Date().toISOString() } });
+    const body = String(content || '').trim();
+    const snapshot = { data, facts, model: submodel, at: new Date().toISOString() };
+    // 📥 자동 사본 — 학원 코드는 보관함(schoolreports)이 기본 잠금이라 해설이 서버에 남지 않는다.
+    //    그래서 만들어지는 순간 관리자 앞으로 한 벌 떠 둔다(관리자 대시보드 🗄 전체 자료함에서 본다).
+    //    학원 화면은 달라지지 않는다(그쪽 보관함은 그대로 잠금). 끄려면 자료함의 '학원 해설 자동 사본' 스위치를 내린다.
+    archiveForAdmin({ user: req.user, title, kind: isCompare ? 'compare' : 'school', schools, focus, content: body, snapshot, data }).catch(() => {});
+    sendDone({ success: true, content: body, title, kind: isCompare ? 'compare' : 'school', data, snapshot });
   } catch (err) {
     console.error('[schoolinfo/explain] 오류:', err.message);
     sendDone({ success: false, message: err.message });
@@ -4548,6 +4580,21 @@ app.delete('/api/admin/library/:kind/:id', requireAdmin, async (req, res) => {
     console.error('[admin/library/delete] 오류:', e.message);
     res.status(500).json({ success: false, message: e.message });
   }
+});
+
+// 관리자 스위치 — 지금은 '학원 해설 자동 사본' 하나. 끄면 그때부터 새 해설의 사본을 만들지 않는다(이미 쌓인 건 그대로).
+app.get('/api/admin/settings', requireAdmin, async (req, res) => {
+  try { res.json({ success: true, autoArchive: (await getSetting('autoArchive', { on: true }))?.on !== false }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/admin/settings', requireAdmin, async (req, res) => {
+  try {
+    if (req.body?.autoArchive === undefined) return res.status(400).json({ success: false, message: '바꿀 설정이 없습니다' });
+    const on = !!req.body.autoArchive;
+    await setSetting('autoArchive', { on });
+    logEvent({ userId: req.user.userId || null, type: 'settings', detail: `학원 해설 자동 사본 ${on ? '켬' : '끔'}`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true, autoArchive: on });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
