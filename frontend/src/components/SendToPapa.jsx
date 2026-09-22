@@ -37,6 +37,22 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
       onSent?.(d);
     } catch (e) { if (e.auth) onAuthError?.(); setErr(e.message); } finally { setBusy(false); }
   };
+  // 📁 JSON 파일 — 열쇠가 없거나 다른 PC 로 옮길 때. 나만의 패파 학생 상세 → 📄 상담 리포트 → '📁 입시파인더 JSON 올리기' 로 넣으면
+  // API 로 보낸 것과 같은 문서 리포트가 된다. 파일 모양은 서버(/api/papa/export)가 inbound 와 같게 맞춘다.
+  const [saved, setSaved] = useState(false);
+  const exportJson = async () => {
+    setBusy(true); setErr(''); setSaved(false);
+    try {
+      const d = await api('/api/papa/export', { method: 'POST', body: { kind, menu, title, markdown, data, studentName, audience, memo, ...extra } });
+      if (!d.success) throw new Error(d.message || '파일 만들기 실패');
+      const blob = new Blob([JSON.stringify(d.file, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${(studentName.trim() || '학생')}_${String(title || kind || '보고서').replace(/[\/:*?"<>|]/g, ' ').trim().slice(0, 60)}.papa.json`;
+      a.click(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+      setSaved(true);
+    } catch (e) { if (e.auth) onAuthError?.(); setErr(e.message); } finally { setBusy(false); }
+  };
   return (
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
@@ -47,7 +63,7 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
           </div>
           <button style={S.btn} onClick={onClose}>✕</button>
         </div>
-        {cfg && !cfg.enabled && <div style={S.warn}>나만의 패파 연동 열쇠가 아직 없습니다. <b>설정 → 나만의 패파 연동</b>에서 우리 학원 나만의 패파(선생님 대시보드 → 연동 열쇠)의 열쇠를 등록해 주세요.</div>}
+        {cfg && !cfg.enabled && <div style={S.warn}>나만의 패파 연동 열쇠가 아직 없습니다. <b>설정 → 나만의 패파 연동</b>에서 우리 학원 나만의 패파(선생님 대시보드 → 연동 열쇠)의 열쇠를 등록해 주세요. 열쇠 없이도 아래 <b>📁 JSON 파일로 저장</b> 후 나만의 패파에서 올릴 수 있습니다.</div>}
         {cfg?.enabled && cfg.academy && <div style={S.sub}>보내는 곳: <b>{cfg.academy}</b> 나만의 패파</div>}
         <label style={S.label}>학생 이름 (나만의 패파에 등록된 이름 그대로)</label>
         <input style={S.input} value={studentName} onChange={(e) => setStudentName(e.target.value)} placeholder="예: 김민준" autoFocus />
@@ -59,8 +75,10 @@ export function SendToPapaDialog({ kind, menu, title, markdown, data = null, stu
         <input style={S.input} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="예: 상담 때 말씀드린 내용입니다. 읽어 보시고 궁금한 점 연락 주세요." />
         <div style={S.sub}>보내는 문서: <b>{title}</b> · {kind}{data ? ' (수치 차트 포함)' : ''}</div>
         {err && <div style={{ ...S.err, marginTop: 8 }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+        {saved && <div style={{ ...S.sub, color: 'var(--accent, #2dd4bf)', marginTop: 8 }}>파일을 저장했습니다. 나만의 패파 → 학생 상세 → <b>📄 상담 리포트 → 📁 입시파인더 JSON 올리기</b>로 넣으면 같은 보고서가 됩니다.</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12, flexWrap: 'wrap' }}>
           <button style={S.btn} onClick={onClose}>취소</button>
+          <button style={S.btn} disabled={busy || !markdown} onClick={exportJson} title="열쇠 없이 파일로 옮기기 — 나만의 패파 학생 상세에서 올립니다">{busy ? '…' : '📁 JSON 파일로 저장'}</button>
           <button style={{ ...S.btn, ...S.primary }} disabled={busy || !studentName.trim() || !markdown || (cfg && !cfg.enabled)} onClick={send}>{busy ? '보내는 중…' : '보내기'}</button>
         </div>
       </div>

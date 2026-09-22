@@ -4,7 +4,7 @@ import {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
   WidthType, BorderStyle, AlignmentType, ShadingType, PageBreak,
 } from 'docx';
-import { parseRoadmapMarkdown } from './pdfService.js';
+import { parseRoadmapMarkdown, normalizeBrand } from './pdfService.js';
 
 const NAVY = '1A2744', BLUE = '2563EB', GRAY = '6B7280', AMBER = '92400E';
 const FONT = '맑은 고딕';
@@ -62,7 +62,8 @@ function mdToDocx(md) {
 const RM_SECTION_ORDER = ['과목별 설계', '타임라인', '남은 작업', '기타'];
 const fmtDate = (v) => { try { return v ? new Date(v).toLocaleDateString('ko-KR') : ''; } catch { return ''; } };
 
-export async function generateRoadmapDocx(rm) {
+export async function generateRoadmapDocx(rm, brandIn) {
+  const brand = normalizeBrand(brandIn); // 학원 브랜드(설정 → 브랜드) — 머리말·문서 속성
   const items = rm.items || [];
   const doneCount = items.filter(i => i.done).length;
   const progress = items.length ? Math.round((doneCount / items.length) * 100) : 0;
@@ -71,7 +72,7 @@ export async function generateRoadmapDocx(rm) {
   const children = [];
 
   // ── 표지 머리 ──
-  children.push(new Paragraph({ children: [run('입시-Finder  |  생기부 로드맵', { size: 16, color: BLUE, bold: true })], spacing: { after: 60 } }));
+  children.push(new Paragraph({ children: [run(`${brand.sub}  |  생기부 로드맵`, { size: 16, color: BLUE, bold: true })], spacing: { after: 60 } }));
   children.push(new Paragraph({
     children: [run(rm.title || '생기부 로드맵', { size: 40, bold: true, color: NAVY })],
     spacing: { after: 140 },
@@ -135,7 +136,7 @@ export async function generateRoadmapDocx(rm) {
   }
 
   const doc = new Document({
-    creator: '입시-Finder | 패스파인더 에듀',
+    creator: `${brand.sub} | ${brand.name}`,
     title: rm.title || '생기부 로드맵',
     styles: { default: { document: { run: { font: FONT, size: 20 } } } },
     sections: [{

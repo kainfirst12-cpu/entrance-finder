@@ -2,9 +2,10 @@
 // 생성된 docx는 MS Word와 한글(HWP) 모두에서 열립니다.
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel,
-  Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle,
+  Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle, Footer,
 } from 'docx';
 import { parseReport, stripStructured } from './reportMarkdown.js';
+import { normalizeBrand } from './pdfService.js';
 
 // **굵게** 인라인 파싱 → TextRun[]
 function parseInline(text) {
@@ -316,8 +317,16 @@ function structuredBodyChildren(markdown, data) {
   return out;
 }
 
-export async function markdownToDocxBuffer(title, markdown, { reportData = null } = {}) {
+// brand: 학원 브랜드(설정 → 브랜드) — 주면 제목 위에 "학원 이름 | 문서 종류" 한 줄과 꼬리말을 붙인다(PDF 와 같은 자리).
+export async function markdownToDocxBuffer(title, markdown, { reportData = null, brand: brandIn = null, kindLabel = '' } = {}) {
   const children = [];
+  const brand = brandIn ? normalizeBrand(brandIn) : null;
+  if (brand) {
+    children.push(new Paragraph({
+      alignment: AlignmentType.CENTER, spacing: { after: 80 },
+      children: [new TextRun({ text: kindLabel ? `${brand.sub}  |  ${kindLabel}` : brand.sub, size: 16, color: '3B82F6', bold: true })],
+    }));
+  }
   if (title) {
     children.push(new Paragraph({
       alignment: AlignmentType.CENTER,
@@ -342,7 +351,11 @@ export async function markdownToDocxBuffer(title, markdown, { reportData = null 
         document: { run: { font: '맑은 고딕', size: 22 } },
       },
     },
-    sections: [{ children }],
+    ...(brand ? { creator: `${brand.sub} | ${brand.name}` } : {}),
+    sections: [{
+      children,
+      ...(brand ? { footers: { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: brand.name && brand.name.toLowerCase() !== brand.sub.toLowerCase() ? `${brand.sub}  |  ${brand.name}` : brand.sub, size: 14, color: '6B7280' })] })] }) } } : {}),
+    }],
   });
 
   return Packer.toBuffer(doc);

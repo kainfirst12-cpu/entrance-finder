@@ -30,6 +30,25 @@ function findKoreanFont() {
   return null;
 }
 
+// ── 학원 브랜드(설정 → 브랜드) — 머리말 첫 줄·꼬리말·표지 로고. 화면(localStorage)에서 요청마다 실어 보낸다.
+//    브랜드를 안 보내면 예전처럼 패스파인더 이름이 찍힌다. 로고는 PNG/JPG data URL 만(pdfkit 이 그 둘만 그린다).
+const BRAND_DEFAULT = { name: 'PATHFINDER EDU', sub: '패스파인더 에듀', reportTitle: 'PATHFINDER REPORT' };
+export function normalizeBrand(brand) {
+  const str = (v, d) => { const t = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : ''; return t ? t.slice(0, 60) : d; };
+  const b = { name: str(brand?.name, BRAND_DEFAULT.name), sub: str(brand?.sub, BRAND_DEFAULT.sub), reportTitle: str(brand?.reportTitle, BRAND_DEFAULT.reportTitle), logo: null };
+  const m = typeof brand?.logo === 'string' ? brand.logo.match(/^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=]+)$/) : null;
+  if (m && m[2].length < 1_000_000) { try { b.logo = Buffer.from(m[2], 'base64'); } catch { b.logo = null; } }
+  return b;
+}
+// 머리말 첫 줄 "학원 이름  |  문서 종류", 꼬리말 "한글 이름  |  영문 이름"(둘이 같으면 하나만)
+const _brandLine = (b, kind) => `${b.sub}  |  ${kind}`;
+const _brandFoot = (b) => (b.name && b.name.toLowerCase() !== b.sub.toLowerCase() ? `${b.sub}  |  ${b.name}` : b.sub);
+// 표지(남색 머리띠) 오른쪽 위에 로고 — 머리띠 높이에 맞춰 세로 최대 h, 가로 최대 120. 그리기에 실패해도 문서는 계속 만든다.
+function _drawLogo(doc, b, pw, mr, h) {
+  if (!b?.logo) return;
+  try { doc.image(b.logo, pw - mr - 120, 12, { fit: [120, h], align: 'right', valign: 'top' }); } catch (e) { console.warn('[pdf] 로고 그리기 실패:', e.message); }
+}
+
 function scoreColor(score, max) {
   const pct = score / max;
   if (pct >= 0.7) return C.GREEN;
@@ -37,9 +56,10 @@ function scoreColor(score, max) {
   return C.RED;
 }
 
-function generateAnalysisPDF(analysisData, studentData) {
+function generateAnalysisPDF(analysisData, studentData, brandIn) {
   return new Promise((resolve, reject) => {
     try {
+      const brand = normalizeBrand(brandIn);
       const doc = new PDFDocument({
         size: 'A4',
         margins: { top: 20, bottom: 20, left: 20, right: 20 },
@@ -60,7 +80,8 @@ function generateAnalysisPDF(analysisData, studentData) {
       // ── 커버 헤더 ──
       doc.rect(0, 0, PW, 180).fill(C.NAVY);
       doc.rect(0, 0, 8, 180).fill(C.BLUE);
-      doc.fontSize(8).fillColor(C.ACCENT).text('입시-Finder  |  생기부 종합 분석 리포트', ML + 8, 18);
+      doc.fontSize(8).fillColor(C.ACCENT).text(_brandLine(brand, '생기부 종합 분석 리포트'), ML + 8, 18);
+      _drawLogo(doc, brand, PW, MR, 56);
       doc.fontSize(22).fillColor(C.WHITE).text(`${studentData.name || ''} 학생`, ML + 8, 40);
       doc.fontSize(14).fillColor('#93c5fd').text('입시 컨설팅 종합 리포트', ML + 8, 70);
       doc.moveTo(ML + 8, 92).lineTo(PW - MR, 92).strokeColor(C.ACCENT).lineWidth(1).stroke();
@@ -127,7 +148,7 @@ function generateAnalysisPDF(analysisData, studentData) {
         curY = _drawStructuredBody(doc, _latin(section.raw).replace(/<br\s*\/?>/gi, ' / '), null, ML, curY, BODY_W);
       });
 
-      _drawFooters(doc, ML, PW, MR);
+      _drawFooters(doc, ML, PW, MR, brand);
       doc.end();
     } catch (err) { reject(err); }
   });
@@ -329,14 +350,14 @@ const _rmDate = (v) => { try { return v ? new Date(v).toLocaleDateString('ko-KR'
 
 // 페이지 하단(마진 안쪽)에 텍스트를 쓰면 pdfkit이 자동으로 새 페이지를 만들어 빈 장이 생긴다.
 // 푸터를 쓰는 동안만 하단 마진을 0으로 내리고 lineBreak를 끈다.
-function _drawFooters(doc, ml, pw, mr) {
+function _drawFooters(doc, ml, pw, mr, brand = normalizeBrand()) {
   const totalPages = doc.bufferedPageRange().count;
   for (let i = 0; i < totalPages; i++) {
     doc.switchToPage(i);
     const ob = doc.page.margins.bottom;
     doc.page.margins.bottom = 0;
     doc.moveTo(ml, 822).lineTo(pw - mr, 822).strokeColor(C.BORDER).lineWidth(0.4).stroke();
-    doc.fontSize(7).fillColor(C.GRAY).text('입시-Finder  |  패스파인더 에듀', ml, 826, { lineBreak: false });
+    doc.fontSize(7).fillColor(C.GRAY).text(_brandFoot(brand), ml, 826, { lineBreak: false });
     doc.fontSize(7).fillColor(C.GRAY).text(`${i + 1} / ${totalPages}`, pw - mr - 30, 826, { lineBreak: false });
     doc.page.margins.bottom = ob;
   }
@@ -494,9 +515,10 @@ function _rmDrawMarkdown(doc, md, ml, y, bw) {
   return y;
 }
 
-function generateRoadmapPDF(rm) {
+function generateRoadmapPDF(rm, brandIn) {
   return new Promise((resolve, reject) => {
     try {
+      const brand = normalizeBrand(brandIn);
       const doc = new PDFDocument({ size: 'A4', margins: { top: 20, bottom: 20, left: 20, right: 20 }, bufferPages: true });
       const fontPath = findKoreanFont();
       if (fontPath) { doc.registerFont('Korean', fontPath); doc.font('Korean'); }
@@ -514,7 +536,8 @@ function generateRoadmapPDF(rm) {
       // ── 커버 헤더 ──
       doc.rect(0, 0, PW, 168).fill(C.NAVY);
       doc.rect(0, 0, 8, 168).fill(C.BLUE);
-      doc.fontSize(8).fillColor(C.ACCENT).text('입시-Finder  |  생기부 로드맵', ML + 8, 18);
+      doc.fontSize(8).fillColor(C.ACCENT).text(_brandLine(brand, '생기부 로드맵'), ML + 8, 18);
+      _drawLogo(doc, brand, PW, MR, 56);
       doc.fontSize(18).fillColor(C.WHITE).text(rm.title || '생기부 로드맵', ML + 8, 38, { width: BODY_W - 16 });
       const chips = [
         `학생: ${rm.student_name || '-'}`,
@@ -605,7 +628,7 @@ function generateRoadmapPDF(rm) {
         y = _drawStructuredBody(doc, _latin(rm.body), null, ML, y, BODY_W);
       }
 
-      _drawFooters(doc, ML, PW, MR);
+      _drawFooters(doc, ML, PW, MR, brand);
       doc.end();
     } catch (err) { reject(err); }
   });
@@ -820,9 +843,10 @@ function _drawStructuredBody(doc, md, data, ml, y, bw) {
 
 // 마크다운 보고서 → PDF (고교·중학 공시정보 '입시 해설 보고서' 등 본문이 마크다운 하나인 문서 공용)
 //   { title, subtitle, chips: ['학교: …', …], markdown }
-function generateMarkdownPDF({ title, subtitle, chips = [], markdown, data = null }) {
+function generateMarkdownPDF({ title, subtitle, chips = [], markdown, data = null, brand: brandIn = null }) {
   return new Promise((resolve, reject) => {
     try {
+      const brand = normalizeBrand(brandIn);
       const doc = new PDFDocument({ size: 'A4', margins: { top: 20, bottom: 20, left: 20, right: 20 }, bufferPages: true });
       const fontPath = findKoreanFont();
       if (fontPath) { doc.registerFont('Korean', fontPath); doc.font('Korean'); }
@@ -836,7 +860,8 @@ function generateMarkdownPDF({ title, subtitle, chips = [], markdown, data = nul
       // 커버 헤더(로드맵 PDF 와 같은 톤)
       doc.rect(0, 0, PW, 120).fill(C.NAVY);
       doc.rect(0, 0, 8, 120).fill(C.BLUE);
-      doc.fontSize(8).fillColor(C.ACCENT).text(subtitle || '입시-Finder  |  고교·중학 공시정보 해설', ML + 8, 18);
+      doc.fontSize(8).fillColor(C.ACCENT).text(subtitle || _brandLine(brand, '고교·중학 공시정보 해설'), ML + 8, 18);
+      _drawLogo(doc, brand, PW, MR, 48);
       doc.fontSize(16).fillColor(C.WHITE).text(title || '학교 입시 해설 보고서', ML + 8, 34, { width: BODY_W - 16 });
       let chipX = ML + 8;
       chips.filter(Boolean).forEach(chip => {
@@ -853,7 +878,7 @@ function generateMarkdownPDF({ title, subtitle, chips = [], markdown, data = nul
       // 나눔고딕에 로마숫자 글리프가 없어 '수학Ⅰ' 이 빈칸으로 찍힌다 → 라틴 문자로. AI 가 표 칸에 넣는 <br> 은 ' / ' 로.
       const md = _latin(markdown).replace(/<br\s*\/?>/gi, ' / ');
       y = _drawStructuredBody(doc, md, data, ML, y, BODY_W);
-      _drawFooters(doc, ML, PW, MR);
+      _drawFooters(doc, ML, PW, MR, brand);
       doc.end();
     } catch (err) { reject(err); }
   });

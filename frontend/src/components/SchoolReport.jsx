@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { menuAllowed, readMenus } from '../menus';
 import { API_BASE } from '../apiBase';
+import { readBrand } from '../brand';
 import { mdPreview } from '../mdPreview';
 import { parseReport, stripStructured } from '../reportMarkdown';
 import SendToPapa, { AUD_LABEL } from './SendToPapa';
@@ -18,7 +19,9 @@ async function api(path, opts = {}) {
     headers: { Authorization: `Bearer ${token()}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (res.status === 401 || res.status === 403) { const e = new Error('권한/인증'); e.auth = true; throw e; }
+  // 401(세션 만료)만 로그아웃으로 이어진다. 403 은 '이 학원 코드에 안 열린 메뉴·관리자 전용' 이라 서버 메시지만 보여 준다 —
+  // 403 까지 auth 로 보던 시절엔 잠긴 보관함에 저장이 막히는 순간 로그인 화면으로 튕겼다(원장 제보 2026-09-22).
+  if (res.status === 401 || res.status === 403) { let m = res.status === 401 ? '로그인이 필요합니다' : '이 학원 코드에는 열려 있지 않은 기능입니다'; try { m = (await res.json()).message || m; } catch { /* 본문 없음 */ } const e = new Error(m); e.auth = res.status === 401; throw e; }
   return res.json();
 }
 // SSE(keepalive) 응답 — 해설 생성은 1~2분 걸려 프록시 타임아웃을 피하려고 서버가 event-stream 으로 준다(수행평가와 같은 패턴)
@@ -268,7 +271,8 @@ async function download(report, format) {
   const res = await fetch(`${API_BASE}/api/school-reports/export`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: report.title, markdown: report.content, format, schoolNames: report.schoolNames, kind: report.kind, data: report.data || null }),
+    // brand: 설정 → 브랜드의 학원 이름·로고 — 서버 PDF·Word 의 머리말·꼬리말에 찍힌다(예전엔 패스파인더 이름이 고정이었다, 원장 제보 2026-09-22)
+    body: JSON.stringify({ title: report.title, markdown: report.content, format, schoolNames: report.schoolNames, kind: report.kind, data: report.data || null, brand: readBrand() }),
   });
   if (!res.ok) { let m = `HTTP ${res.status}`; try { m = (await res.json()).message || m; } catch { /* 본문 없음 */ } throw new Error(m); }
   const blob = await res.blob();
@@ -304,8 +308,9 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
       return saved;
     } catch (e) { fail(e); return null; } finally { setBusy(''); }
   };
-  // 나만의 패파에 배정(관리자 전용) — 저장 전이면 먼저 저장한다(버튼이 잠겨 있어 눌러도 반응이 없던 문제, 원장 제보 2026-09-20)
-  const beforeSend = async () => { if (dirty || !r.id) { const saved = await save(); return !!saved; } return true; };
+  // 나만의 패파에 배정 — 보관함이 열린 코드는 저장 전이면 먼저 저장한다(버튼이 잠겨 있어 눌러도 반응이 없던 문제, 원장 제보 2026-09-20).
+  // 보관함이 잠긴 코드는 저장을 시도하지 않고(서버가 403 으로 막는다 → 예전엔 그 403 에 로그인 화면으로 튕겼다) 지금 내용을 그대로 보낸다.
+  const beforeSend = async () => { if (canStore && (dirty || !r.id)) { const saved = await save(); return !!saved; } return true; };
   const remove = async () => {
     if (!window.confirm('이 보고서를 삭제할까요? 되돌릴 수 없습니다.')) return;
     setBusy('delete');

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
+import { brandHeader } from '../brand';
 import { analysisDataFromRecord, isRestorableRecord } from '../analysisRecord';
 import RoadmapView from './RoadmapView';
 import VerifyPanel from './VerifyPanel';
@@ -856,7 +857,8 @@ function RoadmapSection({ student, onError, onChanged }) {
     const label = fmt === 'docx' ? '워드 파일' : 'PDF';
     setMsg(`${label}을 만드는 중…`);
     try {
-      const res = await fetch(`${API_BASE}/api/roadmap/${rm.id}/${fmt}`, { headers: { Authorization: `Bearer ${token()}` } });
+      // x-brand: 설정 → 브랜드의 학원 이름(GET 이라 헤더로, 로고 없음) — 로드맵 PDF·Word 머리말에 찍힌다
+      const res = await fetch(`${API_BASE}/api/roadmap/${rm.id}/${fmt}`, { headers: { Authorization: `Bearer ${token()}`, 'x-brand': brandHeader() } });
       if (!res.ok) {
         let m = `${label} 생성 실패`;
         try { m = (await res.json()).message || m; } catch {}

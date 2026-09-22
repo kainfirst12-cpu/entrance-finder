@@ -10,7 +10,9 @@ async function api(path, opts = {}) {
     headers: { Authorization: `Bearer ${token()}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  if (res.status === 401 || res.status === 403) { const e = new Error('권한/인증'); e.auth = true; throw e; }
+  // 401(세션 만료)만 로그아웃으로 이어진다. 403 은 '이 학원 코드에 안 열린 메뉴·관리자 전용' 이라 서버 메시지만 보여 준다 —
+  // 403 까지 auth 로 보던 시절엔 잠긴 보관함에 저장이 막히는 순간 로그인 화면으로 튕겼다(원장 제보 2026-09-22).
+  if (res.status === 401 || res.status === 403) { let m = res.status === 401 ? '로그인이 필요합니다' : '이 학원 코드에는 열려 있지 않은 기능입니다'; try { m = (await res.json()).message || m; } catch { /* 본문 없음 */ } const e = new Error(m); e.auth = res.status === 401; throw e; }
   return res.json();
 }
 

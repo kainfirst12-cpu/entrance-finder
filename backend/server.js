@@ -30,7 +30,15 @@ import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissio
 import { runFullAnalysis } from './services/claudeService.js';
 import { placementJudgeRules, caseMatchGuide } from './services/reportUtils.js';
 import { reviewOnce, buildConsensus, applyFixes, VERIFY_KINDS } from './services/crossVerify.js';
-import { generateAnalysisPDF, generateRoadmapPDF, generateMarkdownPDF } from './services/pdfService.js';
+import { generateAnalysisPDF, generateRoadmapPDF, generateMarkdownPDF, normalizeBrand } from './services/pdfService.js';
+// 학원 브랜드(설정 → 브랜드, 브라우저에만 저장) — POST 는 body.brand(로고 포함), GET 은 x-brand 헤더(base64 JSON, 로고 없음).
+// 없으면 normalizeBrand 가 패스파인더 기본값을 준다.
+function brandFrom(req) {
+  if (req.body && typeof req.body.brand === 'object' && req.body.brand) return normalizeBrand(req.body.brand);
+  const h = req.headers['x-brand'];
+  if (typeof h === 'string' && h.length < 4000) { try { return normalizeBrand(JSON.parse(Buffer.from(h, 'base64').toString('utf8'))); } catch { /* 망가진 헤더는 기본값 */ } }
+  return normalizeBrand(null);
+}
 import {
   ensureSchoolReportTable, listSchoolReports, getSchoolReport, getSchoolReportOwner,
   createSchoolReport, updateSchoolReport, deleteSchoolReport, appendSchoolReportSent,
@@ -1431,6 +1439,39 @@ app.post('/api/papa/send', requireAuth, async (req, res) => {
     res.status(e.status || 500).json({ success: false, message: e.message });
   }
 });
+// 📁 나만의 패파 JSON — 열쇠 없이도 옮길 수 있는 길. inbound/report 의 items 와 같은 모양으로 파일을 내려 주고,
+// 나만의 패파(학생 상세 → 📄 상담 리포트 → '📁 입시파인더 JSON 올리기')가 같은 payload(kind 'doc') 로 붙인다.
+// 몸통은 /api/papa/send 와 같다(면접 전략은 저장본에서 마크다운을 만들고, 학원 코드는 공개 메뉴만·면접 제외).
+app.post('/api/papa/export', requireAuth, async (req, res) => {
+  try {
+    const { title, data, studentName, audience, memo, source, kind, interviewId, menu } = req.body || {};
+    let { markdown } = req.body || {};
+    if (req.user.role !== 'admin') {
+      if (interviewId) return res.status(403).json({ success: false, message: '면접 전략은 관리자 전용입니다' });
+      const menus = (await getUserMenus(req.user.userId).catch(() => null)) ?? req.user.menus ?? null;
+      if (menu && !menuAllowed(menus, menu)) return res.status(403).json({ success: false, message: '이 학원 코드에는 공개되지 않은 메뉴입니다', menuDenied: menu });
+    }
+    if (interviewId) {
+      const item = await getInterview(Number(interviewId));
+      if (!item) return res.status(404).json({ success: false, message: '면접 리포트를 찾을 수 없습니다' });
+      markdown = interviewMarkdown(item.data || {});
+    }
+    if (!markdown?.trim()) return res.status(400).json({ success: false, message: '내려받을 내용이 없습니다' });
+    const aud = ['student', 'parent', 'both'].includes(audience) ? audience : 'parent';
+    const file = {
+      format: 'papa-report/v1', exportedAt: new Date().toISOString(), from: '입시파인더',
+      items: [{
+        student_name: String(studentName || '').trim() || undefined,
+        title: String(title || '보고서').slice(0, 150), md: String(markdown),
+        data: data && Array.isArray(data.schools) ? data : undefined,
+        source: String(source || `입시파인더 ${kind || '보고서'}`).slice(0, 60), audience: aud,
+        memo: memo ? String(memo).slice(0, 500) : undefined,
+      }],
+    };
+    logEvent({ userId: req.user.userId || null, type: 'papa_export', detail: `${kind || '보고서'} → JSON`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true, file });
+  } catch (e) { res.status(e.status || 500).json({ success: false, message: e.message }); }
+});
 // 학교 해설 보고서용(전송 이력을 보고서에 남긴다) — 관리자 전용. send-config 는 '/:id' 보다 앞(위)에 있다.
 app.post('/api/school-reports/send', requireAuth, async (req, res) => {
   try {
@@ -1455,14 +1496,15 @@ app.post('/api/school-reports/export', requireAuth, async (req, res) => {
     const safeTitle = String(title || '학교 입시 해설').trim();
     const chips = [kind === 'compare' ? '비교 해설' : '학교 해설', schoolNames ? `학교: ${String(schoolNames).slice(0, 80)}` : ''];
     const reportData = data && Array.isArray(data.schools) ? data : null;
+    const brand = brandFrom(req);
     if (format === 'pdf') {
-      const pdf = await generateMarkdownPDF({ title: safeTitle, subtitle: '입시-Finder  |  고교·중학 공시정보 입시 해설', chips, markdown, data: reportData });
+      const pdf = await generateMarkdownPDF({ title: safeTitle, subtitle: `${brand.sub}  |  고교·중학 공시정보 입시 해설`, chips, markdown, data: reportData, brand });
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.pdf`);
       return res.end(pdf);
     }
     const { markdownToDocxBuffer } = await import('./services/docxService.js');
-    const buf = await markdownToDocxBuffer(safeTitle, markdown, { reportData });
+    const buf = await markdownToDocxBuffer(safeTitle, markdown, { reportData, brand, kindLabel: '고교·중학 공시정보 입시 해설' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeTitle)}.docx`);
     res.end(buf);
@@ -2631,7 +2673,7 @@ app.get('/api/roadmap/:id/docx', requireAdmin, async (req, res) => {
     const rm = await getRoadmap(Number(req.params.id));
     if (!rm) return res.status(404).json({ success: false, message: '로드맵을 찾을 수 없습니다' });
     const { generateRoadmapDocx } = await import('./services/roadmapDocx.js');
-    const buf = await generateRoadmapDocx(rm);
+    const buf = await generateRoadmapDocx(rm, brandFrom(req));
     const filename = encodeURIComponent(`${rm.student_name || '학생'}_생기부_로드맵.docx`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
@@ -2648,7 +2690,7 @@ app.get('/api/roadmap/:id/pdf', requireAdmin, async (req, res) => {
   try {
     const rm = await getRoadmap(Number(req.params.id));
     if (!rm) return res.status(404).json({ success: false, message: '로드맵을 찾을 수 없습니다' });
-    const pdf = await generateRoadmapPDF(rm);
+    const pdf = await generateRoadmapPDF(rm, brandFrom(req));
     const filename = encodeURIComponent(`${rm.student_name || '학생'}_생기부_로드맵.pdf`);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
@@ -3488,7 +3530,7 @@ app.post('/api/generate-pdf', async (req, res) => {
     if (!analysisData || !studentData) {
       return res.status(400).json({ success: false, error: '데이터 없음' });
     }
-    const pdfBuffer = await generateAnalysisPDF(analysisData, studentData);
+    const pdfBuffer = await generateAnalysisPDF(analysisData, studentData, brandFrom(req));
     const filename = encodeURIComponent(`${studentData.name || '학생'}_입시분석_리포트.pdf`);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
