@@ -268,6 +268,48 @@ export async function explainSchools({ kind, schools, focus, apiKey, aiGroup, se
   };
 }
 
+// 원장이 검토한 대표본 — 같은 학교(비교면 같은 학교 묶음)에 있으면 새로 만들기 전에 먼저 보여 준다.
+// 조회가 실패해도(메뉴 잠금·네트워크) 해설 생성은 그대로 진행되도록 null 을 돌려준다.
+export async function findReviewed(schools) {
+  try {
+    const ids = schools.map((s) => s.id).filter(Boolean).join(',');
+    if (!ids) return null;
+    const d = await api(`/api/schoolinfo/reviewed?ids=${encodeURIComponent(ids)}`);
+    return d?.success && d.item ? d.item : null;
+  } catch { return null; }
+}
+// 대표본을 편집기에 여는 모양 — 새 보고서처럼(id 없음) 열려, 저장하면 내 보관함에 내 것으로 들어간다
+export const reviewedAsReport = (it) => ({
+  id: null, kind: it.kind, title: it.title, content: it.content, focus: '', data: it.data || null,
+  schoolIds: it.schoolIds || [], schoolNames: it.schoolNames || '', snapshot: {},
+});
+
+// ── '검토된 해설이 있습니다' 안내 ──
+export function ReviewedOffer({ item, focus, onUse, onNew, onClose }) {
+  return (
+    <div style={{ ...S.overlay, zIndex: 1200 }} onClick={onClose}>
+      <div style={{ ...S.modal, maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={S.h3}>⭐ 검토된 해설이 이미 있습니다</h3>
+        <div style={{ ...S.box, marginTop: 12 }}>
+          <div style={S.boxTitle}>{item.title}</div>
+          <div style={S.sub}>
+            원장님이 검토한 대표본{item.dataYear ? ` · ${item.dataYear}학년도 공시 수치 기준` : ''}{item.reviewedAt ? ` · 검토 ${new Date(item.reviewedAt).toLocaleDateString('ko-KR')}` : ''}
+          </div>
+        </div>
+        <p style={S.hint}>
+          바로 열면 기다릴 필요가 없고 AI 사용량도 들지 않습니다. 열어서 고친 뒤 Word·PDF 로 내려받거나 보관함에 저장할 수 있습니다.
+          {focus?.trim() && <><br /><b style={{ color: '#fbbf24' }}>입력하신 학생 상황은 이 해설에 반영돼 있지 않습니다</b> — 그 학생에게 맞춘 해설이 필요하면 새로 만들어 주세요.</>}
+        </p>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14, flexWrap: 'wrap' }}>
+          <button style={S.btn} onClick={onClose}>취소</button>
+          <button style={S.btn} onClick={onNew}>그래도 새로 만들기</button>
+          <button style={{ ...S.btn, ...S.primary }} onClick={onUse}>검토된 해설 열기</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 async function download(report, format) {
   const res = await fetch(`${API_BASE}/api/school-reports/export`, {
     method: 'POST',

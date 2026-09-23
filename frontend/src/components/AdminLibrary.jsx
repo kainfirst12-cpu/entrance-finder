@@ -3,6 +3,7 @@ import { API_BASE } from '../apiBase';
 import { readBrand } from '../brand';
 import { mdPreview } from '../mdPreview';
 import { loadRegionIndex } from '../schoolCatalog';
+import AdminSchoolShelf from './AdminSchoolShelf';
 
 // 🗄 전체 자료함 (관리자 전용) — 학원 코드마다 따로 쌓이는 자료를 한자리에서 본다.
 //   · 무엇을: 학교 입시 해설 · 수행평가 아카이브 · 면접 전략 · 생기부 로드맵 · 학생 기록/분석
@@ -30,7 +31,7 @@ const readFolded = () => { try { const v = JSON.parse(localStorage.getItem(FOLD_
 const regionsOf = (it, idx) => {
   if (!idx) return [];
   const out = new Set();
-  for (const id of Array.isArray(it.school_ids) ? it.school_ids : []) { const r = idx.byId.get(String(id)); if (r) out.add(r); }
+  for (const id of Array.isArray(it.school_ids) ? it.school_ids : []) { const r = idx.byId.get(String(id))?.region; if (r) out.add(r); }
   if (!out.size) for (const n of String(it.sub || '').split(/\s*[,·]\s*/)) { const r = idx.byName.get(n.trim()); if (r) out.add(r); }
   return out.size ? [...out] : ['지역 미상'];
 };
@@ -50,6 +51,11 @@ export default function AdminLibrary() {
   const [autoArchive, setAutoArchive] = useState(null); // 학원 해설 자동 사본 켬/끔
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null); // 열어 본 자료
+  // 보기 — 목록(종류별) | 학교별(학교 해설을 학교 단위로 묶어 검토·대표본 지정). 마지막 보기를 기억한다.
+  const [view, setViewRaw] = useState(() => { try { return localStorage.getItem('ef_adminlib_view') === 'school' ? 'school' : 'list'; } catch { return 'list'; } });
+  const setView = (v) => { setViewRaw(v); try { localStorage.setItem('ef_adminlib_view', v); } catch { /* 저장 불가 */ } };
+  const [shelfKey, setShelfKey] = useState(0);
+  const [moreBusy, setMoreBusy] = useState(false);
   // 종류별 접기 — 처음엔 모두 접어 두고(목록이 길어 위아래 이동이 힘들다), 연 종류만 기억한다
   const [folded, setFolded] = useState(() => readFolded() || Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, true])));
   const saveFolded = (next) => { setFolded(next); try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* 저장 불가 — 화면에서만 */ } };
@@ -61,15 +67,28 @@ export default function AdminLibrary() {
   useEffect(() => { if (hasReport && !regionIdx) loadRegionIndex().then(setRegionIdx).catch(() => {}); }, [hasReport, regionIdx]);
   const foldAll = (on) => saveFolded(Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, on])));
 
+  const query = (offset = 0) => {
+    const p = new URLSearchParams();
+    if (kind) p.set('kind', kind);
+    if (owner) p.set('owner', owner);
+    if (q.trim()) p.set('q', q.trim());
+    if (others) p.set('others', '1');
+    if (offset) p.set('offset', String(offset));
+    return p.toString();
+  };
+  // 서버는 한 번에 200건까지 준다 — 나머지는 '더 불러오기'로 이어 붙인다
+  const loadMore = async () => {
+    setMoreBusy(true);
+    try {
+      const d = await api(`/api/admin/library?${query(items.length)}`);
+      if (!d.success) throw new Error(d.message || '더 불러오지 못했습니다');
+      setItems((xs) => [...xs, ...(d.items || []).filter((it) => !xs.some((x) => x.kind === it.kind && x.id === it.id))]);
+    } catch (e) { setMsg(e.message); } finally { setMoreBusy(false); }
+  };
   const load = async () => {
     setMsg('');
     try {
-      const p = new URLSearchParams();
-      if (kind) p.set('kind', kind);
-      if (owner) p.set('owner', owner);
-      if (q.trim()) p.set('q', q.trim());
-      if (others) p.set('others', '1');
-      const d = await api(`/api/admin/library?${p.toString()}`);
+      const d = await api(`/api/admin/library?${query()}`);
       if (!d.success) throw new Error(d.message || '목록을 불러오지 못했습니다');
       setItems(d.items || []); setTotal(d.total || 0); setCounts(d.counts || {}); setHiddenMine(d.hiddenMine || 0);
     } catch (e) { setMsg(e.message); setItems([]); }
@@ -122,10 +141,19 @@ export default function AdminLibrary() {
               <input type="checkbox" checked={autoArchive} onChange={(e) => toggleAuto(e.target.checked)} /> 학원 해설 자동 사본
             </label>
           )}
-          <button style={S.btn} onClick={load}>새로고침</button>
+          <button style={S.btn} onClick={() => { load(); setShelfKey((k) => k + 1); }}>새로고침</button>
         </div>
       </div>
 
+      <div style={{ ...S.seg, display: 'inline-flex', marginBottom: 10 }}>
+        {[['list', '📋 목록'], ['school', '🏫 학교별 정리']].map(([k, l]) => (
+          <button key={k} style={{ ...S.segBtn, padding: '7px 14px', ...(view === k ? S.segOn : {}) }} onClick={() => setView(k)}>{l}</button>
+        ))}
+      </div>
+
+      {view === 'school' && <AdminSchoolShelf refreshKey={shelfKey} onOpen={(k, id) => setOpen({ kind: k, id })} />}
+
+      {view === 'list' && <>
       {owners.length > 0 && (
         <div style={S.chips}>
           {owners.map((o) => (
@@ -195,6 +223,7 @@ export default function AdminLibrary() {
                         <span style={S.caret}>{shut ? '▸' : '▾'}</span>
                         <span style={{ ...S.tag, color: KIND_COLOR[k], borderColor: KIND_COLOR[k] }}>{KIND_LABEL[k] || k}</span>
                         <b style={{ marginLeft: 8 }}>{all && all !== list.length ? `${list.length} / ${all}건` : `${list.length}건`}</b>
+                        {(counts[k] || 0) > (all || list.length) && <span style={S.groupHint}>(불러온 것 기준 · 전체 {counts[k]}건)</span>}
                         {k === 'report' && region && regionCount[region] ? <span style={S.groupHint}>· {region}</span> : null}
                         {shut && <span style={S.groupHint}>눌러서 펼치기</span>}
                       </td>
@@ -239,15 +268,21 @@ export default function AdminLibrary() {
               })}
             </table>
           </div>
+          {items.length < total && (
+            <div style={{ textAlign: 'center', marginTop: 10 }}>
+              <button style={S.btn} disabled={moreBusy} onClick={loadMore}>{moreBusy ? '불러오는 중…' : `더 불러오기 (${(total - items.length).toLocaleString('ko-KR')}건 남음)`}</button>
+            </div>
+          )}
         </>
       )}
+      </>}
 
       {open && (
         <Viewer kind={open.kind} id={open.id}
           onClose={() => setOpen(null)}
           onCopied={(w) => setMsg(`내 ${w}(으)로 복사했습니다`)}
-          onChanged={(what) => { setMsg(what); load(); }}
-          onDeleted={() => { setOpen(null); setMsg('삭제했습니다'); load(); }} />
+          onChanged={(what) => { setMsg(what); load(); setShelfKey((k) => k + 1); }}
+          onDeleted={() => { setOpen(null); setMsg('삭제했습니다'); load(); setShelfKey((k) => k + 1); }} />
       )}
     </section>
   );

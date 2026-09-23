@@ -5,6 +5,7 @@
 //   그래서 학생 자료(유한)는 프롬프트에 직접 넣고, 입결·지식베이스는 도구로만 닿게 한다.
 import { searchEntries, univLabel } from './ipgyeolSearch.js';
 import { embedQuery, searchByType, searchByKeywords, kbReady } from './vectorStore.js';
+import { searchRepBriefs } from './schoolReportStore.js';
 import { addPlacement } from './boardStore.js';
 
 // OpenAI tools 스키마
@@ -48,7 +49,8 @@ export const CONSULT_TOOLS = [
       name: 'search_knowledge',
       description:
         '입시 지식베이스(대입정책·대학별전형 방법·합격자 사례)를 의미 검색한다. '
-        + '전형방법, 반영교과, 수능최저 기준, 서류평가 방식처럼 입결 숫자로는 알 수 없는 것을 물을 때 쓴다.',
+        + '전형방법, 반영교과, 수능최저 기준, 서류평가 방식처럼 입결 숫자로는 알 수 없는 것을 물을 때 쓴다. '
+        + '질문에 고교·중학교 이름(예: 부천고)을 넣으면 원장이 검토한 그 학교의 입시 해설(내신 경쟁·유불리·전략)도 함께 찾는다.',
       parameters: {
         type: 'object',
         properties: {
@@ -133,14 +135,16 @@ export function toolsForProvider(group) {
  * 신설 전형처럼 입결이 아예 없는 건은 여기에만 단서가 있다.
  */
 export async function lookupAdmissionGuide(query, types) {
-  if (!kbReady()) return [];
-  const kinds = types?.length ? types : ['대학별전형', '대입정책', '합격자사례'];
   const q = String(query || '').slice(0, 500);
+  // 🏫 학교 이름이 든 질문 — 원장이 검토한 학교 해설 대표본(DB, 벡터 아님)을 앞에 붙인다. 지식베이스가 비어 있어도 나온다.
+  const schoolHits = await searchRepBriefs(q.match(/[가-힣]{2,}/g) || []).catch(() => []);
+  if (!kbReady()) return schoolHits;
+  const kinds = types?.length ? types : ['대학별전형', '대입정책', '합격자사례'];
 
   // 1) 의미 검색
   const emb = await embedQuery(q);
   const found = await Promise.all(kinds.map((t) => searchByType(emb, t, 6)));
-  const blocks = [];
+  const blocks = [...schoolHits];
   const seen = new Set();
   const push = (b) => {
     const key = `${b.제목}|${b.내용.slice(0, 80)}`;

@@ -351,6 +351,7 @@ export function studentContextBlock(studentData = {}) {
     '',
     strategyPrecisionGuide(studentData.gradeSystem),
     '',
+    ...(studentData.schoolBrief ? [studentData.schoolBrief, ''] : []),
     '=== 실행 계획 기준 시점 (필수 준수) ===',
     `- 상담 시점 기준으로 실행 계획은 ${months[0]}부터 시작한다.`,
     `- 월별 계획 표의 행은 정확히 다음 순서로 쓰라: ${months.join(' → ')}`,

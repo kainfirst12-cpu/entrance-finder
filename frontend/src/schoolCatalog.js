@@ -28,7 +28,7 @@ const SIDO_SHORT = {
 // '경기 안산시' 처럼 짧게. 세종처럼 시군구가 없으면 시도만.
 export const regionLabel = (s) => [SIDO_SHORT[s.sido] || s.sido || '', s.sigungu || ''].filter(Boolean).join(' ');
 
-// 학교 id → 지역, 학교 이름 → 지역(이름이 전국에 하나뿐일 때만) — 한 번 읽으면 페이지 안에서 재사용
+// 학교 id → { region, name, level, dataYear }, 학교 이름 → 지역(이름이 전국에 하나뿐일 때만) — 한 번 읽으면 페이지 안에서 재사용
 let regionIndexP = null;
 export function loadRegionIndex() {
   if (!regionIndexP) {
@@ -37,7 +37,9 @@ export function loadRegionIndex() {
       for (const s of cat.schools || []) {
         const r = regionLabel(s);
         if (!r) continue;
-        byId.set(String(s.id), r);
+        // dataYear = 그 학교 성취도의 가장 최근 학년도(학교마다 갱신 시점이 달라 전국 최신값과 비교하면 안 된다)
+        const ys = (s.bands || []).map((b) => parseInt(b.year, 10)).filter(Boolean);
+        byId.set(String(s.id), { region: r, name: s.schoolName, level: s.schoolLevel, dataYear: ys.length ? Math.max(...ys) : null });
         byName.set(s.schoolName, byName.has(s.schoolName) && byName.get(s.schoolName) !== r ? null : r);
       }
       return { byId, byName };
@@ -45,3 +47,4 @@ export function loadRegionIndex() {
   }
   return regionIndexP;
 }
+

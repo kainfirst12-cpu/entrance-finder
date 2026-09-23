@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
-import { explainSchools, ReportEditor, SavedReports, ExplainBox } from './SchoolReport';
+import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
 
 // 전국 고교·중학 공시정보 — 학교알리미 교과별 학업성취(A~E 비율·평균) + 학년별 재적 + EDSS 학급·교원.
@@ -73,6 +73,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const [savedOpen, setSavedOpen] = useState(false);
   const [savedKey, setSavedKey] = useState(0);
   const [explainErr, setExplainErr] = useState('');
+  const [offer, setOffer] = useState(null); // 검토된 대표본 안내 { item, kind, list, focus }
   const hasKey = !!getActiveKey?.();
 
   useEffect(() => {
@@ -129,8 +130,15 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const toggleCompare = (id) => setCompare((c) => (c.includes(id) ? c.filter((x) => x !== id) : c.length >= MAX_COMPARE ? c : [...c, id]));
 
   // 학교 1곳(kind school) 또는 비교함(kind compare) → 전 과목 표를 채워 AI 해설을 받는다
-  const startExplain = async (kind, list, focus) => {
+  const startExplain = async (kind, list, focus, { skipReviewed = false } = {}) => {
     setExplainErr('');
+    // 같은 학교(묶음)에 원장이 검토한 대표본이 있으면 먼저 보여 준다 — 1~2분 기다림·AI 사용량을 아낀다
+    if (!skipReviewed) {
+      setExplaining('검토된 해설 확인 중…');
+      const item = await findReviewed(list);
+      setExplaining('');
+      if (item) { setOffer({ item, kind, list, focus }); return; }
+    }
     setExplaining(kind === 'compare' ? `비교 해설 생성 중… (${list.length}곳, 1~2분)` : '해설 생성 중… (1~2분)');
     try {
       const full = await Promise.all(list.map(async (s) => ({ ...s, bands: (await loadFullBands(s).catch(() => null)) || s.bands || [] })));
@@ -285,6 +293,9 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('compare', compareSchools, focus) }} />}
       {report && <ReportEditor report={report} onClose={() => setReport(null)} onAuthError={onAuthError}
         onSaved={() => setSavedKey((k) => k + 1)} onDeleted={() => setSavedKey((k) => k + 1)} />}
+      {offer && <ReviewedOffer item={offer.item} focus={offer.focus} onClose={() => setOffer(null)}
+        onUse={() => { setReport(reviewedAsReport(offer.item)); setOffer(null); }}
+        onNew={() => { const o = offer; setOffer(null); startExplain(o.kind, o.list, o.focus, { skipReviewed: true }); }} />}
       {savedOpen && <SavedReports refreshKey={savedKey} onAuthError={onAuthError} onClose={() => setSavedOpen(false)} onOpen={(r) => { setReport(r); setSavedOpen(false); }} />}
     </div>
   );

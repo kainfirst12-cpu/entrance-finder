@@ -42,6 +42,7 @@ function brandFrom(req) {
 import {
   ensureSchoolReportTable, listSchoolReports, getSchoolReport, getSchoolReportOwner,
   createSchoolReport, updateSchoolReport, deleteSchoolReport, appendSchoolReportSent,
+  listForCuration, setReviewStatus, findRep, repBriefForSchool,
 } from './services/schoolReportStore.js';
 import { buildReportData } from './services/schoolReportData.js';
 import { listLibrary, libraryOwners, getLibraryItem, updateLibraryItem, deleteLibraryItem, BODY_EDITABLE, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
@@ -354,7 +355,7 @@ const MENU_BY_PATH = [
   [/^\/api\/admissions\b/, 'admissions'],
   [/^\/api\/univ-info\b/, 'univinfo'],
   // 해설 생성·Word/PDF 내려받기·보내기 설정은 공시정보 메뉴, 보관함(저장·목록·열기·고치기·지우기)은 따로 잠근다.
-  [/^\/api\/(schoolinfo\/explain|school-reports\/(export|send-config|send))\b/, 'schoolinfo'],
+  [/^\/api\/(schoolinfo\/(explain|reviewed)|school-reports\/(export|send-config|send))\b/, 'schoolinfo'],
   [/^\/api\/school-reports\b/, 'schoolreports'],
   [/^\/api\/ipgyeol\b/, 'ipgyeol'],
   [/^\/api\/ratio\b/, 'ratio'],
@@ -1300,6 +1301,17 @@ const SCHOOL_FORMAT_COMPARE = `[출력 구조 — 제목과 서식을 그대로 
 (이어서 글머리표 2~4개)
 ## 유의사항
 (글머리표 2~3개)`;
+
+// 같은 학교(비교면 같은 묶음)에 원장이 검토한 대표본이 있으면 — 해설을 새로 만들기 전에 먼저 보여 준다.
+// 만든 학원·학생 메모는 내보내지 않는다. 공시정보 메뉴 잠금을 따른다(MENU_BY_PATH 의 schoolinfo/reviewed).
+app.get('/api/schoolinfo/reviewed', requireAuth, async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4);
+    const r = await findRep(ids);
+    if (!r) return res.json({ success: true, item: null });
+    res.json({ success: true, item: { kind: r.kind, title: r.title, content: r.content, schoolIds: r.school_ids, schoolNames: r.school_names, data: r.data || null, dataYear: r.data_year || null, reviewedAt: r.reviewed_at } });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
 
 app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
   const { kind, schools, focus } = req.body || {};
@@ -2298,11 +2310,14 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
       }).join('\n')
     : '(로드맵 없음)';
 
+  const schoolBrief = await repBriefForSchool(s.school).catch(() => '');
   const userMsg = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
 [대표 내신] ${s.gpa != null ? `${s.gpa}등급 (전 교과 환산 — 기준값)` : '미입력'}
 [학기별 내신] ${gradeLine || '미입력'}
 [메모] ${s.notes || '없음'}
-
+${schoolBrief ? `
+${schoolBrief}
+` : ''}
 [입결 배치 — ${placements.length}건]
 ${placementsText}
 
@@ -3272,6 +3287,8 @@ app.post('/api/analyze', requireAuth, pdfFields, async (req, res) => {
   }
 
   if (!studentData?.name) return res.status(400).json({ error: '학생 이름 필수' });
+  // 🏫 재학 학교 대표본(원장이 검토한 학교 해설)이 있으면 3엔진 공통 학생 맥락(studentContextBlock)에 붙는다
+  studentData.schoolBrief = await repBriefForSchool(studentData.school).catch(() => '');
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
@@ -4240,10 +4257,13 @@ async function pickStudentContext(req, studentId) {
     const pending = items.filter((i) => !i.done).map((i) => i.title).slice(0, 15).join(' / ');
     return `- ${m.title} — ${items.filter((i) => i.done).length}/${items.length} 완료${pending ? ` · 남은 것: ${pending}` : ''}`;
   }).join('\n') || '(로드맵 없음)';
+  const schoolBrief = await repBriefForSchool(s.school).catch(() => '');
   const section = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
 [대표 내신] ${s.gpa != null ? `${s.gpa}등급` : '미입력'}   [학기별] ${grades}
 [메모] ${s.notes || '없음'}
-
+${schoolBrief ? `
+${schoolBrief}
+` : ''}
 [저장된 입결 배치]
 ${pls}
 
@@ -4583,6 +4603,22 @@ app.delete('/api/admin/library/:kind/:id', requireAdmin, async (req, res) => {
 });
 
 // 관리자 스위치 — 지금은 '학원 해설 자동 사본' 하나. 끄면 그때부터 새 해설의 사본을 만들지 않는다(이미 쌓인 건 그대로).
+// 🏫 학교별 정리 — 학교 해설 전부(본문 없이)와 검토 상태. 학교로 묶기·지역은 화면이 학교 목록 파일로 한다.
+app.get('/api/admin/school-library', requireAdmin, async (req, res) => {
+  if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
+  try { res.json({ success: true, items: await listForCuration() }); }
+  catch (e) { console.error('[admin/school-library] 오류:', e.message); res.status(500).json({ success: false, message: e.message }); }
+});
+// 검토 상태 — new(미검토) | reviewed(검토 완료) | rep(대표본: 같은 학교에 하나, 학원 화면·AI 분석이 가져다 쓴다)
+app.patch('/api/admin/school-library/:id/review', requireAdmin, async (req, res) => {
+  try {
+    const row = await setReviewStatus(Number(req.params.id), String(req.body?.status || ''));
+    if (!row) return res.status(404).json({ success: false, message: '해설이 없습니다' });
+    logEvent({ userId: req.user.userId || null, type: 'library_review', detail: `학교 해설 #${row.id} → ${row.review_status}`, ip: req.ip })?.catch?.(() => {});
+    res.json({ success: true, item: row });
+  } catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+
 app.get('/api/admin/settings', requireAdmin, async (req, res) => {
   try { res.json({ success: true, autoArchive: (await getSetting('autoArchive', { on: true }))?.on !== false }); }
   catch (e) { res.status(500).json({ success: false, message: e.message }); }
