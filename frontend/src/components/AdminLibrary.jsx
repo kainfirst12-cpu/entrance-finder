@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { API_BASE } from '../apiBase';
 import { readBrand } from '../brand';
 import { mdPreview } from '../mdPreview';
+import { loadRegionIndex } from '../schoolCatalog';
 
 // 🗄 전체 자료함 (관리자 전용) — 학원 코드마다 따로 쌓이는 자료를 한자리에서 본다.
 //   · 무엇을: 학교 입시 해설 · 수행평가 아카이브 · 면접 전략 · 생기부 로드맵 · 학생 기록/분석
@@ -25,6 +26,14 @@ const KIND_COLOR = { report: '#2dd4bf', suhaeng: '#818cf8', interview: '#fbbf24'
 // 접힌 종류 — 브라우저에 기억(다음에 열어도 그대로). 저장이 막힌 환경이면 그냥 이번 화면에서만 쓴다.
 const FOLD_KEY = 'ef_adminlib_folded';
 const readFolded = () => { try { const v = JSON.parse(localStorage.getItem(FOLD_KEY)); return v && typeof v === 'object' ? v : null; } catch { return null; } };
+// 학교 해설의 지역 — 저장된 학교 id 로 찾고, id 가 없는 옛 자료·복사본은 학교 이름(전국에 하나뿐일 때)으로 찾는다
+const regionsOf = (it, idx) => {
+  if (!idx) return [];
+  const out = new Set();
+  for (const id of Array.isArray(it.school_ids) ? it.school_ids : []) { const r = idx.byId.get(String(id)); if (r) out.add(r); }
+  if (!out.size) for (const n of String(it.sub || '').split(/\s*[,·]\s*/)) { const r = idx.byName.get(n.trim()); if (r) out.add(r); }
+  return out.size ? [...out] : ['지역 미상'];
+};
 const when = (s) => (s ? new Date(s).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
 export default function AdminLibrary() {
@@ -45,6 +54,11 @@ export default function AdminLibrary() {
   const [folded, setFolded] = useState(() => readFolded() || Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, true])));
   const saveFolded = (next) => { setFolded(next); try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* 저장 불가 — 화면에서만 */ } };
   const toggleFold = (k) => saveFolded({ ...folded, [k]: !folded[k] });
+  // 학교 해설 지역 칩 — 학교 목록 파일은 해설이 목록에 있을 때만 한 번 읽는다
+  const [regionIdx, setRegionIdx] = useState(null);
+  const [region, setRegion] = useState('');
+  const hasReport = !!items?.some((it) => it.kind === 'report');
+  useEffect(() => { if (hasReport && !regionIdx) loadRegionIndex().then(setRegionIdx).catch(() => {}); }, [hasReport, regionIdx]);
   const foldAll = (on) => saveFolded(Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, on])));
 
   const load = async () => {
@@ -83,6 +97,15 @@ export default function AdminLibrary() {
     if (!g) { g = [it.kind, []]; groups.push(g); }
     g[1].push(it);
   }
+  // 학교 해설 묶음에만 지역별 건수·거르기를 붙인다(비교 해설은 학교마다 지역이 달라 여러 칸에 셈)
+  const regionCount = {};
+  const reportGroup = groups.find((g) => g[0] === 'report');
+  if (reportGroup) {
+    for (const it of reportGroup[1]) { it._regions = regionsOf(it, regionIdx); for (const r of it._regions) regionCount[r] = (regionCount[r] || 0) + 1; }
+    reportGroup.push(reportGroup[1].length);
+    if (region && regionCount[region]) reportGroup[1] = reportGroup[1].filter((it) => it._regions.includes(region));
+  }
+  const regionChips = Object.entries(regionCount).sort((a, b) => (a[0] === '지역 미상') - (b[0] === '지역 미상') || b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
   const order = Object.keys(KIND_LABEL);
   groups.sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99));
 
@@ -163,7 +186,7 @@ export default function AdminLibrary() {
                 <tr><th style={S.th}>종류</th><th style={S.th}>제목</th><th style={S.th}>만든 곳</th><th style={S.th}>학생</th><th style={S.th}>날짜</th><th style={S.th} /></tr>
               </thead>
               {/* 종류마다 머리줄 하나 — 누르면 그 종류만 접고 편다. 검색 중·종류 탭 선택 중엔 결과가 숨지 않게 펼친다. */}
-              {groups.map(([k, list]) => {
+              {groups.map(([k, list, all]) => {
                 const shut = !searching && !kind && !!folded[k]; // 종류 탭을 골랐으면 그 종류는 늘 펼친다
                 return (
                   <tbody key={k}>
@@ -171,15 +194,28 @@ export default function AdminLibrary() {
                       <td colSpan={6} style={S.groupTd}>
                         <span style={S.caret}>{shut ? '▸' : '▾'}</span>
                         <span style={{ ...S.tag, color: KIND_COLOR[k], borderColor: KIND_COLOR[k] }}>{KIND_LABEL[k] || k}</span>
-                        <b style={{ marginLeft: 8 }}>{list.length}건</b>
+                        <b style={{ marginLeft: 8 }}>{all && all !== list.length ? `${list.length} / ${all}건` : `${list.length}건`}</b>
+                        {k === 'report' && region && regionCount[region] ? <span style={S.groupHint}>· {region}</span> : null}
                         {shut && <span style={S.groupHint}>눌러서 펼치기</span>}
                       </td>
                     </tr>
+                    {!shut && k === 'report' && regionChips.length > 0 && (
+                      <tr>
+                        <td colSpan={6} style={S.regionTd}><div style={S.regionRow}>
+                          <span style={S.regionLabel}>지역</span>
+                          <button style={{ ...S.chip, ...(!region || !regionCount[region] ? S.chipOn : {}) }} onClick={() => setRegion('')}>전체 <b>{all}</b></button>
+                          {regionChips.map(([r, n]) => (
+                            <button key={r} style={{ ...S.chip, ...(region === r ? S.chipOn : {}) }} onClick={() => setRegion(region === r ? '' : r)}>{r} <b>{n}</b></button>
+                          ))}
+                        </div></td>
+                      </tr>
+                    )}
                     {!shut && list.map((it) => (
                     <tr key={`${it.kind}-${it.id}`}>
                       <td style={S.td}><span style={{ ...S.tag, color: KIND_COLOR[it.kind], borderColor: KIND_COLOR[it.kind] }}>{KIND_LABEL[it.kind] || it.kind}</span></td>
                       <td style={S.td}>
                         <div style={S.title}>{it.title}</div>
+                        {it._regions?.length > 0 && <div style={S.regionLine}>📍 {it._regions.join(' · ')}</div>}
                         {(it.sub || it.snippet) && <div style={S.snippet}>{it.sub ? `${it.sub} · ` : ''}{(it.snippet || '').replace(/[#*|>-]/g, ' ').replace(/\s+/g, ' ').slice(0, 90)}</div>}
                       </td>
                       <td style={S.td}>
@@ -378,6 +414,10 @@ const S = {
   groupRow: { cursor: 'pointer', userSelect: 'none' },
   groupTd: { padding: '9px 8px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', color: 'var(--text)', fontSize: 12.5 },
   caret: { display: 'inline-block', width: 16, color: 'var(--text3)' },
+  regionTd: { padding: '8px', borderBottom: '1px solid var(--border)' },
+  regionRow: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' },
+  regionLabel: { fontSize: 11, color: 'var(--text3)', fontWeight: 700, marginRight: 8 },
+  regionLine: { fontSize: 11, color: '#2dd4bf', margin: '2px 0 1px' },
   groupHint: { marginLeft: 10, fontSize: 11, color: 'var(--text3)' },
   hint: { fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 11px', margin: '4px 0 8px', lineHeight: 1.7 },
   linkBtn: { background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' },

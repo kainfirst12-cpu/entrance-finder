@@ -10,32 +10,34 @@
 // 학생 이름 등 개인정보가 그대로 보이므로 열람·복사는 events 에 남긴다(server.js 에서 logEvent).
 import { getPool, dbEnabled } from './db.js';
 
-// 종류별 한 줄 = { kind, id, owner_id, title, sub, student_name, at, snippet, origin }
+// 종류별 한 줄 = { kind, id, owner_id, title, sub, student_name, at, snippet, origin, school_ids }
+//   school_ids = 학교 해설의 catalog 학교 id 목록(화면이 학교 목록 파일에서 지역을 찾는 데 쓴다). 다른 종류는 빈 배열.
 //   origin = 자동 사본일 때 '진짜 만든 학원' 이름(소유자는 관리자라서 owner_name 만으로는 누가 만든지 모른다)
 const UNION = `
   SELECT 'report'::text AS kind, r.id, r.owner_id, r.title,
          COALESCE(r.school_names, '') AS sub, ''::text AS student_name,
-         r.updated_at AS at, LEFT(COALESCE(r.content, ''), 180) AS snippet, COALESCE(r.auto_from, '') AS origin
+         r.updated_at AS at, LEFT(COALESCE(r.content, ''), 180) AS snippet, COALESCE(r.auto_from, '') AS origin,
+         COALESCE(r.school_ids, '[]'::jsonb) AS school_ids
     FROM ef_school_reports r
   UNION ALL
   SELECT 'suhaeng', s.id, s.owner_id, s.title,
          CONCAT_WS(' · ', NULLIF(s.school, ''), NULLIF(s.subject, ''), NULLIF(s.topic, '')), COALESCE(s.student_name, ''),
-         s.created_at, LEFT(COALESCE(s.content, ''), 180), ''
+         s.created_at, LEFT(COALESCE(s.content, ''), 180), '', '[]'::jsonb
     FROM ef_suhaeng s
   UNION ALL
   SELECT 'interview', i.id, i.owner_id, i.title,
          '면접 전략', COALESCE(i.student_name, ''),
-         i.created_at, '', ''
+         i.created_at, '', '', '[]'::jsonb
     FROM ef_interviews i
   UNION ALL
   SELECT 'roadmap', m.id, st.owner_id, m.title,
          COALESCE(m.summary, ''), COALESCE(st.name, ''),
-         m.updated_at, LEFT(COALESCE(m.body, ''), 180), ''
+         m.updated_at, LEFT(COALESCE(m.body, ''), 180), '', '[]'::jsonb
     FROM ef_roadmaps m JOIN ef_students st ON st.id = m.student_id
   UNION ALL
   SELECT 'record', c.id, st.owner_id, COALESCE(NULLIF(c.title, ''), NULLIF(c.type, ''), '학생 기록'),
          COALESCE(c.type, ''), COALESCE(st.name, ''),
-         c.created_at, LEFT(COALESCE(c.content, ''), 180), ''
+         c.created_at, LEFT(COALESCE(c.content, ''), 180), '', '[]'::jsonb
     FROM ef_records c JOIN ef_students st ON st.id = c.student_id
 `;
 

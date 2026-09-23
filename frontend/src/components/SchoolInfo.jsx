@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
@@ -7,29 +8,11 @@ import { menuAllowed, readMenus } from '../menus';
 // 데이터는 /data/school-catalog.json.gz 하나(정적 파일). 서버·로그인 토큰이 필요 없어 백엔드를 건드리지 않는다.
 // catalog 스키마는 bucheon-schoolinfo 와 같다 — 갱신은 scripts/schoolinfo/ 의 build_catalog.py 가 같은 형태로 만든다.
 
-const CATALOG_URL = '/data/school-catalog.json.gz';
 const SUBJECTS = ['국어', '영어', '수학'];
 const BAND_KEYS = ['a', 'b', 'c', 'd', 'e'];
 const BAND_COLORS = { a: '#2dd4bf', b: '#60a5fa', c: '#a78bfa', d: '#fbbf24', e: '#f87171' };
 const PAGE = 60;
 const MAX_COMPARE = 4;
-
-async function fetchGzJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`데이터를 불러오지 못했습니다 (${res.status})`);
-  const buf = await res.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  // Vercel 은 .gz 를 그대로 내려준다(Content-Encoding 없음) → 브라우저 내장 DecompressionStream 으로 푼다.
-  // 이미 풀린 JSON 이 오는 환경(로컬 dev 서버 등)도 있어 gzip 매직바이트로 구분한다.
-  let text;
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    const ds = new DecompressionStream('gzip');
-    text = await new Response(new Blob([buf]).stream().pipeThrough(ds)).text();
-  } else {
-    text = new TextDecoder().decode(buf);
-  }
-  return JSON.parse(text);
-}
 
 async function loadCatalog() {
   const cat = await fetchGzJson(CATALOG_URL);
