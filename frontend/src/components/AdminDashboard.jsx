@@ -43,9 +43,22 @@ const LOG_TYPE_LABEL = { login: '로그인', analyze: '분석 실행', logout: '
 
 export default function AdminDashboard({ onAuthError }) {
   const [users, setUsers] = useState([]);
-  // 이용자 코드 표 접기 — 코드가 늘어 화면이 길어진다. 발급 입력칸은 접혀도 보인다. 마지막 상태를 기억한다.
-  const [usersOpen, setUsersOpen] = useState(() => { try { return localStorage.getItem('ef_admin_users_open') === '1'; } catch { return false; } });
-  const toggleUsers = () => setUsersOpen((v) => { try { localStorage.setItem('ef_admin_users_open', v ? '0' : '1'); } catch { /* 저장 불가 */ } return !v; });
+  // 칸 접기 — 대시보드가 길어 위아래 이동이 힘들다. 칸마다 펼침 여부를 기억한다(ef_admin_folds).
+  //   처음엔 자주 보는 자료함·현재 접속만 펼치고, 긴 표(코드·지식베이스·활동 로그)는 접어 둔다.
+  //   이용자 코드 관리는 접혀도 발급 입력칸은 보인다.
+  const [open, setOpen] = useState(() => {
+    const base = { library: true, live: true, users: false, kb: false, log: false };
+    try {
+      const saved = JSON.parse(localStorage.getItem('ef_admin_folds') || 'null');
+      if (saved && typeof saved === 'object') return { ...base, ...saved };
+      if (localStorage.getItem('ef_admin_users_open') === '1') base.users = true; // 예전 한 칸짜리 기억 이어받기
+    } catch { /* 저장 불가 — 기본값 */ }
+    return base;
+  });
+  const toggle = (k) => setOpen((o) => { const n = { ...o, [k]: !o[k] }; try { localStorage.setItem('ef_admin_folds', JSON.stringify(n)); } catch { /* 저장 불가 */ } return n; });
+  const foldAll = (v) => { const n = { library: v, live: v, users: v, kb: v, log: v }; setOpen(n); try { localStorage.setItem('ef_admin_folds', JSON.stringify(n)); } catch { /* 저장 불가 */ } };
+  const caret = (k) => <span style={{ width: 14, color: '#8b98a5', flexShrink: 0 }}>{open[k] ? '▾' : '▸'}</span>;
+  const foldTitle = { ...STYLES.cardTitle, cursor: 'pointer', userSelect: 'none' }; // S(=STYLES) 별칭은 아래에서 선언된다
   const [menuEdit, setMenuEdit] = useState(null); // { id, name, menus: null|[] } — 코드별 공개 메뉴 편집 중
   const [sessions, setSessions] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -228,7 +241,11 @@ export default function AdminDashboard({ onAuthError }) {
       <style>{`@keyframes efspin { to { transform: rotate(360deg); } }`}</style>
       <div style={S.headerRow}>
         <h2 style={S.h2}>🛡️ 관리자 대시보드</h2>
-        <button style={S.refreshBtn} onClick={loadAll}>↻ 새로고침</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={S.refreshBtn} onClick={() => foldAll(false)}>모두 접기</button>
+          <button style={S.refreshBtn} onClick={() => foldAll(true)}>모두 펼치기</button>
+          <button style={S.refreshBtn} onClick={loadAll}>↻ 새로고침</button>
+        </div>
       </div>
 
       {!dbOn && (
@@ -241,15 +258,16 @@ export default function AdminDashboard({ onAuthError }) {
       {loading && <div style={S.muted}>불러오는 중...</div>}
 
       {/* 🗄 전체 자료함 — 학원 코드마다 쌓인 자료를 보고, 내 보관함으로 복사하고, 파일로 저장 */}
-      {dbOn && <AdminLibrary />}
+      {dbOn && <AdminLibrary expanded={open.library} onToggle={() => toggle('library')} />}
 
       {/* 현재 접속자 */}
       <section style={S.card}>
-        <div style={S.cardTitle}>
+        <div style={foldTitle} onClick={() => toggle('live')}>
+          {caret('live')}
           <span style={S.liveDot} /> 현재 접속 중 ({sessions.length}명)
           <span style={S.sub}>최근 3분 내 활동 · 15초마다 자동 갱신</span>
         </div>
-        {sessions.length === 0 ? (
+        {!open.live ? null : sessions.length === 0 ? (
           <div style={S.muted}>현재 접속 중인 이용자가 없습니다.</div>
         ) : (
           <div style={S.tableWrap}>
@@ -281,12 +299,12 @@ export default function AdminDashboard({ onAuthError }) {
 
       {/* 이용자 코드 관리 */}
       <section style={S.card}>
-        <div style={{ ...S.cardTitle, cursor: 'pointer', userSelect: 'none' }} onClick={toggleUsers}>
-          <span style={{ width: 14, color: '#8b98a5' }}>{usersOpen ? '▾' : '▸'}</span>
+        <div style={foldTitle} onClick={() => toggle('users')}>
+          {caret('users')}
           이용자 코드 관리
           <span style={S.sub}>
             {users.length}개 코드 · 접속중 {users.filter((u) => u.online).length} · 비활성 {users.filter((u) => !u.active).length}
-            {usersOpen ? '' : ' — 눌러서 목록 펼치기'}
+            {open.users ? '' : ' — 눌러서 목록 펼치기'}
           </span>
         </div>
         <div style={S.createRow}>
@@ -348,7 +366,7 @@ export default function AdminDashboard({ onAuthError }) {
             </div>
           </div>
         )}
-        {!usersOpen ? null : users.length === 0 ? (
+        {!open.users ? null : users.length === 0 ? (
           <div style={S.muted}>{dbOn ? '발급된 이용자 코드가 없습니다.' : ''}</div>
         ) : (
           <div style={S.tableWrap}>
@@ -403,11 +421,15 @@ export default function AdminDashboard({ onAuthError }) {
 
       {/* 지식베이스 (pgvector) */}
       <section style={S.card}>
-        <div style={S.cardTitle}>
+        <div style={foldTitle} onClick={() => toggle('kb')}>
+          {caret('kb')}
           지식베이스 (Supabase 벡터 검색)
-          <span style={S.sub}>분석 시 참고하는 입시 자료 · 면접자료는 면접 전략 생성이 읽음 (Drive는 이름에 ‘면접’이 든 폴더)</span>
+          <span style={S.sub}>
+            {open.kb ? '분석 시 참고하는 입시 자료 · 면접자료는 면접 전략 생성이 읽음 (Drive는 이름에 ‘면접’이 든 폴더)'
+              : `${Object.values(kb.counts || {}).reduce((a, b) => a + (Number(b) || 0), 0).toLocaleString('ko-KR')}개 청크 — 눌러서 펼치기`}
+          </span>
         </div>
-        {!kb.vectorEnabled ? (
+        {!open.kb ? null : !kb.vectorEnabled ? (
           <div style={S.warn}>
             pgvector가 비활성 상태입니다. DATABASE_URL을 Supabase로 설정하고 `vector` 확장이 켜져 있는지 확인하세요.
           </div>
@@ -482,8 +504,12 @@ export default function AdminDashboard({ onAuthError }) {
 
       {/* 최근 활동 로그 */}
       <section style={S.card}>
-        <div style={S.cardTitle}>최근 활동 로그</div>
-        {logs.length === 0 ? (
+        <div style={foldTitle} onClick={() => toggle('log')}>
+          {caret('log')}
+          최근 활동 로그
+          {!open.log && <span style={S.sub}>{logs.length}건 — 눌러서 펼치기</span>}
+        </div>
+        {!open.log ? null : logs.length === 0 ? (
           <div style={S.muted}>기록이 없습니다.</div>
         ) : (
           <div style={S.tableWrap}>

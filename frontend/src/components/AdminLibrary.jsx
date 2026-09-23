@@ -37,7 +37,8 @@ const regionsOf = (it, idx) => {
 };
 const when = (s) => (s ? new Date(s).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
-export default function AdminLibrary() {
+// expanded/onToggle — 관리자 대시보드의 칸 접기(접혀도 제목 줄·자동 사본 스위치는 보인다)
+export default function AdminLibrary({ expanded = true, onToggle }) {
   const [kind, setKind] = useState('');
   const [owner, setOwner] = useState('');
   const [q, setQ] = useState('');
@@ -132,8 +133,12 @@ export default function AdminLibrary() {
     <section style={S.card}>
       <div style={S.head}>
         <div>
-          <h2 style={S.h2}>🗄 전체 자료함</h2>
-          <p style={S.sub}>학원 코드마다 만든 자료를 모두 봅니다. 열어서 <b>수정·삭제</b>하거나(그 학원 원본이 바뀝니다), <b>내 보관함으로 복사</b>하거나(원본은 그대로), Word·PDF·JSON으로 따로 저장하세요.</p>
+          <h2 style={{ ...S.h2, cursor: onToggle ? 'pointer' : 'default', userSelect: 'none' }} onClick={onToggle}>
+            {onToggle && <span style={{ display: 'inline-block', width: 16, color: 'var(--text3)', fontWeight: 400 }}>{expanded ? '▾' : '▸'}</span>}
+            🗄 전체 자료함
+            {!expanded && <span style={{ ...S.sub, marginLeft: 8, fontWeight: 400 }}>{Object.values(counts).reduce((a, b) => a + b, 0).toLocaleString('ko-KR')}건 — 눌러서 펼치기</span>}
+          </h2>
+          {expanded && <p style={S.sub}>학원 코드마다 만든 자료를 모두 봅니다. 열어서 <b>수정·삭제</b>하거나(그 학원 원본이 바뀝니다), <b>내 보관함으로 복사</b>하거나(원본은 그대로), Word·PDF·JSON으로 따로 저장하세요.</p>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
           {autoArchive !== null && (
@@ -145,6 +150,7 @@ export default function AdminLibrary() {
         </div>
       </div>
 
+      {expanded && <>
       <div style={{ ...S.seg, display: 'inline-flex', marginBottom: 10 }}>
         {[['list', '📋 목록'], ['school', '🏫 학교별 정리']].map(([k, l]) => (
           <button key={k} style={{ ...S.segBtn, padding: '7px 14px', ...(view === k ? S.segOn : {}) }} onClick={() => setView(k)}>{l}</button>
@@ -275,6 +281,7 @@ export default function AdminLibrary() {
           )}
         </>
       )}
+      </>}
       </>}
 
       {open && (
