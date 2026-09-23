@@ -22,6 +22,9 @@ async function api(path, opts = {}) {
 
 const KIND_LABEL = { report: '학교 해설', suhaeng: '수행평가', interview: '면접 전략', roadmap: '로드맵', record: '학생 기록' };
 const KIND_COLOR = { report: '#2dd4bf', suhaeng: '#818cf8', interview: '#fbbf24', roadmap: '#fb7185', record: '#9aa4b2' };
+// 접힌 종류 — 브라우저에 기억(다음에 열어도 그대로). 저장이 막힌 환경이면 그냥 이번 화면에서만 쓴다.
+const FOLD_KEY = 'ef_adminlib_folded';
+const readFolded = () => { try { const v = JSON.parse(localStorage.getItem(FOLD_KEY)); return v && typeof v === 'object' ? v : null; } catch { return null; } };
 const when = (s) => (s ? new Date(s).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
 export default function AdminLibrary() {
@@ -38,6 +41,11 @@ export default function AdminLibrary() {
   const [autoArchive, setAutoArchive] = useState(null); // 학원 해설 자동 사본 켬/끔
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null); // 열어 본 자료
+  // 종류별 접기 — 처음엔 모두 접어 두고(목록이 길어 위아래 이동이 힘들다), 연 종류만 기억한다
+  const [folded, setFolded] = useState(() => readFolded() || Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, true])));
+  const saveFolded = (next) => { setFolded(next); try { localStorage.setItem(FOLD_KEY, JSON.stringify(next)); } catch { /* 저장 불가 — 화면에서만 */ } };
+  const toggleFold = (k) => saveFolded({ ...folded, [k]: !folded[k] });
+  const foldAll = (on) => saveFolded(Object.fromEntries(Object.keys(KIND_LABEL).map((k) => [k, on])));
 
   const load = async () => {
     setMsg('');
@@ -66,6 +74,17 @@ export default function AdminLibrary() {
     } catch (e) { setMsg(e.message); setAutoArchive(!on); }
   };
   useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t); }, [kind, owner, q, others]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const searching = !!q.trim();
+  // 종류 순서는 KIND_LABEL 순서대로(목록에 없는 종류는 맨 뒤)
+  const groups = [];
+  for (const it of items || []) {
+    let g = groups.find((x) => x[0] === it.kind);
+    if (!g) { g = [it.kind, []]; groups.push(g); }
+    g[1].push(it);
+  }
+  const order = Object.keys(KIND_LABEL);
+  groups.sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99));
 
   return (
     <section style={S.card}>
@@ -128,37 +147,60 @@ export default function AdminLibrary() {
       )}
       {items === null ? <p style={S.sub}>불러오는 중…</p> : !items.length ? <p style={S.sub}>조건에 맞는 자료가 없습니다.</p> : (
         <>
-          <div style={S.sub}>{total.toLocaleString('ko-KR')}건 중 {items.length}건</div>
+          <div style={{ ...S.sub, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>{total.toLocaleString('ko-KR')}건 중 {items.length}건</span>
+            <div style={{ flex: 1 }} />
+            {searching ? <span>검색 중에는 모두 펼쳐 보여 줍니다</span> : kind ? null : (
+              <>
+                <button style={S.linkBtn} onClick={() => foldAll(false)}>모두 펼치기</button>
+                <button style={S.linkBtn} onClick={() => foldAll(true)}>모두 접기</button>
+              </>
+            )}
+          </div>
           <div style={S.tableWrap}>
             <table style={S.table}>
               <thead>
                 <tr><th style={S.th}>종류</th><th style={S.th}>제목</th><th style={S.th}>만든 곳</th><th style={S.th}>학생</th><th style={S.th}>날짜</th><th style={S.th} /></tr>
               </thead>
-              <tbody>
-                {items.map((it) => (
-                  <tr key={`${it.kind}-${it.id}`}>
-                    <td style={S.td}><span style={{ ...S.tag, color: KIND_COLOR[it.kind], borderColor: KIND_COLOR[it.kind] }}>{KIND_LABEL[it.kind] || it.kind}</span></td>
-                    <td style={S.td}>
-                      <div style={S.title}>{it.title}</div>
-                      {(it.sub || it.snippet) && <div style={S.snippet}>{it.sub ? `${it.sub} · ` : ''}{(it.snippet || '').replace(/[#*|>-]/g, ' ').replace(/\s+/g, ' ').slice(0, 90)}</div>}
-                    </td>
-                    <td style={S.td}>
-                      {/* 자동 사본은 소유자가 나(관리자)라서, 실제로 만든 학원(origin)을 앞에 세운다 */}
-                      {it.origin ? (
-                        <>
-                          <div>{it.origin}<span style={S.auto}>자동 사본</span></div>
-                          <div style={S.snippet}>보관: {it.owner_name || '—'}</div>
-                        </>
-                      ) : (
-                        <>{it.owner_name || '—'}{it.owner_role === 'admin' ? <span style={S.mine}>내 자료</span> : ''}</>
-                      )}
-                    </td>
-                    <td style={S.td}>{it.student_name || '—'}</td>
-                    <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{when(it.at)}</td>
-                    <td style={S.td}><button style={S.btn} onClick={() => setOpen({ kind: it.kind, id: it.id })}>열기</button></td>
-                  </tr>
-                ))}
-              </tbody>
+              {/* 종류마다 머리줄 하나 — 누르면 그 종류만 접고 편다. 검색 중·종류 탭 선택 중엔 결과가 숨지 않게 펼친다. */}
+              {groups.map(([k, list]) => {
+                const shut = !searching && !kind && !!folded[k]; // 종류 탭을 골랐으면 그 종류는 늘 펼친다
+                return (
+                  <tbody key={k}>
+                    <tr style={S.groupRow} onClick={() => !searching && !kind && toggleFold(k)}>
+                      <td colSpan={6} style={S.groupTd}>
+                        <span style={S.caret}>{shut ? '▸' : '▾'}</span>
+                        <span style={{ ...S.tag, color: KIND_COLOR[k], borderColor: KIND_COLOR[k] }}>{KIND_LABEL[k] || k}</span>
+                        <b style={{ marginLeft: 8 }}>{list.length}건</b>
+                        {shut && <span style={S.groupHint}>눌러서 펼치기</span>}
+                      </td>
+                    </tr>
+                    {!shut && list.map((it) => (
+                    <tr key={`${it.kind}-${it.id}`}>
+                      <td style={S.td}><span style={{ ...S.tag, color: KIND_COLOR[it.kind], borderColor: KIND_COLOR[it.kind] }}>{KIND_LABEL[it.kind] || it.kind}</span></td>
+                      <td style={S.td}>
+                        <div style={S.title}>{it.title}</div>
+                        {(it.sub || it.snippet) && <div style={S.snippet}>{it.sub ? `${it.sub} · ` : ''}{(it.snippet || '').replace(/[#*|>-]/g, ' ').replace(/\s+/g, ' ').slice(0, 90)}</div>}
+                      </td>
+                      <td style={S.td}>
+                        {/* 자동 사본은 소유자가 나(관리자)라서, 실제로 만든 학원(origin)을 앞에 세운다 */}
+                        {it.origin ? (
+                          <>
+                            <div>{it.origin}<span style={S.auto}>자동 사본</span></div>
+                            <div style={S.snippet}>보관: {it.owner_name || '—'}</div>
+                          </>
+                        ) : (
+                          <>{it.owner_name || '—'}{it.owner_role === 'admin' ? <span style={S.mine}>내 자료</span> : ''}</>
+                        )}
+                      </td>
+                      <td style={S.td}>{it.student_name || '—'}</td>
+                      <td style={{ ...S.td, whiteSpace: 'nowrap' }}>{when(it.at)}</td>
+                      <td style={S.td}><button style={S.btn} onClick={() => setOpen({ kind: it.kind, id: it.id })}>열기</button></td>
+                    </tr>
+                    ))}
+                  </tbody>
+                );
+              })}
             </table>
           </div>
         </>
@@ -333,6 +375,10 @@ const S = {
   msg: { fontSize: 12, color: 'var(--accent)', margin: '0 0 8px' },
   err: { fontSize: 12, color: '#f87171', margin: '6px 0' },
   segEmpty: { opacity: 0.45 },
+  groupRow: { cursor: 'pointer', userSelect: 'none' },
+  groupTd: { padding: '9px 8px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', color: 'var(--text)', fontSize: 12.5 },
+  caret: { display: 'inline-block', width: 16, color: 'var(--text3)' },
+  groupHint: { marginLeft: 10, fontSize: 11, color: 'var(--text3)' },
   hint: { fontSize: 12, color: 'var(--text3)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 11px', margin: '4px 0 8px', lineHeight: 1.7 },
   linkBtn: { background: 'none', border: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0, textDecoration: 'underline' },
   mine: { fontSize: 10, marginLeft: 6, padding: '1px 6px', borderRadius: 999, background: 'var(--accent-bg)', color: 'var(--accent)', fontWeight: 700, whiteSpace: 'nowrap' },
