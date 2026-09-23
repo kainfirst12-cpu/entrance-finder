@@ -355,7 +355,7 @@ const MENU_BY_PATH = [
   [/^\/api\/admissions\b/, 'admissions'],
   [/^\/api\/univ-info\b/, 'univinfo'],
   // 해설 생성·Word/PDF 내려받기·보내기 설정은 공시정보 메뉴, 보관함(저장·목록·열기·고치기·지우기)은 따로 잠근다.
-  [/^\/api\/(schoolinfo\/(explain|reviewed)|school-reports\/(export|send-config|send))\b/, 'schoolinfo'],
+  [/^\/api\/(schoolinfo\/explain|school-reports\/(export|send-config|send))\b/, 'schoolinfo'],
   [/^\/api\/school-reports\b/, 'schoolreports'],
   [/^\/api\/ipgyeol\b/, 'ipgyeol'],
   [/^\/api\/ratio\b/, 'ratio'],
@@ -380,6 +380,8 @@ app.use('/api', (req, res, next) => {
   })();
 });
 
+// 🔒 학교 해설 대표본(다른 학원 해설을 모은 것)은 관리자 요청에서만 쓴다 — 학원 코드 이용자 화면·AI 결과물에 섞이면 안 된다
+const isAdminReq = (req) => req?.user?.role === 'admin';
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
     if (req.user?.role !== 'admin') return res.status(403).json({ success: false, message: '관리자 전용 기능입니다' });
@@ -1303,8 +1305,8 @@ const SCHOOL_FORMAT_COMPARE = `[출력 구조 — 제목과 서식을 그대로 
 (글머리표 2~3개)`;
 
 // 같은 학교(비교면 같은 묶음)에 원장이 검토한 대표본이 있으면 — 해설을 새로 만들기 전에 먼저 보여 준다.
-// 만든 학원·학생 메모는 내보내지 않는다. 공시정보 메뉴 잠금을 따른다(MENU_BY_PATH 의 schoolinfo/reviewed).
-app.get('/api/schoolinfo/reviewed', requireAuth, async (req, res) => {
+// 🔒 관리자 전용(원장 지시 2026-09-23): 대표본은 다른 학원들이 만든 해설을 모은 것이라 학원 코드 이용자에게는 절대 보이지 않는다.
+app.get('/api/schoolinfo/reviewed', requireAdmin, async (req, res) => {
   try {
     const ids = String(req.query.ids || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4);
     const r = await findRep(ids);
@@ -2310,7 +2312,7 @@ app.post('/api/board/students/:id/brief', requireAuth, async (req, res) => {
       }).join('\n')
     : '(로드맵 없음)';
 
-  const schoolBrief = await repBriefForSchool(s.school).catch(() => '');
+  const schoolBrief = isAdminReq(req) ? await repBriefForSchool(s.school).catch(() => '') : ''; // 🔒 관리자만
   const userMsg = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
 [대표 내신] ${s.gpa != null ? `${s.gpa}등급 (전 교과 환산 — 기준값)` : '미입력'}
 [학기별 내신] ${gradeLine || '미입력'}
@@ -3288,7 +3290,8 @@ app.post('/api/analyze', requireAuth, pdfFields, async (req, res) => {
 
   if (!studentData?.name) return res.status(400).json({ error: '학생 이름 필수' });
   // 🏫 재학 학교 대표본(원장이 검토한 학교 해설)이 있으면 3엔진 공통 학생 맥락(studentContextBlock)에 붙는다
-  studentData.schoolBrief = await repBriefForSchool(studentData.school).catch(() => '');
+  //   🔒 관리자 분석에만 — 학원 코드 이용자의 결과물에 다른 학원 해설 내용이 섞여 나가면 안 된다
+  studentData.schoolBrief = isAdminReq(req) ? await repBriefForSchool(studentData.school).catch(() => '') : '';
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
   const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
@@ -4078,7 +4081,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
     // 컨설턴트는 아무것도 못 얻는다. 전형방법·수능최저는 입결이 아니라 여기에 있다.
     let knowledge = [];
     try {
-      knowledge = await lookupAdmissionGuide(query);
+      knowledge = await lookupAdmissionGuide(query, undefined, { schoolBriefs: isAdminReq(req) });
     } catch (e) {
       console.warn('[ipgyeol/ai-search] 지식베이스 조회 건너뜀:', e.message);
     }
@@ -4257,7 +4260,7 @@ async function pickStudentContext(req, studentId) {
     const pending = items.filter((i) => !i.done).map((i) => i.title).slice(0, 15).join(' / ');
     return `- ${m.title} — ${items.filter((i) => i.done).length}/${items.length} 완료${pending ? ` · 남은 것: ${pending}` : ''}`;
   }).join('\n') || '(로드맵 없음)';
-  const schoolBrief = await repBriefForSchool(s.school).catch(() => '');
+  const schoolBrief = isAdminReq(req) ? await repBriefForSchool(s.school).catch(() => '') : ''; // 🔒 관리자만
   const section = `[학생] ${s.name} / ${s.school || '학교 미입력'} / ${s.grade || '학년 미입력'} / 희망 ${s.major || '미입력'} / 목표 ${s.target_univ || '미입력'}
 [대표 내신] ${s.gpa != null ? `${s.gpa}등급` : '미입력'}   [학기별] ${grades}
 [메모] ${s.notes || '없음'}
@@ -4339,7 +4342,7 @@ ${studentSection}
   try {
     const { reply, toolLog, truncated } = await runAgentLoop({
       group: aiModel, modelId, apiKey, systemPrompt, history, message,
-      ctx: { studentId: sid, baseYear, defaultGrade, onSaved: (p) => savedPlacements.push(p) },
+      ctx: { studentId: sid, baseYear, defaultGrade, onSaved: (p) => savedPlacements.push(p), schoolBriefs: isAdminReq(req) },
     });
     sendDone({
       success: true,

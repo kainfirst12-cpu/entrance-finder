@@ -270,7 +270,9 @@ export async function explainSchools({ kind, schools, focus, apiKey, aiGroup, se
 
 // 원장이 검토한 대표본 — 같은 학교(비교면 같은 학교 묶음)에 있으면 새로 만들기 전에 먼저 보여 준다.
 // 조회가 실패해도(메뉴 잠금·네트워크) 해설 생성은 그대로 진행되도록 null 을 돌려준다.
+// 🔒 관리자 전용 — 학원 코드 이용자는 묻지도 않는다(서버도 requireAdmin 으로 막는다).
 export async function findReviewed(schools) {
+  if (localStorage.getItem('ef_role') !== 'admin') return null;
   try {
     const ids = schools.map((s) => s.id).filter(Boolean).join(',');
     if (!ids) return null;

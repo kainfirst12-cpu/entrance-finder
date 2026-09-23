@@ -134,10 +134,11 @@ export function toolsForProvider(group) {
  * 전형 자료(지식베이스) 의미 검색 — 도구와 입결 콘솔 요약이 함께 쓴다.
  * 신설 전형처럼 입결이 아예 없는 건은 여기에만 단서가 있다.
  */
-export async function lookupAdmissionGuide(query, types) {
+export async function lookupAdmissionGuide(query, types, { schoolBriefs = false } = {}) {
   const q = String(query || '').slice(0, 500);
   // 🏫 학교 이름이 든 질문 — 원장이 검토한 학교 해설 대표본(DB, 벡터 아님)을 앞에 붙인다. 지식베이스가 비어 있어도 나온다.
-  const schoolHits = await searchRepBriefs(q.match(/[가-힣]{2,}/g) || []).catch(() => []);
+  //   🔒 schoolBriefs 는 관리자 요청일 때만 true — 기본은 끔(다른 학원 해설 내용이 학원 코드 이용자에게 나가면 안 된다)
+  const schoolHits = schoolBriefs ? await searchRepBriefs(q.match(/[가-힣]{2,}/g) || []).catch(() => []) : [];
   if (!kbReady()) return schoolHits;
   const kinds = types?.length ? types : ['대학별전형', '대입정책', '합격자사례'];
 
@@ -220,8 +221,8 @@ export async function runConsultTool(name, args = {}, ctx = {}) {
   }
 
   if (name === 'search_knowledge') {
-    if (!kbReady()) return { 오류: '지식베이스가 비어 있다. 이 도구로는 답할 수 없으니 입결 자료나 학생 기록으로 답하라.' };
-    const blocks = await lookupAdmissionGuide(args.query, args.types);
+    if (!kbReady() && !ctx.schoolBriefs) return { 오류: '지식베이스가 비어 있다. 이 도구로는 답할 수 없으니 입결 자료나 학생 기록으로 답하라.' };
+    const blocks = await lookupAdmissionGuide(args.query, args.types, { schoolBriefs: !!ctx.schoolBriefs });
     return blocks.length ? { 자료: blocks } : { 자료: [], 비고: '관련 자료를 찾지 못했다.' };
   }
 
