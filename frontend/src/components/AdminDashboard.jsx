@@ -43,6 +43,9 @@ const LOG_TYPE_LABEL = { login: '로그인', analyze: '분석 실행', logout: '
 
 export default function AdminDashboard({ onAuthError }) {
   const [users, setUsers] = useState([]);
+  // 이용자 코드 표 접기 — 코드가 늘어 화면이 길어진다. 발급 입력칸은 접혀도 보인다. 마지막 상태를 기억한다.
+  const [usersOpen, setUsersOpen] = useState(() => { try { return localStorage.getItem('ef_admin_users_open') === '1'; } catch { return false; } });
+  const toggleUsers = () => setUsersOpen((v) => { try { localStorage.setItem('ef_admin_users_open', v ? '0' : '1'); } catch { /* 저장 불가 */ } return !v; });
   const [menuEdit, setMenuEdit] = useState(null); // { id, name, menus: null|[] } — 코드별 공개 메뉴 편집 중
   const [sessions, setSessions] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -278,7 +281,14 @@ export default function AdminDashboard({ onAuthError }) {
 
       {/* 이용자 코드 관리 */}
       <section style={S.card}>
-        <div style={S.cardTitle}>이용자 코드 관리</div>
+        <div style={{ ...S.cardTitle, cursor: 'pointer', userSelect: 'none' }} onClick={toggleUsers}>
+          <span style={{ width: 14, color: '#8b98a5' }}>{usersOpen ? '▾' : '▸'}</span>
+          이용자 코드 관리
+          <span style={S.sub}>
+            {users.length}개 코드 · 접속중 {users.filter((u) => u.online).length} · 비활성 {users.filter((u) => !u.active).length}
+            {usersOpen ? '' : ' — 눌러서 목록 펼치기'}
+          </span>
+        </div>
         <div style={S.createRow}>
           <input
             style={S.input}
@@ -338,7 +348,7 @@ export default function AdminDashboard({ onAuthError }) {
             </div>
           </div>
         )}
-        {users.length === 0 ? (
+        {!usersOpen ? null : users.length === 0 ? (
           <div style={S.muted}>{dbOn ? '발급된 이용자 코드가 없습니다.' : ''}</div>
         ) : (
           <div style={S.tableWrap}>
