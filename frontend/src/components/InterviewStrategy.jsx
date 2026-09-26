@@ -362,7 +362,7 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
               )}
               {result.savedId && !result.studentId && <AssignPicker onAssign={(sid) => assign(result.savedId, sid)} />}
               {result.savedId && (
-                <SendToPapa kind="면접 전략" menu="interview" adminOnly title={reportTitle(result.data)} markdown="(서버가 저장본에서 만듭니다)" studentName={result.studentName || ''}
+                <SendToPapa kind="면접 전략" menu="interview" title={reportTitle(result.data)} markdown="(서버가 저장본에서 만듭니다)" studentName={result.studentName || ''}
                   extra={{ interviewId: result.savedId }} onAuthError={onAuthError} />
               )}
             </div>

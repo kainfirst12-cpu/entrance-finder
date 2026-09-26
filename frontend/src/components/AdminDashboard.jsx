@@ -402,7 +402,7 @@ export default function AdminDashboard({ onAuthError }) {
                     <td style={S.td}>
                       <button style={S.smallBtn} onClick={() => setMenuEdit({ id: u.id, name: u.name, menus: Array.isArray(u.menus) ? [...u.menus] : null })}
                         title="이 코드로 로그인하면 보이는 메뉴">
-                        {Array.isArray(u.menus) ? `${u.menus.length}/${MENU_ITEMS.length}개` : '전체'}{Array.isArray(u.menus) && u.menus.includes('schoolreports') ? ' · 📚보관' : ''} ✎
+                        {Array.isArray(u.menus) ? `${u.menus.length}/${MENU_ITEMS.length}개` : '전체'}{Array.isArray(u.menus) && u.menus.includes('schoolreports') ? ' · 📚보관' : ''}{Array.isArray(u.menus) && u.menus.includes('interview') ? ' · 🎤면접' : ''} ✎
                       </button>
                     </td>
                     <td style={S.td}>

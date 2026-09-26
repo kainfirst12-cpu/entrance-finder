@@ -327,7 +327,7 @@ export default function App() {
   // ⚠ 조기 return 위에서 불러야 한다 — 훅은 조건부로 부를 수 없다.
   useAppAgent({
     view, setView, selectedModel, setModel: handleModelChange,
-    modelConfig, role, hasResult: !!analysisData,
+    modelConfig, role, menus, hasResult: !!analysisData,
   });
 
   if (!isLoggedIn) {
@@ -494,7 +494,7 @@ export default function App() {
             onAuthError={handleLogout}
           />
         )}
-        {menuAllowed(menus, role, view) && view === 'interview' && role === 'admin' && (
+        {menuAllowed(menus, role, view) && view === 'interview' && (
           <InterviewStrategy
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}

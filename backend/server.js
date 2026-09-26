@@ -323,7 +323,8 @@ function requireAuth(req, res, next) {
 const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list', 'schoolreports'];
 // optIn 메뉴는 '전체 공개(null)'여도 닫혀 있다 — 관리자가 코드마다 직접 넣어야 열린다(frontend/src/menus.js 와 같은 표).
 // 'schoolreports' = 입시 해설 보고서 보관(ef_school_reports 저장·목록·열기) — DB 용량을 쓰므로 기본 잠금(원장 지시 2026-09-21).
-const OPT_IN_MENUS = new Set(['schoolreports']);
+// 'interview' = 면접 전략 — 원래 관리자 전용. 관리자가 고른 학원 코드(원장)에게만 연다(2026-09-26). 보관함은 코드별 owner_id 로 분리.
+const OPT_IN_MENUS = new Set(['schoolreports', 'interview']);
 function menuAllowed(menus, key) {
   if (OPT_IN_MENUS.has(key)) return Array.isArray(menus) && menus.includes(key);
   return !Array.isArray(menus) || menus.includes(key);
@@ -1476,15 +1477,16 @@ app.post('/api/papa/send', requireAuth, async (req, res) => {
     let { markdown } = req.body || {};
     // 학원 코드: 그 보고서의 메뉴가 공개돼 있어야 보낼 수 있다(관리자는 전부)
     if (req.user.role !== 'admin') {
-      if (interviewId) return res.status(403).json({ success: false, message: '면접 전략은 관리자 전용입니다' });
       const menus = (await getUserMenus(req.user.userId).catch(() => null)) ?? req.user.menus ?? null;
-      if (menu && !menuAllowed(menus, menu)) return res.status(403).json({ success: false, message: '이 학원 코드에는 공개되지 않은 메뉴입니다', menuDenied: menu });
+      const need = interviewId ? 'interview' : menu;
+      if (need && !menuAllowed(menus, need)) return res.status(403).json({ success: false, message: '이 학원 코드에는 공개되지 않은 메뉴입니다', menuDenied: need });
     }
     const k = await papaKeyFor(req.user);
     // 면접 전략은 저장본(data JSON)에서 학생용 마크다운을 서버가 만든다 — 화면에는 HTML 만 있다
     if (interviewId) {
       const item = await getInterview(Number(interviewId));
       if (!item) return res.status(404).json({ success: false, message: '면접 리포트를 찾을 수 없습니다' });
+      if (req.user.role !== 'admin' && item.owner_id !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
       markdown = interviewMarkdown(item.data || {});
     }
     const out = await sendToPapa({ key: k?.key, studentName, title, markdown, data, html, audience, memo, source: source || `입시파인더 ${kind || '보고서'}` });
@@ -1834,7 +1836,7 @@ function cleanupInterviewJobs() {
   for (const [id, j] of interviewJobs) if (j.updatedAt < cutoff) interviewJobs.delete(id);
 }
 
-app.post('/api/interview/generate', requireAdmin, async (req, res) => {
+app.post('/api/interview/generate', requireMenu('interview'), async (req, res) => {
   const { student = {}, cards = [], recordText = '', options = {} } = req.body || {};
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
@@ -1961,7 +1963,7 @@ ${recordBlock}
 });
 
 // 작업 상태 — 화면이 3초마다 묻는다. 진행 중이면 stage·message, 끝나면 data(+savedId), 실패면 error(+partial)
-app.get('/api/interview/jobs/:id', requireAdmin, (req, res) => {
+app.get('/api/interview/jobs/:id', requireMenu('interview'), (req, res) => {
   const job = interviewJobs.get(req.params.id);
   if (!job) return res.status(404).json({ success: false, message: '작업을 찾을 수 없습니다 (서버가 재시작됐을 수 있습니다). 보관함에 저장된 리포트가 있는지 확인해 주세요.' });
   if (req.user.role !== 'admin' && job.ownerId !== (req.user.userId ?? null)) return res.status(403).json({ success: false, message: '권한 없음' });
@@ -1972,14 +1974,14 @@ app.get('/api/interview/jobs/:id', requireAdmin, (req, res) => {
 });
 
 // 보관 CRUD (선생님별 분리)
-app.get('/api/interview', requireAdmin, async (req, res) => {
+app.get('/api/interview', requireMenu('interview'), async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
     if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
     res.json({ success: true, items: await listInterviews(req.user.userId, { q: req.query.q }) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-app.post('/api/interview', requireAdmin, async (req, res) => {
+app.post('/api/interview', requireMenu('interview'), async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
     if (!req.user.userId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
@@ -1987,7 +1989,7 @@ app.post('/api/interview', requireAdmin, async (req, res) => {
     res.json({ success: true, item: await createInterview(req.user.userId, req.body) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-app.get('/api/interview/:id', requireAdmin, async (req, res) => {
+app.get('/api/interview/:id', requireMenu('interview'), async (req, res) => {
   try {
     const item = await getInterview(Number(req.params.id));
     if (!item) return res.status(404).json({ success: false, message: '리포트 없음' });
@@ -1995,7 +1997,7 @@ app.get('/api/interview/:id', requireAdmin, async (req, res) => {
     res.json({ success: true, item });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
-app.delete('/api/interview/:id', requireAdmin, async (req, res) => {
+app.delete('/api/interview/:id', requireMenu('interview'), async (req, res) => {
   try {
     const owner = await getInterviewOwner(Number(req.params.id));
     if (req.user.role !== 'admin' && owner !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
@@ -2004,7 +2006,7 @@ app.delete('/api/interview/:id', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 // 리포트 요약을 학생 기록으로 남긴다 — 학생 보드·학생 열람 페이지에서 문항을 볼 수 있게
-app.post('/api/interview/:id/assign', requireAdmin, async (req, res) => {
+app.post('/api/interview/:id/assign', requireMenu('interview'), async (req, res) => {
   try {
     const item = await getInterview(Number(req.params.id));
     if (!item) return res.status(404).json({ success: false, message: '리포트 없음' });

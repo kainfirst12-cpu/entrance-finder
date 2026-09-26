@@ -13,6 +13,8 @@ export const MENU_ITEMS = [
   { key: 'suharchive', label: '수행평가 아카이브' },
   // ⚠ optIn: '전체 공개'여도 열리지 않는다 — 관리자가 코드마다 직접 체크해야 한다.
   //   해설 보고서 보관은 서버 DB 용량을 쓰므로(원장 지시 2026-09-21) 기본 잠금. 생성·수정·Word/PDF 내려받기는 그대로 된다.
+  // 면접 전략 — 원래 관리자 전용. 관리자가 고른 원장님 코드에만 연다(2026-09-26).
+  { key: 'interview', label: '면접 전략(선택한 코드만, 기본 잠금)', optIn: true },
   { key: 'schoolreports', label: '입시 해설 보고서 보관함(서버 저장 — 용량 사용, 기본 잠금)', optIn: true },
 ];
 export const OPT_IN_MENUS = MENU_ITEMS.filter((m) => m.optIn).map((m) => m.key);
@@ -28,7 +30,6 @@ export function menuAllowed(menus, role, view) {
   if (role === 'admin') return true;
   const key = menuOfView(view);
   if (['dashboard', 'settings', 'admin'].includes(key)) return true;
-  if (key === 'interview') return false; // 면접 전략은 관리자 전용
   if (OPT_IN_MENUS.includes(key)) return Array.isArray(menus) && menus.includes(key); // 직접 체크한 코드만
   return !Array.isArray(menus) || menus.includes(key);
 }
