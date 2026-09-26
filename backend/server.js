@@ -1804,9 +1804,10 @@ function parseJsonLoose(reply, what = 'JSON') {
 }
 
 // 지식베이스 발췌 한 묶음 — 유형별로 상위 n개, 프롬프트에 넣을 수 있게 짧게
-async function kbExcerpt(query, types, label, n = 4, chars = 700) {
+// kbOpts: 학원 코드 이용자는 { noServerEmbed, embedKey } — 서버 OpenAI 키를 쓰지 않는다(interviewKbOpts)
+async function kbExcerpt(query, types, label, n = 4, chars = 700, kbOpts = {}) {
   try {
-    const hits = await lookupAdmissionGuide(query, types);
+    const hits = await lookupAdmissionGuide(query, types, kbOpts);
     const top = (hits || []).slice(0, n);
     if (!top.length) return '';
     return `[${label}]\n${top.map(h => `· ${h.제목}: ${String(h.내용 || '').slice(0, chars)}`).join('\n')}`;
@@ -1814,13 +1815,13 @@ async function kbExcerpt(query, types, label, n = 4, chars = 700) {
 }
 
 // 카드마다 전형 사실 묶음 — 대학어디가 입시가이드 표 + 지식베이스(대학별전형) + 면접자료(자료집·후기·기출) 발췌
-async function interviewCardFacts(card) {
+async function interviewCardFacts(card, kbOpts = {}) {
   const parts = [];
   const f = univFacts(card.univ, card.track);
   if (f?.text) parts.push(`[대학어디가 ${f.year} 입시가이드 · ${f.name}]\n${f.text}`);
   const who = `${card.univ} ${card.dept || ''} ${card.track || ''}`.trim();
-  parts.push(await kbExcerpt(`${who} 면접 전형방법 평가요소`, ['대학별전형'], '지식베이스 발췌 · 대학별전형'));
-  parts.push(await kbExcerpt(`${who} 면접 후기 기출 문항 질문 분위기`, ['면접자료'], '면접 자료집·후기·공개 기출 문항 발췌', 6, 900));
+  parts.push(await kbExcerpt(`${who} 면접 전형방법 평가요소`, ['대학별전형'], '지식베이스 발췌 · 대학별전형', 4, 700, kbOpts));
+  parts.push(await kbExcerpt(`${who} 면접 후기 기출 문항 질문 분위기`, ['면접자료'], '면접 자료집·후기·공개 기출 문항 발췌', 6, 900, kbOpts));
   return parts.filter(Boolean).join('\n\n');
 }
 
@@ -1885,10 +1886,12 @@ app.post('/api/interview/generate', requireMenu('interview'), async (req, res) =
   try {
     send({ stage: 'facts', message: '대학별 전형 사실을 모으는 중…' });
     const facts = [];
-    for (const c of list) facts.push(await interviewCardFacts(c));
+    // 관리자가 아니면 서버 OpenAI 키로 지식베이스를 임베딩하지 않는다 — GPT 를 쓰는 원장님은 본인 키로, 아니면 키워드 검색만
+    const kbOpts = isAdminReq(req) ? {} : { noServerEmbed: true, embedKey: aiModel === 'gpt' ? apiKey : null };
+    for (const c of list) facts.push(await interviewCardFacts(c, kbOpts));
 
     // 전공 공통 면접 자료(자료집·가이드북) — 개요 설계에서 평가 관점·질문 유형의 근거로 쓴다
-    const generalKb = await kbExcerpt(`${student.major || list[0].dept || ''} 학생부종합 면접 준비 평가요소 꼬리질문 예시 문항`, ['면접자료'], '면접 준비 일반 자료 발췌', 6, 900);
+    const generalKb = await kbExcerpt(`${student.major || list[0].dept || ''} 학생부종합 면접 준비 평가요소 꼬리질문 예시 문항`, ['면접자료'], '면접 준비 일반 자료 발췌', 6, 900, kbOpts);
 
     const record = String(recordText || '').trim();
     const studentLine = `[학생] ${[student.name, student.school, student.grade].filter(Boolean).join(' · ') || '미입력'}\n[지원 전공] ${student.major || list[0].dept || '미입력'}\n[학년도] ${year}`;

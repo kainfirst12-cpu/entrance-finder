@@ -22,14 +22,15 @@ function pgVectorLiteral(arr) {
 }
 
 // ── OpenAI 임베딩 (배치) ───────────────────────────────
-function getOpenAI() {
-  const apiKey = process.env.OPENAI_API_KEY;
+// apiKey 를 주면 그 키로(학원 코드 이용자 본인 키), 없으면 서버 키로
+function getOpenAI(ownKey) {
+  const apiKey = ownKey || process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY 미설정 — 임베딩 불가');
   return new OpenAI({ apiKey });
 }
 
-export async function embedTexts(texts) {
-  const openai = getOpenAI();
+export async function embedTexts(texts, { apiKey } = {}) {
+  const openai = getOpenAI(apiKey);
   const out = [];
   for (let i = 0; i < texts.length; i += EMBED_BATCH) {
     const batch = texts.slice(i, i + EMBED_BATCH);
@@ -39,8 +40,8 @@ export async function embedTexts(texts) {
   return out;
 }
 
-export async function embedQuery(query) {
-  const [emb] = await embedTexts([query]);
+export async function embedQuery(query, opts = {}) {
+  const [emb] = await embedTexts([query], opts);
   return emb;
 }
 

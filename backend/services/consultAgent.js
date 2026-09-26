@@ -134,7 +134,9 @@ export function toolsForProvider(group) {
  * 전형 자료(지식베이스) 의미 검색 — 도구와 입결 콘솔 요약이 함께 쓴다.
  * 신설 전형처럼 입결이 아예 없는 건은 여기에만 단서가 있다.
  */
-export async function lookupAdmissionGuide(query, types, { schoolBriefs = false } = {}) {
+// noServerEmbed: 서버 OpenAI 키로 임베딩하지 않는다(학원 코드 이용자의 면접 전략 — 원장 지시 2026-09-26).
+//   embedKey(이용자 본인 OpenAI 키)가 있으면 그 키로 의미 검색, 없으면 의미 검색을 건너뛰고 키워드 검색(DB만, 비용 없음)만 한다.
+export async function lookupAdmissionGuide(query, types, { schoolBriefs = false, noServerEmbed = false, embedKey = null } = {}) {
   const q = String(query || '').slice(0, 500);
   // 🏫 학교 이름이 든 질문 — 원장이 검토한 학교 해설 대표본(DB, 벡터 아님)을 앞에 붙인다. 지식베이스가 비어 있어도 나온다.
   //   🔒 schoolBriefs 는 관리자 요청일 때만 true — 기본은 끔(다른 학원 해설 내용이 학원 코드 이용자에게 나가면 안 된다)
@@ -143,8 +145,16 @@ export async function lookupAdmissionGuide(query, types, { schoolBriefs = false 
   const kinds = types?.length ? types : ['대학별전형', '대입정책', '합격자사례'];
 
   // 1) 의미 검색
-  const emb = await embedQuery(q);
-  const found = await Promise.all(kinds.map((t) => searchByType(emb, t, 6)));
+  let found = [];
+  if (!noServerEmbed) {
+    const emb = await embedQuery(q);
+    found = await Promise.all(kinds.map((t) => searchByType(emb, t, 6)));
+  } else if (embedKey) {
+    try {
+      const emb = await embedQuery(q, { apiKey: embedKey });
+      found = await Promise.all(kinds.map((t) => searchByType(emb, t, 6)));
+    } catch (e) { console.warn('[kb] 이용자 키 임베딩 실패 — 키워드 검색만:', e.message); }
+  }
   const blocks = [...schoolHits];
   const seen = new Set();
   const push = (b) => {
