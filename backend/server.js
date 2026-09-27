@@ -49,7 +49,7 @@ import { listLibrary, libraryOwners, getLibraryItem, updateLibraryItem, deleteLi
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import {
-  initDb, dbEnabled, vectorEnabled, ensureAdminUser,
+  initDb, onDbReady, dbEnabled, vectorEnabled, ensureAdminUser,
   findActiveUserByCode, createUserCode, setUserActive, deleteUser, setUserMenus, getUserMenus, getPapaKey, setPapaKey,
   listUsersWithStats, listActiveSessions, listRecentLogs,
   createSession, touchSession, logEvent, lookupGeo,
@@ -4884,6 +4884,11 @@ app.delete('/api/admin/admissions', requireAdmin, async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
+  // 부팅 때 DB 가 꺼져 있었으면 initDb 가 스스로 다시 붙는다 — 그때 아래 준비 작업도 다시 돌린다.
+  onDbReady(async () => {
+    await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
+    await refreshKbCount();
+  });
   await initDb();
   await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
   // 📈 실시간 경쟁률 자동 수집 — 접수 기간에만 실제로 돈다(스스로 판단한다).

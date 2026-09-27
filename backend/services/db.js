@@ -22,7 +22,36 @@ export function getPool() {
   return pool;
 }
 
-// ── 초기화 (부팅 시 1회) ──────────────────────────────
+// ── 초기화 (부팅 시 + 실패하면 저절로 다시) ─────────────────
+// 🔴 2026-09-27 사고: Supabase 를 재시작(컴퓨트 업그레이드)하자 DB 가 연결을 강제로 끊었고
+//    ("terminating connection due to administrator command"), 풀의 'error' 를 아무도 안 받아
+//    **서버 프로세스가 통째로 죽었다.** Railway 가 곧바로 다시 띄웠지만 그때 DB 는 아직 꺼져 있어
+//    초기화가 econnrefused 로 실패했고, 예전 코드는 부팅 때 **한 번만** 시도했으므로 DB 가 돌아온
+//    뒤에도 계속 'DB 미연결'(코드 발급·사용량 추적·지식베이스 꺼짐)로 남았다.
+//    ⇒ ① 풀 'error' 를 받아 죽지 않게 ② 실패하면 간격을 늘려 가며 다시 붙는다.
+let retryTimer = null;
+let retryDelay = 15_000;
+const RETRY_MAX = 5 * 60_000;
+const readyListeners = [];
+/** DB 가 (뒤늦게라도) 준비되면 부를 일 — 부팅 때 DB 가 없어 건너뛴 준비 작업을 여기서 다시 한다. */
+export function onDbReady(fn) { readyListeners.push(fn); }
+
+function scheduleRetry() {
+  if (retryTimer) return;
+  console.warn(`[DB] ${Math.round(retryDelay / 1000)}초 뒤 다시 연결을 시도합니다`);
+  retryTimer = setTimeout(async () => {
+    retryTimer = null;
+    retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
+    await initDb();
+    if (ready) {
+      console.log('[DB] 다시 연결됨 — 미뤄 둔 준비 작업을 실행합니다');
+      for (const fn of readyListeners) { try { await fn(); } catch (e) { console.warn('[DB] 준비 작업 실패:', e.message); } }
+    }
+  }, retryDelay);
+  // 재시도 타이머가 프로세스 종료를 붙잡지 않게
+  retryTimer.unref?.();
+}
+
 export async function initDb() {
   if (!process.env.DATABASE_URL) {
     console.warn('[DB] DATABASE_URL 없음 — 코드 관리/사용량 추적 비활성화 (로그인은 환경변수 코드로 동작)');
@@ -35,6 +64,9 @@ export async function initDb() {
       max: 5,
       idleTimeoutMillis: 30000,
     });
+    // 쉬고 있던 연결이 DB 쪽에서 끊기면(재시작·점검) 풀이 'error' 를 낸다 — 받지 않으면 프로세스가 죽는다.
+    // 끊긴 연결은 풀이 버리고 다음 요청 때 새로 연결하므로 기록만 남기면 된다.
+    pool.on('error', (err) => console.warn('[DB] 유휴 연결이 끊김(다음 요청에 새로 연결):', err.message));
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS app_users (
@@ -333,9 +365,14 @@ export async function initDb() {
     }
   } catch (e) {
     console.error('[DB] 초기화 실패 — 추적 기능 비활성화로 계속 진행:', e.message);
+    const dead = pool;
     pool = null;
     ready = false;
+    if (dead) dead.end().catch(() => {});
+    scheduleRetry();
+    return;
   }
+  retryDelay = 15_000;
 }
 
 // ── 코드 생성 ────────────────────────────────────────
