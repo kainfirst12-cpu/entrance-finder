@@ -22,7 +22,7 @@ export const VIEWS = [
   { key: 'univinfo', label: '대학 정보', desc: '대학별 기본 정보.' },
   { key: 'schoolinfo', label: '고교·중학 공시정보', desc: '전국 고등학교·중학교의 학교알리미 성취도(A~E 비율·평균)·재적·1등급 자리를 검색·비교한다.' },
   { key: 'settings', label: '설정', desc: 'Claude·GPT·Gemini API 키를 넣는 곳.' },
-  { key: 'admin', label: '관리자', desc: '이용자 코드·접속 기록·지식베이스. 관리자만.', adminOnly: true },
+  { key: 'admin', label: '관리자', desc: '이용자 코드·접속 기록·지식베이스. 관리자만. 이용자 코드 활성화·비활성화(전원·특정인)·공개 메뉴·새 코드 발급 도구는 이 화면으로 옮긴 뒤에 생긴다.', adminOnly: true },
 ];
 
 export function useAppAgent({ view, setView, selectedModel, setModel, modelConfig, role, menus, hasResult }) {

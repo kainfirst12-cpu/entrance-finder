@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import { MENU_ITEMS } from '../menus';
 import AdminLibrary from './AdminLibrary';
+import { useAdminAgent } from '../assistant/useAdminAgent';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -229,6 +230,22 @@ export default function AdminDashboard({ onAuthError }) {
       loadAll();
     } catch (e) { handleErr(e); }
   };
+
+  // AI 선생님 도구 — 버튼과 같은 API 를 쓴다. 실패는 던져서 도구가 '몇 개 실패'로 알리게 한다.
+  useAdminAgent({
+    users, dbOn, reload: loadAll,
+    patchUser: async (id, body) => {
+      const r = await api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      if (!r?.success) throw new Error(r?.message || '저장 실패');
+    },
+    createUser: async (name) => {
+      const r = await api('/api/admin/users', { method: 'POST', body: JSON.stringify({ name }) });
+      if (!r?.success) throw new Error(r?.message || '발급 실패');
+      setCreatedCode(r.user.code);
+      await loadAll();
+      return r.user.code;
+    },
+  });
 
   const copyCode = (code) => {
     navigator.clipboard?.writeText(code);
