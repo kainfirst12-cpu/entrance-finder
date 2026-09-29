@@ -4,6 +4,10 @@ import { MENU_ITEMS } from '../menus';
 // 관리자 대시보드(AdminDashboard)의 도구 — 이용자 코드 활성화·비활성화·공개 메뉴·새 코드 발급.
 // 원장이 "전원 비활성화해", "강민규만 켜줘", "김수진 빼고 다 꺼" 처럼 시키는 것을 한 번에 처리한다.
 //
+// 🔒 관리자 전용 — 세 겹으로 막는다: ① 이 화면은 role==='admin' 일 때만 그려진다(App.jsx)
+//   ② 서버 /api/assistant 가 관리자 로그인이 아니면 이 도구 이름들을 모델에게서 뺀다(assistantAgent ADMIN_UI_TOOLS)
+//   ③ 실제 변경 API(/api/admin/users)는 requireAdmin. 도구 이름을 바꾸면 ADMIN_UI_TOOLS 도 같이 바꿀 것.
+//
 // 코드 삭제는 도구로 만들지 않았다 — 사용 기록까지 지워져 되돌릴 수 없다. 원장이 직접 누른다.
 
 // 한꺼번에 바꿀 때 서버에 동시에 보내는 요청 수. 78개를 한 번에 쏘면 Railway 가 몇 개를 튕긴다.

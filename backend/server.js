@@ -4421,6 +4421,7 @@ ${picked.section}
   try {
     const out = await runAssistantStep({
       group: aiModel, modelId, apiKey, systemPrompt, turns, uiTools,
+      admin: isAdminReq(req), // 🔒 이용자 코드 관리 도구는 관리자 로그인에게만
       ctx: { studentId: picked.sid, baseYear, defaultGrade: picked.defaultGrade },
     });
     res.json({ success: true, ...out });

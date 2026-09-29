@@ -18,6 +18,9 @@ const MAX_SERVER_HOPS = 6;
 // 브라우저가 보낸 도구 선언을 그대로 믿지 않는다 — 개수와 이름을 여기서 자른다.
 const MAX_UI_TOOLS = 40;
 const TOOL_RESULT_CAP = 60000;
+// 관리자 화면(useAdminAgent) 도구 — 이용자 코드 활성화·메뉴·발급. 관리자 로그인이 아니면 모델에게 아예 보이지 않게 한다.
+//   (화면은 관리자에게만 그려지고 API 도 requireAdmin 이지만, 브라우저가 보낸 도구 목록은 믿지 않는다)
+export const ADMIN_UI_TOOLS = ['list_users', 'set_users_active', 'set_user_menus', 'create_user_code'];
 
 /**
  * turns 한 칸의 모양(브라우저와 맞춘 약속):
@@ -53,13 +56,14 @@ function orderResults(calls, results) {
 }
 
 // ── 브라우저가 선언한 화면 도구를 OpenAI 형태로 정규화 ──
-export function normalizeUiTools(raw) {
+export function normalizeUiTools(raw, { admin = false } = {}) {
   if (!Array.isArray(raw)) return [];
   const out = [];
   for (const t of raw.slice(0, MAX_UI_TOOLS)) {
     const name = String(t?.name || '').trim();
     // 서버 도구와 이름이 겹치면 어느 쪽을 부른 건지 갈라낼 수 없다 — 화면 쪽을 버린다.
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name) || CONSULT_TOOL_NAMES.includes(name)) continue;
+    if (!admin && ADMIN_UI_TOOLS.includes(name)) continue;
     const schema = t?.schema && typeof t.schema === 'object' ? t.schema : { type: 'object', properties: {} };
     out.push({
       type: 'function',
@@ -243,9 +247,9 @@ const ASK = { claude: askClaude, gpt: askGpt, gemini: askGemini };
  *   truncated: boolean,
  * }}
  */
-export async function runAssistantStep({ group, modelId, apiKey, systemPrompt, turns = [], uiTools = [], ctx = {} }) {
+export async function runAssistantStep({ group, modelId, apiKey, systemPrompt, turns = [], uiTools = [], ctx = {}, admin = false }) {
   const ask = ASK[group] || askClaude;
-  const tools = [...CONSULT_TOOLS, ...normalizeUiTools(uiTools)];
+  const tools = [...CONSULT_TOOLS, ...normalizeUiTools(uiTools, { admin })];
   const toolLog = [];
   // 서버 도구를 여러 번 도는 동안 늘어나는 대화. 브라우저가 보낸 turns 는 건드리지 않는다.
   const work = [...turns];
