@@ -8,7 +8,7 @@ import { MENU_ITEMS } from '../menus';
 //   ② 서버 /api/assistant 가 관리자 로그인이 아니면 이 도구 이름들을 모델에게서 뺀다(assistantAgent ADMIN_UI_TOOLS)
 //   ③ 실제 변경 API(/api/admin/users)는 requireAdmin. 도구 이름을 바꾸면 ADMIN_UI_TOOLS 도 같이 바꿀 것.
 //
-// 코드 삭제는 도구로 만들지 않았다 — 사용 기록까지 지워져 되돌릴 수 없다. 원장이 직접 누른다.
+// 코드 삭제(delete_users)는 사용 기록까지 지워져 되돌릴 수 없다 — 몇 개든 **항상** 확인창을 띄운다(원장 요청으로 09-29 추가).
 
 // 한꺼번에 바꿀 때 서버에 동시에 보내는 요청 수. 78개를 한 번에 쏘면 Railway 가 몇 개를 튕긴다.
 const CONCURRENCY = 6;
@@ -81,7 +81,7 @@ const TARGET_PROPS = {
   except: { type: 'array', items: { type: 'string' }, description: '대상에서 뺄 이름 또는 코드("누구 빼고 전부")' },
 };
 
-export function useAdminAgent({ users, dbOn, patchUser, createUser, reload }) {
+export function useAdminAgent({ users, dbOn, patchUser, createUser, deleteUser, reload }) {
   const menuKeys = MENU_ITEMS.map((m) => m.key);
 
   useAssistantAgent('screen', {
@@ -95,8 +95,8 @@ export function useAdminAgent({ users, dbOn, patchUser, createUser, reload }) {
         '[화면] 관리자 대시보드 — 이용자(학원) 코드 관리·현재 접속·지식베이스·활동 로그.',
         `[이용자 코드] 총 ${users.length}개 · 활성 ${users.length - off.length} · 비활성 ${off.length} · 접속중 ${online.length}`,
         online.length ? `[접속중] ${online.map(label).join(', ')}` : '',
-        '[도구] 이용자 전체 명단은 list_users 로 읽는다. 활성/비활성은 set_users_active(전원·특정인·누구 빼고 전부), 공개 메뉴는 set_user_menus, 새 코드는 create_user_code.',
-        '[할 수 없는 일] 코드 삭제는 사용 기록까지 지워져 되돌릴 수 없어 조교가 하지 않는다 — 원장이 표의 삭제 버튼을 직접 누른다.',
+        '[도구] 이용자 전체 명단은 list_users 로 읽는다. 활성/비활성은 set_users_active(전원·특정인·누구 빼고 전부), 공개 메뉴는 set_user_menus, 새 코드는 create_user_code, 삭제는 delete_users.',
+        '[삭제] delete_users 는 코드와 사용 기록을 되돌릴 수 없게 지운다. 원장이 "삭제"를 분명히 말했을 때만 부르고, 비활성화로 충분한지 헷갈리면 먼저 물을 것.',
       ].filter(Boolean).join('\n');
     },
     examples: [
@@ -194,6 +194,32 @@ export function useAdminAgent({ users, dbOn, patchUser, createUser, reload }) {
           await reload();
           return [
             `${r.picked.length - failed.length}개 코드의 공개 메뉴를 바꿨습니다(${mode === 'all' ? '전체 공개' : `${mode === 'open' ? '열기' : '닫기'}: ${keys.join(', ')}`}).`,
+            failed.length ? `실패 ${failed.length}개 — ${failed.join(' / ')}` : '',
+            ...r.notes,
+          ].filter(Boolean).join(' ');
+        },
+      },
+      {
+        name: 'delete_users',
+        description: '이용자 코드를 삭제한다. 사용 기록도 함께 지워지고 되돌릴 수 없다. 원장이 "삭제"를 분명히 시켰을 때만 부른다(쓰지 못하게만 하려면 set_users_active 로 비활성화). 전원(all=true)·특정인(targets)·"누구 빼고"(except) 모두 된다.',
+        schema: { type: 'object', properties: { ...TARGET_PROPS } },
+        // 되돌릴 수 없으므로 한 명이어도 반드시 묻는다.
+        confirm: (args) => {
+          const r = pickTargets(users, args);
+          if (r.error || !r.picked.length) return null; // run 이 이유를 돌려준다
+          const names = r.picked.slice(0, 15).map(label).join(', ');
+          return `⚠ ${r.picked.length}개 코드를 삭제할까요? 사용 기록도 함께 지워지고 되돌릴 수 없습니다.\n${names}${r.picked.length > 15 ? ` 외 ${r.picked.length - 15}개` : ''}`;
+        },
+        run: async (args) => {
+          if (!args.all && !(args.targets || []).length) return '대상이 없습니다. 전원(all) 또는 이름·코드(targets)를 지정하세요.';
+          const r = pickTargets(users, args);
+          if (r.error) return r.error;
+          if (!r.picked.length) return ['삭제할 코드가 없습니다.', ...r.notes].join(' ');
+          const failed = await runLimited(r.picked, (u) => deleteUser(u.id));
+          await reload();
+          const ok = r.picked.filter((u) => !failed.some((f) => f.startsWith(label(u))));
+          return [
+            `${ok.length}개 코드를 삭제했습니다${ok.length && ok.length <= 10 ? `: ${ok.map(label).join(', ')}` : ''}.`,
             failed.length ? `실패 ${failed.length}개 — ${failed.join(' / ')}` : '',
             ...r.notes,
           ].filter(Boolean).join(' ');

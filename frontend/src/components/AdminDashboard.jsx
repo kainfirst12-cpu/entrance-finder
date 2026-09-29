@@ -238,6 +238,10 @@ export default function AdminDashboard({ onAuthError }) {
       const r = await api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
       if (!r?.success) throw new Error(r?.message || '저장 실패');
     },
+    deleteUser: async (id) => {
+      const r = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+      if (!r?.success) throw new Error(r?.message || '삭제 실패');
+    },
     createUser: async (name) => {
       const r = await api('/api/admin/users', { method: 'POST', body: JSON.stringify({ name }) });
       if (!r?.success) throw new Error(r?.message || '발급 실패');

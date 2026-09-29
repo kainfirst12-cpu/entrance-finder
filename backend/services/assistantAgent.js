@@ -20,7 +20,7 @@ const MAX_UI_TOOLS = 40;
 const TOOL_RESULT_CAP = 60000;
 // 관리자 화면(useAdminAgent) 도구 — 이용자 코드 활성화·메뉴·발급. 관리자 로그인이 아니면 모델에게 아예 보이지 않게 한다.
 //   (화면은 관리자에게만 그려지고 API 도 requireAdmin 이지만, 브라우저가 보낸 도구 목록은 믿지 않는다)
-export const ADMIN_UI_TOOLS = ['list_users', 'set_users_active', 'set_user_menus', 'create_user_code'];
+export const ADMIN_UI_TOOLS = ['list_users', 'set_users_active', 'set_user_menus', 'create_user_code', 'delete_users'];
 
 /**
  * turns 한 칸의 모양(브라우저와 맞춘 약속):
