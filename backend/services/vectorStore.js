@@ -22,15 +22,16 @@ function pgVectorLiteral(arr) {
 }
 
 // ── OpenAI 임베딩 (배치) ───────────────────────────────
-// apiKey 를 주면 그 키로(학원 코드 이용자 본인 키), 없으면 서버 키로
-function getOpenAI(ownKey) {
-  const apiKey = ownKey || process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY 미설정 — 임베딩 불가');
+// apiKey 를 주면 그 키로(학원 코드 이용자 본인 키), serverKey:true 면 서버 키로(관리자·지식베이스 적재 전용).
+// 🔒 둘 다 아니면 던진다 — 서버 키로 몰래 폴백하지 않는다(OpenAI SDK 기본값도 env 라 빈 키는 막는다).
+function getOpenAI(ownKey, serverKey = false) {
+  const apiKey = ownKey || (serverKey ? process.env.OPENAI_API_KEY : '');
+  if (!apiKey) throw new Error('OpenAI 키 없음 — 임베딩 불가(서버 키는 관리자 전용)');
   return new OpenAI({ apiKey });
 }
 
-export async function embedTexts(texts, { apiKey } = {}) {
-  const openai = getOpenAI(apiKey);
+export async function embedTexts(texts, { apiKey, serverKey = false } = {}) {
+  const openai = getOpenAI(apiKey, serverKey);
   const out = [];
   for (let i = 0; i < texts.length; i += EMBED_BATCH) {
     const batch = texts.slice(i, i + EMBED_BATCH);
@@ -90,7 +91,7 @@ export async function ingestDocuments(docs, onProgress) {
     if (chunks.length === 0) continue;
 
     // 이 문서의 청크만 임베딩 (한 번에 전부 메모리에 올리지 않음)
-    const embeddings = await embedTexts(chunks);
+    const embeddings = await embedTexts(chunks, { serverKey: true }); // 적재는 관리자 전용 라우트에서만 부른다
 
     for (let i = 0; i < chunks.length; i += INSERT_BATCH) {
       const cs = chunks.slice(i, i + INSERT_BATCH);

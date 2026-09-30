@@ -1808,7 +1808,7 @@ function parseJsonLoose(reply, what = 'JSON') {
 }
 
 // 지식베이스 발췌 한 묶음 — 유형별로 상위 n개, 프롬프트에 넣을 수 있게 짧게
-// kbOpts: 학원 코드 이용자는 { noServerEmbed, embedKey } — 서버 OpenAI 키를 쓰지 않는다(interviewKbOpts)
+// kbOpts: 관리자는 { serverEmbed: true }, 학원 코드 이용자는 { embedKey } — 서버 OpenAI 키를 쓰지 않는다
 async function kbExcerpt(query, types, label, n = 4, chars = 700, kbOpts = {}) {
   try {
     const hits = await lookupAdmissionGuide(query, types, kbOpts);
@@ -1891,7 +1891,7 @@ app.post('/api/interview/generate', requireMenu('interview'), async (req, res) =
     send({ stage: 'facts', message: '대학별 전형 사실을 모으는 중…' });
     const facts = [];
     // 관리자가 아니면 서버 OpenAI 키로 지식베이스를 임베딩하지 않는다 — GPT 를 쓰는 원장님은 본인 키로, 아니면 키워드 검색만
-    const kbOpts = isAdminReq(req) ? {} : { noServerEmbed: true, embedKey: aiModel === 'gpt' ? apiKey : null };
+    const kbOpts = isAdminReq(req) ? { serverEmbed: true } : { embedKey: aiModel === 'gpt' ? apiKey : null };
     for (const c of list) facts.push(await interviewCardFacts(c, kbOpts));
 
     // 전공 공통 면접 자료(자료집·가이드북) — 개요 설계에서 평가 관점·질문 유형의 근거로 쓴다
@@ -3429,7 +3429,7 @@ app.post('/api/analyze', requireAuth, pdfFields, async (req, res) => {
       // RAG: 벡터 검색으로 관련 청크만 추출 (1~3초)
       try {
         const [ragKb, driveStudent] = await Promise.all([
-          loadKnowledgeBaseRAG(studentData).catch(e => {
+          loadKnowledgeBaseRAG(studentData, isAdminReq(req) ? { serverEmbed: true } : { embedKey: aiModel === 'gpt' ? req.headers['x-api-key'] : null }).catch(e => {
             console.error('[Analyze] RAG 실패:', e.message);
             return null;
           }),
@@ -4174,7 +4174,7 @@ app.post('/api/ipgyeol/ai-search', requireAuth, async (req, res) => {
     // 컨설턴트는 아무것도 못 얻는다. 전형방법·수능최저는 입결이 아니라 여기에 있다.
     let knowledge = [];
     try {
-      knowledge = await lookupAdmissionGuide(query, undefined, { schoolBriefs: isAdminReq(req) });
+      knowledge = await lookupAdmissionGuide(query, undefined, { schoolBriefs: isAdminReq(req), serverEmbed: isAdminReq(req), embedKey: aiModel === 'gpt' ? apiKey : null });
     } catch (e) {
       console.warn('[ipgyeol/ai-search] 지식베이스 조회 건너뜀:', e.message);
     }
@@ -4435,7 +4435,7 @@ ${studentSection}
   try {
     const { reply, toolLog, truncated } = await runAgentLoop({
       group: aiModel, modelId, apiKey, systemPrompt, history, message,
-      ctx: { studentId: sid, baseYear, defaultGrade, onSaved: (p) => savedPlacements.push(p), schoolBriefs: isAdminReq(req) },
+      ctx: { studentId: sid, baseYear, defaultGrade, onSaved: (p) => savedPlacements.push(p), schoolBriefs: isAdminReq(req), serverEmbed: isAdminReq(req), embedKey: aiModel === 'gpt' ? apiKey : null },
     });
     sendDone({
       success: true,
