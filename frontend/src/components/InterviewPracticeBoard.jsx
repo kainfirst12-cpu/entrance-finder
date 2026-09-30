@@ -1,0 +1,151 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+
+// 선생님 보드(학생 상세) — 🎤 면접 연습
+// ① 이 학생의 면접 전략 리포트를 학생 페이지 연습에 공개/비공개
+// ② 학생이 저장한 연습 답변을 문항별로 보고 코멘트를 남긴다(학생 페이지에 그대로 보인다)
+// api 는 Board 의 헬퍼(Bearer·401 처리)를 그대로 받는다.
+
+const fmtSec = (s) => `${Math.floor(Math.max(0, s || 0) / 60)}:${String(Math.max(0, s || 0) % 60).padStart(2, '0')}`;
+
+export default function InterviewPracticeBoard({ student, api, onError }) {
+  const [reports, setReports] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [msg, setMsg] = useState('');
+  const [open, setOpen] = useState(null);
+  const [drafts, setDrafts] = useState({});
+  const [filter, setFilter] = useState('all'); // all | retry | nocomment
+
+  const base = `/api/board/students/${student.id}`;
+  const load = useCallback(async () => {
+    try {
+      const d = await api(`${base}/interview-practice`);
+      if (d.success) { setReports(d.reports || []); setRecords(d.records || []); }
+      else setMsg('⚠ ' + (d.message || '면접 연습 조회 실패'));
+    } catch (e) { if (e.auth) onError?.(e); }
+  }, [base]);
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (path, opts, okMsg) => {
+    try {
+      const d = await api(path, opts);
+      if (d && d.success === false) throw new Error(d.message || '처리 실패');
+      await load();
+      setMsg(okMsg || '');
+    } catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); }
+  };
+
+  const shown = useMemo(() => records.filter((r) =>
+    filter === 'retry' ? r.retry : filter === 'nocomment' ? !r.teacher_comment : true), [records, filter]);
+  const week = records.filter((r) => new Date(r.created_at).getTime() > Date.now() - 7 * 864e5).length;
+  const openCount = reports.filter((r) => r.practice_open).length;
+
+  return (
+    <div>
+      <div style={T.title}>
+        🎤 면접 연습
+        <span style={T.titleSub}>
+          {records.length ? `누적 ${records.length}회 · 최근 7일 ${week}회 · 다시 연습 ${records.filter(r => r.retry).length}` : '아직 연습 기록 없음'}
+        </span>
+      </div>
+      {msg && <div style={{ fontSize: 12.5, color: msg.startsWith('⚠') ? '#fbbf24' : '#34d399', margin: '0 0 6px' }}>{msg}</div>}
+
+      <div style={T.panel}>
+        <div style={T.label}>학생 페이지에 연습으로 공개할 면접 전략 리포트 {student.student_code ? '' : '(학생 열람 코드를 먼저 발급해야 학생이 볼 수 있어요)'}</div>
+        {!reports.length && (
+          <div style={T.muted}>이 학생으로 만든 면접 전략 리포트가 없습니다. 면접 전략 화면에서 이 학생을 골라 만들거나, 만든 리포트를 이 학생에게 배정하면 여기에 나타나고 연습이 열립니다.</div>
+        )}
+        {reports.map((r) => (
+          <div key={r.id} style={T.row}>
+            <span style={{ flex: 1 }}>
+              <b>{r.title}</b>
+              <span style={T.muted2}> · {(r.cards || []).filter(c => c.interview !== false).map(c => c.univ).join(', ')} · {r.question_count}문항 · {String(r.created_at).slice(0, 10)}</span>
+            </span>
+            <button style={r.practice_open ? T.onBtn : T.offBtn}
+              onClick={() => act(`${base}/interviews/${r.id}/practice-open`, { method: 'PATCH', body: JSON.stringify({ open: !r.practice_open }) },
+                r.practice_open ? '✓ 연습 공개를 닫았습니다' : '✓ 학생 페이지에 연습을 열었습니다')}>
+              {r.practice_open ? '연습 공개 중 ✓' : '연습 공개하기'}
+            </button>
+          </div>
+        ))}
+        {reports.length > 0 && !openCount && <div style={{ ...T.muted, marginTop: 4 }}>공개한 리포트가 없어 학생 페이지에는 문항이 보이지 않습니다.</div>}
+      </div>
+
+      {records.length > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: 6, margin: '10px 0 6px' }}>
+            {[['all', '전체'], ['nocomment', '코멘트 안 단 것'], ['retry', '다시 연습 표시']].map(([k, l]) => (
+              <button key={k} style={filter === k ? T.fOn : T.f} onClick={() => setFilter(k)}>{l}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {shown.map((r) => {
+              const a = r.analysis || {};
+              const isOpen = open === r.id;
+              const draft = drafts[r.id] ?? r.teacher_comment ?? '';
+              return (
+                <div key={r.id} style={T.rec}>
+                  <div style={T.recHead} onClick={() => setOpen(isOpen ? null : r.id)}>
+                    <span style={T.muted2}>{new Date(r.created_at).toLocaleDateString('ko-KR')}</span>
+                    <span style={{ flex: 1 }}>{r.question}</span>
+                    {a.chars != null && <span style={T.chip}>{a.chars}자{a.band ? ` / ${a.band.lo}~${a.band.hi}` : ''}</span>}
+                    <span style={T.chip}>{fmtSec(r.duration_sec)}</span>
+                    {r.retry && <span style={T.warn}>다시 연습</span>}
+                    {r.teacher_comment && <span style={T.good}>💬</span>}
+                  </div>
+                  {isOpen && (
+                    <div style={T.recBody}>
+                      <div style={T.muted2}>{r.card_label} · {r.input_mode === 'voice' ? '받아쓰기' : '직접 입력'} · 준비 {r.prep_sec ?? '-'}초 · 제한 {r.limit_sec ?? '-'}초</div>
+                      <div style={T.answer}>{r.answer || '(답변 없음)'}</div>
+                      {r.follow_up && <div style={{ fontSize: 12.5, margin: '6px 0 3px', color: '#9db0bd' }}>꼬리질문 · {r.follow_up}</div>}
+                      {r.follow_answer && <div style={T.answer}>{r.follow_answer}</div>}
+                      {((a.good || []).length > 0 || (a.fix || []).length > 0) && (
+                        <div style={{ fontSize: 12.5, lineHeight: 1.6, margin: '6px 0' }}>
+                          {(a.good || []).map((t, i) => <div key={'g' + i} style={{ color: '#34d399' }}>✓ {t}</div>)}
+                          {(a.fix || []).map((t, i) => <div key={'f' + i} style={{ color: '#fbbf24' }}>△ {t}</div>)}
+                        </div>
+                      )}
+                      <textarea style={T.textarea} rows={3} value={draft} placeholder="학생에게 보일 코멘트 (예: 첫 문장 결론 좋음. 실험 수치를 한 번만 넣자)"
+                        onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))} />
+                      <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+                        <button style={T.save} onClick={() => act(`${base}/interview-practice/${r.id}`, { method: 'PATCH', body: JSON.stringify({ teacherComment: draft }) }, '✓ 코멘트를 저장했습니다 — 학생 페이지에 보입니다')}>코멘트 저장</button>
+                        <button style={T.offBtn} onClick={() => act(`${base}/interview-practice/${r.id}`, { method: 'PATCH', body: JSON.stringify({ retry: !r.retry }) })}>
+                          {r.retry ? '다시 연습 해제' : '다시 연습 지정'}
+                        </button>
+                        <button style={T.del} onClick={() => window.confirm('이 연습 기록을 삭제할까요?') && act(`${base}/interview-practice/${r.id}`, { method: 'DELETE' })}>삭제</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!shown.length && <div style={T.muted}>해당하는 기록이 없습니다.</div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const T = {
+  title: { fontSize: 14, fontWeight: 700, color: '#e8eef3', margin: '20px 0 8px', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
+  titleSub: { fontSize: 12, fontWeight: 500, color: '#9db0bd' },
+  panel: { background: '#1c2937', borderRadius: 9, padding: '9px 11px' },
+  label: { fontSize: 12, color: '#9db0bd', marginBottom: 6 },
+  row: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.05)' },
+  muted: { fontSize: 12.5, color: '#6b7d8a', lineHeight: 1.6 },
+  muted2: { fontSize: 12, color: '#6b7d8a', whiteSpace: 'nowrap' },
+  onBtn: { background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.5)', color: '#34d399', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
+  offBtn: { background: 'rgba(45,212,191,0.12)', border: '1px solid rgba(45,212,191,0.4)', color: '#2dd4bf', fontSize: 11.5, cursor: 'pointer', borderRadius: 6, padding: '3px 9px', whiteSpace: 'nowrap' },
+  f: { background: 'transparent', border: '1px solid #334556', color: '#9db0bd', fontSize: 12, cursor: 'pointer', borderRadius: 14, padding: '3px 10px' },
+  fOn: { background: '#14b8a6', border: '1px solid #14b8a6', color: '#fff', fontSize: 12, cursor: 'pointer', borderRadius: 14, padding: '3px 10px' },
+  rec: { background: '#1c2937', borderRadius: 7, overflow: 'hidden' },
+  recHead: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '6px 9px', cursor: 'pointer', flexWrap: 'wrap' },
+  recBody: { padding: '6px 10px 10px', borderTop: '1px solid rgba(255,255,255,0.06)' },
+  chip: { fontSize: 11, color: '#93c5fd', background: 'rgba(59,130,246,0.15)', borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap' },
+  warn: { fontSize: 11, color: '#fbbf24', background: 'rgba(251,191,36,0.15)', borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap' },
+  good: { fontSize: 11, color: '#34d399', whiteSpace: 'nowrap' },
+  answer: { fontSize: 13, lineHeight: 1.7, background: '#16212e', borderRadius: 7, padding: '8px 10px', margin: '6px 0', whiteSpace: 'pre-wrap', color: '#e8eef3' },
+  textarea: { width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #334556', background: '#16212e', color: '#e8eef3', fontSize: 13, outline: 'none', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 },
+  save: { background: '#14b8a6', color: '#fff', border: 'none', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontSize: 12.5 },
+  del: { background: 'transparent', border: 'none', color: '#f87171', fontSize: 12, cursor: 'pointer', marginLeft: 'auto' },
+};

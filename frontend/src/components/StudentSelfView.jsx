@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import { univLabel } from '../univName';
 import RoadmapView from './RoadmapView';
+import InterviewPractice from './InterviewPractice';
 
 // 학생 셀프 페이지 — 선생님이 발급한 열람 코드만으로 본인 내용을 본다.
 // 기록·배치는 읽기 전용이고, 로드맵 체크·수정과 내 자료 올리기는 학생이 직접 한다.
@@ -186,6 +187,9 @@ export default function StudentSelfView({ onBack }) {
           </>
         )}
 
+        <div style={S.secTitle}>🎤 면접 연습 — 내 생기부로 만든 질문을 실전처럼</div>
+        <InterviewPractice code={codeNow()} major={student.major || ''} />
+
         {placements.length > 0 && (
           <>
             <div style={S.secTitle}>📈 배치 현황 (선생님이 저장한 지원 판정)</div>
@@ -264,7 +268,7 @@ export default function StudentSelfView({ onBack }) {
         ))}
 
         <p style={{ fontSize: 11.5, color: '#98a4b3', marginTop: 18 }}>
-          로드맵 체크·수정과 내 자료 올리기는 직접 할 수 있고, 선생님이 남긴 기록과 배치 현황은 읽기 전용입니다. 내용에 대한 질문은 선생님께 문의하세요. — 패스파인더 에듀
+          로드맵 체크·수정, 면접 연습, 내 자료 올리기는 직접 할 수 있고, 선생님이 남긴 기록과 배치 현황은 읽기 전용입니다. 내용에 대한 질문은 선생님께 문의하세요. — 패스파인더 에듀
         </p>
       </div>
     </div>

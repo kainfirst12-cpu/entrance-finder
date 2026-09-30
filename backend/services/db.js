@@ -219,6 +219,33 @@ export async function initDb() {
       );
     `);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_interviews_owner ON ef_interviews(owner_id);`);
+    // 면접 연습 — 선생님이 공개(practice_open)한 리포트의 문항을 학생이 학생 페이지에서 실전처럼 연습한다
+    await pool.query(`ALTER TABLE ef_interviews ADD COLUMN IF NOT EXISTS practice_open BOOLEAN NOT NULL DEFAULT false;`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_interviews_student ON ef_interviews(student_id);`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ef_interview_practice (
+        id              SERIAL PRIMARY KEY,
+        student_id      INTEGER REFERENCES ef_students(id) ON DELETE CASCADE,
+        interview_id    INTEGER REFERENCES ef_interviews(id) ON DELETE SET NULL,
+        card_index      INTEGER,
+        q_index         INTEGER,
+        card_label      TEXT DEFAULT '',
+        question        TEXT NOT NULL,
+        answer          TEXT DEFAULT '',
+        input_mode      TEXT DEFAULT 'text',
+        prep_sec        INTEGER,
+        limit_sec       INTEGER,
+        duration_sec    INTEGER,
+        analysis        JSONB DEFAULT '{}'::jsonb,
+        follow_up       TEXT DEFAULT '',
+        follow_answer   TEXT DEFAULT '',
+        retry           BOOLEAN NOT NULL DEFAULT false,
+        teacher_comment TEXT DEFAULT '',
+        commented_at    TIMESTAMPTZ,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_interview_practice_student ON ef_interview_practice(student_id, created_at DESC);`);
     // 생기부 로드맵 — 컨설팅 로드맵 문서를 학생이 체크할 실행 항목으로 보관
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ef_roadmaps (

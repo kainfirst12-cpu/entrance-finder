@@ -235,7 +235,7 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
     try {
       const j = await api(`/api/interview/${id}/assign`, { method: 'POST', body: { studentId: sid } });
       if (!j.success) throw new Error(j.message || '배정 실패');
-      setNotice('✓ 학생 기록에 문항·예시 답안이 배정되었습니다. 학생 보드와 학생 열람 코드 페이지에서 볼 수 있습니다.');
+      setNotice('✓ 학생 기록에 문항·예시 답안이 배정되었습니다. 학생 보드와 학생 열람 코드 페이지에서 볼 수 있고, 학생 페이지 🎤 면접 연습에서 이 문항으로 실전 연습을 할 수 있습니다.');
     } catch (e) { if (e.auth) onAuthError?.(); else setError('배정 오류: ' + e.message); }
   };
 

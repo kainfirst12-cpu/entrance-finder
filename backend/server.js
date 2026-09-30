@@ -19,6 +19,10 @@ import { fieldOf } from './services/deptField.js';
 import { attachSkypassNotes, hasScaleWarning, skypassLoaded } from './services/skypassNotes.js';
 import { runAgentLoop, lookupAdmissionGuide } from './services/consultAgent.js';
 import { listInterviews, getInterview, createInterview, deleteInterview, getInterviewOwner, univFacts } from './services/interviewStore.js';
+import {
+  listOpenPracticeSets, isOpenInterviewOf, countPracticeToday, addPractice, listPractice, getPracticeStudentId,
+  updatePractice, deletePractice, listStudentInterviews, setPracticeOpen, linkInterviewToStudent,
+} from './services/interviewPracticeStore.js';
 import { runAssistantStep } from './services/assistantAgent.js';
 import {
   listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
@@ -2016,6 +2020,8 @@ app.post('/api/interview/:id/assign', requireMenu('interview'), async (req, res)
     if (req.user.role !== 'admin' && item.owner_id !== req.user.userId) return res.status(403).json({ success: false, message: '권한 없음' });
     const studentId = Number(req.body.studentId);
     if (!(await canEditStudent(req, studentId))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    // 배정 = 학생 페이지 🎤 면접 연습에도 공개 (문항을 학생이 실전처럼 연습)
+    await linkInterviewToStudent(item.id, studentId);
     const record = await addRecord(studentId, {
       type: '면접 전략', title: item.title,
       detail: (item.cards || []).map(c => `${c.univ} ${c.track || ''}`.trim()).join(' · '),
@@ -2824,6 +2830,86 @@ app.post('/api/student-view/:code/roadmaps/:rid/items', async (req, res) => {
     const rid = Number(req.params.rid);
     if (await getRoadmapStudentId(rid) !== sid) return res.status(403).json({ success: false, message: '본인 로드맵이 아닙니다' });
     res.json({ success: true, item: await addRoadmapItem(rid, req.body || {}) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 🎤 면접 연습 (학생 페이지) — 코드가 곧 인증. 문항은 선생님이 연습 공개한 면접 전략 리포트에서만 나온다
+const PRACTICE_DAILY_LIMIT = 200;
+app.get('/api/student-view/:code/interview-practice', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const [sets, records] = await Promise.all([listOpenPracticeSets(sid), listPractice(sid, 200)]);
+    res.json({ success: true, sets, records });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/student-view/:code/interview-practice', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const b = req.body || {};
+    if (!String(b.question || '').trim()) return res.status(400).json({ success: false, message: '질문이 비었습니다' });
+    if (b.interviewId && !(await isOpenInterviewOf(Number(b.interviewId), sid)))
+      return res.status(403).json({ success: false, message: '연습이 공개된 리포트가 아닙니다' });
+    if (await countPracticeToday(sid) >= PRACTICE_DAILY_LIMIT)
+      return res.status(429).json({ success: false, message: `하루 연습 저장은 ${PRACTICE_DAILY_LIMIT}개까지입니다` });
+    res.json({ success: true, record: await addPractice(sid, { ...b, interviewId: b.interviewId ? Number(b.interviewId) : null }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/student-view/:code/interview-practice/:pid', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const pid = Number(req.params.pid);
+    if (await getPracticeStudentId(pid) !== sid) return res.status(403).json({ success: false, message: '본인 기록이 아닙니다' });
+    res.json({ success: true, record: await updatePractice(pid, { retry: req.body?.retry }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/student-view/:code/interview-practice/:pid', async (req, res) => {
+  try {
+    const sid = await studentIdFromCode(req.params.code);
+    if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
+    const pid = Number(req.params.pid);
+    if (await getPracticeStudentId(pid) !== sid) return res.status(403).json({ success: false, message: '본인 기록이 아닙니다' });
+    await deletePractice(pid);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// 선생님 보드 — 학생의 면접 연습 기록·코멘트, 리포트별 연습 공개 토글
+app.get('/api/board/students/:id/interview-practice', requireAuth, async (req, res) => {
+  try {
+    const sid = Number(req.params.id);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    const [reports, records] = await Promise.all([listStudentInterviews(sid), listPractice(sid, 300)]);
+    res.json({ success: true, reports, records });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/board/students/:id/interview-practice/:pid', requireAuth, async (req, res) => {
+  try {
+    const sid = Number(req.params.id), pid = Number(req.params.pid);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    if (await getPracticeStudentId(pid) !== sid) return res.status(404).json({ success: false, message: '기록 없음' });
+    const { retry, teacherComment } = req.body || {};
+    res.json({ success: true, record: await updatePractice(pid, { retry, teacherComment }) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/board/students/:id/interview-practice/:pid', requireAuth, async (req, res) => {
+  try {
+    const sid = Number(req.params.id), pid = Number(req.params.pid);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    if (await getPracticeStudentId(pid) !== sid) return res.status(404).json({ success: false, message: '기록 없음' });
+    await deletePractice(pid);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.patch('/api/board/students/:id/interviews/:iid/practice-open', requireAuth, async (req, res) => {
+  try {
+    const sid = Number(req.params.id);
+    if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+    const ok = await setPracticeOpen(Number(req.params.iid), sid, !!req.body?.open);
+    if (!ok) return res.status(404).json({ success: false, message: '이 학생의 리포트가 아닙니다' });
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

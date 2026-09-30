@@ -4,6 +4,7 @@ import { brandHeader } from '../brand';
 import { analysisDataFromRecord, isRestorableRecord } from '../analysisRecord';
 import RoadmapView from './RoadmapView';
 import VerifyPanel from './VerifyPanel';
+import InterviewPracticeBoard from './InterviewPracticeBoard';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -679,6 +680,8 @@ function StudentDetail({ student, columns, onClose, onChanged, onError, onAnalyz
           placeholder="기록 내용/메모를 직접 붙여넣어도 됩니다 (선택)" />
 
         <RoadmapSection student={student} onError={onError} onChanged={onChanged} />
+
+        <InterviewPracticeBoard student={student} api={api} onError={onError} />
 
         <div style={S.sectionTitle}>첨부 파일 (생기부 PDF, 수행평가 결과물 등)</div>
         <div style={S.gradeList}>
