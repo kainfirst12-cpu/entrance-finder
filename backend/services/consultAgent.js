@@ -134,9 +134,9 @@ export function toolsForProvider(group) {
  * 전형 자료(지식베이스) 의미 검색 — 도구와 입결 콘솔 요약이 함께 쓴다.
  * 신설 전형처럼 입결이 아예 없는 건은 여기에만 단서가 있다.
  */
-// noServerEmbed: 서버 OpenAI 키로 임베딩하지 않는다(학원 코드 이용자의 면접 전략 — 원장 지시 2026-09-26).
+// 🔒 서버 OpenAI 키 임베딩은 serverEmbed(관리자 요청)일 때만 — 기본은 금지(2026-10-01 점검: 학원 코드 이용자 요청이 원장 키로 과금됐다).
 //   embedKey(이용자 본인 OpenAI 키)가 있으면 그 키로 의미 검색, 없으면 의미 검색을 건너뛰고 키워드 검색(DB만, 비용 없음)만 한다.
-export async function lookupAdmissionGuide(query, types, { schoolBriefs = false, noServerEmbed = false, embedKey = null } = {}) {
+export async function lookupAdmissionGuide(query, types, { schoolBriefs = false, serverEmbed = false, embedKey = null } = {}) {
   const q = String(query || '').slice(0, 500);
   // 🏫 학교 이름이 든 질문 — 원장이 검토한 학교 해설 대표본(DB, 벡터 아님)을 앞에 붙인다. 지식베이스가 비어 있어도 나온다.
   //   🔒 schoolBriefs 는 관리자 요청일 때만 true — 기본은 끔(다른 학원 해설 내용이 학원 코드 이용자에게 나가면 안 된다)
@@ -146,8 +146,8 @@ export async function lookupAdmissionGuide(query, types, { schoolBriefs = false,
 
   // 1) 의미 검색
   let found = [];
-  if (!noServerEmbed) {
-    const emb = await embedQuery(q);
+  if (serverEmbed) {
+    const emb = await embedQuery(q, { serverKey: true });
     found = await Promise.all(kinds.map((t) => searchByType(emb, t, 6)));
   } else if (embedKey) {
     try {
@@ -232,7 +232,7 @@ export async function runConsultTool(name, args = {}, ctx = {}) {
 
   if (name === 'search_knowledge') {
     if (!kbReady() && !ctx.schoolBriefs) return { 오류: '지식베이스가 비어 있다. 이 도구로는 답할 수 없으니 입결 자료나 학생 기록으로 답하라.' };
-    const blocks = await lookupAdmissionGuide(args.query, args.types, { schoolBriefs: !!ctx.schoolBriefs });
+    const blocks = await lookupAdmissionGuide(args.query, args.types, { schoolBriefs: !!ctx.schoolBriefs, serverEmbed: !!ctx.serverEmbed, embedKey: ctx.embedKey || null });
     return blocks.length ? { 자료: blocks } : { 자료: [], 비고: '관련 자료를 찾지 못했다.' };
   }
 

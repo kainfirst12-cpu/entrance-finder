@@ -14,7 +14,9 @@ function buildQuery(studentData) {
 }
 
 export async function loadKnowledgeBaseRAG(studentData, opts = {}) {
-  const { topKPerType = 6, maxCharsPerType = 18000 } = opts;
+  // 🔒 serverEmbed(관리자)가 아니면 서버 OpenAI 키를 쓰지 않는다 — embedKey(본인 GPT 키)가 없으면 null → 호출측 Drive 폴백(OpenAI 비용 없음)
+  const { topKPerType = 6, maxCharsPerType = 18000, serverEmbed = false, embedKey = null } = opts;
+  if (!serverEmbed && !embedKey) return null;
 
   if (!kbReady()) {
     // 아직 카운트 미로딩일 수 있으니 한 번 갱신 시도
@@ -26,7 +28,7 @@ export async function loadKnowledgeBaseRAG(studentData, opts = {}) {
   console.log(`[RAG] 쿼리: "${query}"`);
 
   const t0 = Date.now();
-  const qEmb = await embedQuery(query);
+  const qEmb = await embedQuery(query, serverEmbed ? { serverKey: true } : { apiKey: embedKey });
   console.log(`[RAG] 쿼리 임베딩 (${Date.now() - t0}ms)`);
 
   const t1 = Date.now();

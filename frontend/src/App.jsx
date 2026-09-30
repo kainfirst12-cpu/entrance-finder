@@ -152,7 +152,8 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error(`서버 응답 오류: ${response.status}`);
+        const errBody = await response.json().catch(() => null);
+        throw new Error(errBody?.error || errBody?.message || `서버 응답 오류: ${response.status}`);
       }
 
       const reader  = response.body.getReader();
