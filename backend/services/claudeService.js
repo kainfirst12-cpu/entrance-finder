@@ -172,7 +172,9 @@ const CLAUDE_MODELS = {
 };
 
 const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null, submodel = 'claude') => {
-  const client = new Anthropic({ apiKey: apiKey || process.env.ANTHROPIC_API_KEY });
+  // 키는 호출하는 쪽(server.js)이 정한다 — 여기서 서버 키로 몰래 폴백하지 않는다(SDK 기본값도 env 라 빈 키는 막는다).
+  if (!apiKey) throw new Error('API 키 없음 (설정에서 입력)');
+  const client = new Anthropic({ apiKey });
   const modelId = CLAUDE_MODELS[submodel] || CLAUDE_MODELS['claude'];
 
   // PDF 텍스트 (서버에서 미리 추출된 텍스트 사용, 없으면 직접 추출)

@@ -3385,7 +3385,9 @@ app.post('/api/analyze', requireAuth, pdfFields, async (req, res) => {
   studentData.schoolBrief = isAdminReq(req) ? await repBriefForSchool(studentData.school).catch(() => '') : '';
   const aiModel = req.headers['x-ai-model'] || 'claude';
   const submodel = req.headers['x-ai-submodel'] || aiModel;
-  const apiKey = req.headers['x-api-key'] || process.env.ANTHROPIC_API_KEY;
+  // 🔒 서버(원장) 키 폴백은 관리자만 — 학원 코드 이용자가 키 없이 분석하면 원장 API 비용이 나갔다(2026-10-01 점검).
+  const apiKey = req.headers['x-api-key'] || (isAdminReq(req) ? process.env.ANTHROPIC_API_KEY : '');
+  if (!apiKey) return res.status(400).json({ success: false, error: 'API 키 없음 (설정에서 입력)', message: 'API 키 없음 (설정에서 입력)' });
 
   // 사용량 기록 (로그인 이용자인 경우)
   if (req.user?.role === 'user' && req.user?.userId) {
