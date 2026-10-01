@@ -3,7 +3,7 @@ import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
-import { Term, LAYERS, layerOf, genderOk } from '../schoolTerms';
+import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf } from '../schoolTerms';
 import StudentFit from './StudentFit';
 
 // 성적의 무게(A 비율 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
@@ -76,7 +76,8 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const [limit, setLimit] = useState(PAGE);
   const [detailId, setDetailId] = useState(null);
   const [compare, setCompare] = useState([]);
-  const [layer, setLayer] = useState('전체');           // 학교 층 — 뽑는 범위가 다른 학교끼리는 따로 본다
+  const [layer, setLayer] = useState('전체');
+  const [district, setDistrict] = useState('전체');   // 평준화 학군(학군표가 있는 시도만)           // 학교 층 — 뽑는 범위가 다른 학교끼리는 따로 본다
   const [weights, setWeights] = useState(null);         // { [id]: { 국어:{a,pct,mean}, … } }
   const [fitOpen, setFitOpen] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
@@ -105,8 +106,8 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const types = useMemo(() => [...new Set(schools.map((s) => s.schoolType))].sort(), [schools]);
   const fonds = useMemo(() => [...new Set(schools.map((s) => s.fond).filter(Boolean))].sort(), [schools]);
 
-  useEffect(() => { setSigungu('전체'); }, [sido]);
-  useEffect(() => { setLimit(PAGE); }, [level, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer]);
+  useEffect(() => { setSigungu('전체'); setDistrict('전체'); }, [sido]);
+  useEffect(() => { setLimit(PAGE); }, [level, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, district]);
   useEffect(() => { setType('전체'); }, [level]);
 
   const filtered = useMemo(() => {
@@ -114,6 +115,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
     let list = schools.filter((s) =>
       (sido === '전체' || s.sido === sido) &&
       (sigungu === '전체' || s.sigungu === sigungu) &&
+      (district === '전체' || (district === '비평준화' ? !districtOf(s) : districtOf(s)?.name === district)) &&
       (type === '전체' || s.schoolType === type) &&
       (fond === '전체' || s.fond === fond) &&
       (gender === '전체' || (gender === '남학생' || gender === '여학생' ? genderOk(s, gender) : s.gender === gender)) &&
@@ -139,7 +141,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
     };
     list = [...list].sort(sorters[sort] || sorters.name);
     return list;
-  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights]);
+  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights, district]);
 
   const detail = detailId ? schools.find((s) => s.id === detailId) || (cat?.schools || []).find((s) => s.id === detailId) : null;
   const compareSchools = compare.map((id) => (cat?.schools || []).find((s) => s.id === id)).filter(Boolean);
@@ -207,6 +209,13 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <option value="전체">시군구 전체</option>
           {sigungus.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        {isHigh && DISTRICTS[sido] && (
+          <select style={S.select} value={district} onChange={(e) => { setDistrict(e.target.value); setSigungu('전체'); }} title={DISTRICTS[sido].source}>
+            <option value="전체">평준화 학군 전체</option>
+            {DISTRICTS[sido].list.map((d) => <option key={d.name} value={d.name}>{d.name} 학군 ({d.sigungu.join('·')})</option>)}
+            <option value="비평준화">비평준화 지역</option>
+          </select>
+        )}
         {isHigh && (
           <select style={S.select} value={type} onChange={(e) => setType(e.target.value)}>
             <option value="전체">유형 전체</option>
@@ -266,7 +275,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
               <div style={S.cardHead}>
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name} title={s.schoolName}>{s.schoolName}</div>
-                  <div style={S.sub}>{s.sido} {s.sigungu} · {s.schoolType}</div>
+                  <div style={S.sub}>{s.sido} {s.sigungu} · {s.schoolType}{isHigh && districtOf(s) && layerOf(s) === 'local' ? ` · ${districtOf(s).name} 학군` : ''}</div>
                 </div>
                 <button style={{ ...S.smallBtn, ...(inCmp ? S.smallBtnOn : {}) }} onClick={() => toggleCompare(s.id)} title={inCmp ? '비교함에서 빼기' : '비교함에 담기'}>
                   {inCmp ? '담김' : '+ 비교'}
