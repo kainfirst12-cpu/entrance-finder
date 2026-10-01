@@ -11,6 +11,7 @@ const ACTIONS = [
   { key: 'suharchive', icon: '🗂️', label: '수행평가 아카이브', desc: '자료 분석·분류 보관·재활용 배정', color: '#c46ad6', bg: 'rgba(196,106,214,0.16)' },
   { key: 'interview', icon: '🎤', label: '면접 전략', desc: '대학별 문항·예시 답안·평가표 매핑', color: '#d6a24a', bg: 'rgba(214,162,74,0.16)' },
   { key: 'seminar', icon: '📽️', label: '설명회 자료 만들기', desc: '담당 학교 성취도 분석 → 설명회 PPT', color: '#00b765', bg: 'rgba(0,183,101,0.14)', hideWhenLocked: true },
+  { key: 'course', icon: '🧭', label: '과목 선택 보조', desc: '목표 학과 권장과목 → 2·3학년 이수 계획', color: '#8b5cf6', bg: 'rgba(139,92,246,0.14)', hideWhenLocked: true },
   { key: 'list', icon: '👥', label: '학생 목록', desc: '저장된 분석 목록', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];

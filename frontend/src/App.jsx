@@ -17,6 +17,7 @@ import SuhaengArchive from './components/SuhaengArchive';
 import { menuAllowed, readMenus } from './menus';
 import InterviewStrategy from './components/InterviewStrategy';
 import SeminarDeck from './components/SeminarDeck';
+import CourseHelper from './components/CourseHelper';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import AssistantPanel from './components/AssistantPanel';
@@ -530,6 +531,9 @@ export default function App() {
             aiGroup={modelConfig[selectedModel]?.group || selectedModel}
             onAuthError={handleLogout}
           />
+        )}
+        {menuAllowed(menus, role, view) && view === 'course' && (
+          <CourseHelper onAuthError={handleLogout} />
         )}
         {menuAllowed(menus, role, view) && view === 'seminar' && (
           <SeminarDeck

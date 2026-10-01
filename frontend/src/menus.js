@@ -17,6 +17,7 @@ export const MENU_ITEMS = [
   { key: 'interview', label: '면접 전략(선택한 코드만, 기본 잠금)', optIn: true },
   // 설명회 자료 만들기 — 관리자 전용으로 시작, 관리자가 고른 코드에만 연다(2026-10-01).
   { key: 'seminar', label: '설명회 자료 만들기(선택한 코드만, 기본 잠금)', optIn: true },
+  { key: 'course', label: '과목 선택 보조(고1 권장과목·이수 계획, 기본 잠금)', optIn: true },
   { key: 'schoolreports', label: '입시 해설 보고서 보관함(서버 저장 — 용량 사용, 기본 잠금)', optIn: true },
 ];
 export const OPT_IN_MENUS = MENU_ITEMS.filter((m) => m.optIn).map((m) => m.key);

@@ -328,12 +328,13 @@ function requireAuth(req, res, next) {
 
 // 관리자 전용
 // 학원 코드별 공개 메뉴 — 토큰의 menus(null=전부) 로 1차, 관리자가 그 사이 바꿨을 수 있어 DB 값으로 2차 확인
-const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list', 'schoolreports', 'seminar'];
+const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list', 'schoolreports', 'seminar', 'course'];
 // optIn 메뉴는 '전체 공개(null)'여도 닫혀 있다 — 관리자가 코드마다 직접 넣어야 열린다(frontend/src/menus.js 와 같은 표).
 // 'schoolreports' = 입시 해설 보고서 보관(ef_school_reports 저장·목록·열기) — DB 용량을 쓰므로 기본 잠금(원장 지시 2026-09-21).
 // 'interview' = 면접 전략 — 원래 관리자 전용. 관리자가 고른 학원 코드(원장)에게만 연다(2026-09-26). 보관함은 코드별 owner_id 로 분리.
 // 'seminar' = 설명회 자료 만들기 — 관리자 전용으로 시작, 관리자가 고른 코드에만 연다(원장 지시 2026-10-01).
-const OPT_IN_MENUS = new Set(['schoolreports', 'interview', 'seminar']);
+// 'course' = 과목 선택 보조(고1) — 설명회처럼 관리자 + 고른 코드에만(2026-10-01).
+const OPT_IN_MENUS = new Set(['schoolreports', 'interview', 'seminar', 'course']);
 function menuAllowed(menus, key) {
   if (OPT_IN_MENUS.has(key)) return Array.isArray(menus) && menus.includes(key);
   return !Array.isArray(menus) || menus.includes(key);

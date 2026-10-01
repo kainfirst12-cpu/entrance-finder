@@ -16,6 +16,7 @@ export const VIEWS = [
   { key: 'suharchive', label: '수행평가 보관함', desc: '만들어 둔 수행평가를 모아 보고 학생에게 배정한다.' },
   { key: 'interview', label: '면접 전략', desc: '학생부와 지원 대학·전형으로 대학별 면접 문항·예시 답안 리포트를 만든다. 사용설명서·예시 리포트도 여기. 리포트를 학생에게 배정하면 학생 페이지(열람 코드) 🎤 면접 연습에 문항이 열리고, 학생이 저장한 연습 답변은 학생 보드 상세의 면접 연습 칸에서 보고 코멘트를 단다.' },
   { key: 'seminar', label: '설명회 자료 만들기', desc: '담당 고등학교를 골라 학교알리미 1학년 성취도로 학교별 분석·비교·분류 슬라이드를 만들고 PPT로 내려받는다. 담당 학교 묶음은 저장해 두고 새 공시가 들어오면 다시 내려받으면 숫자가 바뀐다.' },
+  { key: 'course', label: '과목 선택 보조', desc: '고1 학생의 목표 대학·모집단위(최대 3곳) 2028 권장과목(핵심·권장)을 모아 2·3학년 이수 계획을 짜고, 핵심과목 빠짐·위계 순서·성취도만 과목을 점검한다. 학생 기록에 저장.' },
   { key: 'board', label: '학생 보드', desc: '학생별 성적·기록·배치·로드맵을 관리한다.' },
   { key: 'ipgyeol', label: '입결 콘솔', desc: '대학어디가 입시결과(70%컷·경쟁률·충원)를 조건으로 뒤진다.' },
   { key: 'ratio', label: '실시간 경쟁률', desc: '원서 접수 기간 경쟁률을 따라간다.' },
@@ -27,7 +28,7 @@ export const VIEWS = [
 ];
 
 export function useAppAgent({ view, setView, selectedModel, setModel, modelConfig, role, menus, hasResult }) {
-  const allowed = VIEWS.filter((v) => (!v.adminOnly || role === 'admin') && (!v.needsResult || hasResult) && (!['interview', 'seminar'].includes(v.key) || menuAllowed(menus, role, v.key)));
+  const allowed = VIEWS.filter((v) => (!v.adminOnly || role === 'admin') && (!v.needsResult || hasResult) && (!['interview', 'seminar', 'course'].includes(v.key) || menuAllowed(menus, role, v.key)));
   const here = VIEWS.find((v) => v.key === view);
 
   useAssistantAgent('global', {

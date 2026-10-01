@@ -161,7 +161,7 @@ export function useAdminAgent({ users, dbOn, patchUser, createUser, deleteUser, 
       },
       {
         name: 'set_user_menus',
-        description: `이용자 코드의 공개 메뉴를 바꾼다. mode: open(메뉴 열기) / close(메뉴 닫기) / all(전체 공개로 되돌리기). 메뉴 key: ${MENU_ITEMS.map((m) => `${m.key}(${m.label})`).join(', ')}. interview·schoolreports·seminar 는 전체 공개여도 잠겨 있어 open 으로 직접 열어야 한다.`,
+        description: `이용자 코드의 공개 메뉴를 바꾼다. mode: open(메뉴 열기) / close(메뉴 닫기) / all(전체 공개로 되돌리기). 메뉴 key: ${MENU_ITEMS.map((m) => `${m.key}(${m.label})`).join(', ')}. interview·schoolreports·seminar·course 는 전체 공개여도 잠겨 있어 open 으로 직접 열어야 한다.`,
         schema: {
           type: 'object',
           properties: {
