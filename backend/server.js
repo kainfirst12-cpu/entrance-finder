@@ -49,6 +49,7 @@ import {
   listForCuration, setReviewStatus, findRep, repBriefForSchool,
 } from './services/schoolReportStore.js';
 import { ensureSeminarTable, listSeminarDecks, getSeminarDeck, createSeminarDeck, updateSeminarDeck, deleteSeminarDeck } from './services/seminarStore.js';
+import { ensureSeminarCommonTable, listCommon, getCommon, getPublishedCommon, createCommonFrom, saveCommon, appendCommonUpdate, publishCommon, deleteCommon, applyCommonProposals } from './services/seminarCommonStore.js';
 import { buildReportData } from './services/schoolReportData.js';
 import { listLibrary, libraryOwners, getLibraryItem, updateLibraryItem, deleteLibraryItem, BODY_EDITABLE, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
 import jwt from 'jsonwebtoken';
@@ -1451,6 +1452,127 @@ app.post('/api/seminar/notes', SEMINAR, async (req, res) => {
   } catch (err) {
     console.error('[seminar/notes] 오류:', err.message);
     sendDone({ success: false, message: err.message });
+  }
+});
+
+// ── 📽️ 설명회 ① 제도 설명 '공통본' — 관리자만 만들고 고치고 발행한다. 발행본은 설명회 메뉴가 열린 코드가 읽는다. ──
+app.get('/api/seminar/common/published', SEMINAR, async (req, res) => {
+  try {
+    if (!dbEnabled()) return res.json({ success: true, item: null });
+    res.json({ success: true, item: await getPublishedCommon() });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.get('/api/seminar/common', requireAdmin, async (req, res) => {
+  try { if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' }); res.json({ success: true, items: await listCommon() }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.get('/api/seminar/common/:id', requireAdmin, async (req, res) => {
+  try { const v = await getCommon(Number(req.params.id)); if (!v) return res.status(404).json({ success: false, message: '판 없음' }); res.json({ success: true, item: v }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/seminar/common', requireAdmin, async (req, res) => {
+  try { res.json({ success: true, item: await createCommonFrom(Number(req.body?.baseId), { title: req.body?.title, meta: req.body?.meta }) }); }
+  catch (e) { res.status(400).json({ success: false, message: e.message }); }
+});
+app.put('/api/seminar/common/:id', requireAdmin, async (req, res) => {
+  try { const v = await saveCommon(Number(req.params.id), req.body || {}); if (!v) return res.status(404).json({ success: false, message: '판 없음' }); res.json({ success: true, item: v }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/seminar/common/:id/publish', requireAdmin, async (req, res) => {
+  try { res.json({ success: await publishCommon(Number(req.params.id)) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/seminar/common/:id', requireAdmin, async (req, res) => {
+  try { await deleteCommon(Number(req.params.id)); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// AI 갱신 — 한 장(chapter)씩. 지식베이스(대입정책·대학별전형) 발췌 + 원장이 올린 개정 자료를 근거로
+// 슬라이드마다 keep/update/remove/new 를 제안한다. 제안은 slides[].proposal 에만 넣고, 내용은 원장이 승인해야 바뀐다.
+const COMMON_LAYOUT_GUIDE = `레이아웃별 data 모양(이 모양을 꼭 지킬 것, 강조는 **굵게**):
+- section   { "title": "장 제목" }
+- statement { "kicker": "작은 머리말(선택)", "lines": ["한 줄", "…"] }   ← 3~5줄
+- qa        { "q": "질문", "a": ["답 문단", "…"] }                      ← 문단 2~3개
+- cards     { "cards": [{"title":"…","body":"…"}] }                     ← 2~6장, body 80자 이내
+- bullets   { "lead": "(선택)", "items": ["…"], "note": "(선택)" }       ← 3~6개
+- table     { "columns": ["…"], "rows": [["…"]], "note": "(선택)" }     ← 행 8개 이하
+- compare   { "left": {"title":"…","items":["…"]}, "right": {"title":"…","items":["…"]} }
+- figure    { "caption": "넣을 그림 설명", "note": "(선택)" }          ← 그림·차트는 원장이 파워포인트에서 붙인다`;
+const COMMON_UPDATE_SYSTEM = `당신은 학원 고입설명회의 '입시 제도 설명' 슬라이드를 해마다 최신 자료로 고치는 입시 컨설턴트입니다.
+청중은 중3 학생과 학부모님이고, 슬라이드는 작년 설명회 자료를 바탕으로 합니다.
+일하는 방식:
+- 주어진 [근거 자료](지식베이스 발췌·개정 자료)에 비추어 슬라이드마다 그대로 둘지(keep), 고칠지(update), 뺄지(remove) 정하고, 꼭 필요하면 새 슬라이드(new)를 제안합니다.
+- **근거 자료에 있는 사실만** 바꾸거나 새로 씁니다. 근거가 없는 숫자·연도·대학 정책을 지어내지 마십시오. 근거가 없으면 keep 입니다.
+- 연도 표현은 설명회 기준(아래 [설명회 기준])에 맞춥니다. 예: 작년의 '현재 1학년'이 올해는 '현재 2학년'일 수 있습니다. 근거가 애매하면 바꾸지 말고 reason 에 '확인 필요'를 적습니다.
+- 특정 학원·지역 이름, 학원 홍보 문구는 넣지 않습니다(여러 학원이 함께 쓰는 공통본). 학부모를 부를 때는 '학부모님'.
+- 과장·보장 표현 금지. 문장은 짧게, 슬라이드에 들어갈 분량으로.
+- update/new 는 layout·heading·data·source 를 모두 채웁니다. source 는 근거 자료 제목(학년도 포함).
+- reason 은 원장이 승인 판단을 할 수 있게 "무엇이 왜 바뀌었는지" 한두 문장, evidence 는 근거 자료 제목.
+${COMMON_LAYOUT_GUIDE}
+반드시 JSON 하나만 출력:
+{"summary":"이 장에서 바뀐 점 요약 2~3문장","slides":[
+ {"id":"s012","action":"keep"},
+ {"id":"s013","action":"update","layout":"qa","heading":"…","data":{…},"source":"…","reason":"…","evidence":"…"},
+ {"id":"s014","action":"remove","reason":"…","evidence":"…"},
+ {"id":null,"action":"new","after":"s014","layout":"bullets","heading":"…","data":{…},"source":"…","reason":"…","evidence":"…"}]}`;
+app.post('/api/seminar/common/:id/ai-update', requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const chapter = Number(req.body?.chapter);
+  const extraText = String(req.body?.extraText || '').slice(0, 60000);
+  const extraNames = Array.isArray(req.body?.extraNames) ? req.body.extraNames.slice(0, 20).map(String) : [];
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+  const v = await getCommon(id).catch(() => null);
+  if (!v) return res.status(404).json({ success: false, message: '판 없음' });
+  if (v.status === 'published') return res.status(400).json({ success: false, message: '발행한 판은 직접 고치지 않습니다 — 새 판을 만들어 갱신하세요' });
+  const chSlides = (v.slides || []).filter((s) => Number(s.chapter) === chapter && !s.pendingNew);
+  if (!chSlides.length) return res.status(400).json({ success: false, message: '그 장에 슬라이드가 없습니다' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+  try {
+    const chTitle = (v.chapters || {})[chapter] || '';
+    // 지식베이스 — 장 제목 + 슬라이드 제목·질문마다 찾는다(겹치는 발췌는 kbExcerpt 쪽에서 걸러지지 않으니 여기서 줄 단위로 거른다)
+    send({ stage: '지식베이스에서 근거 찾는 중' });
+    const queries = [chTitle, ...chSlides.map((s) => [s.heading, s.data?.q, s.data?.title].filter(Boolean).join(' '))].filter((q) => q && q.length > 3);
+    const seenLine = new Set(); const kbParts = []; let kbHits = 0;
+    for (const q of [...new Set(queries)].slice(0, 10)) {
+      const ex = await kbExcerpt(`${q} ${v.meta?.daeipYear || ''}학년도 대입`, ['대입정책', '대학별전형'], `지식베이스 · ${q.slice(0, 30)}`, 4, 900, { serverEmbed: true });
+      const lines = ex.split('\n').slice(1).filter((l) => l && !seenLine.has(l.slice(0, 120)) && seenLine.add(l.slice(0, 120)));
+      if (lines.length) { kbParts.push(`[지식베이스 발췌 · ${q.slice(0, 40)}]\n${lines.join('\n')}`); kbHits += lines.length; }
+    }
+    const kbText = kbParts.join('\n\n').slice(0, 30000);
+    if (!kbText && !extraText) return sendDone({ success: false, message: '근거 자료가 없습니다 — 지식베이스에서 찾은 발췌가 0건이고, 올린 개정 자료도 없습니다. 개정 자료 파일을 올리거나 관리자 > 지식베이스 동기화 후 다시 해 주세요.' });
+
+    send({ stage: `AI가 ${chSlides.length}장 검토 중 (근거 발췌 ${kbHits}건${extraNames.length ? ` + 개정 자료 ${extraNames.length}개` : ''})` });
+    const meta = v.meta || {};
+    const userMsg = [
+      `[설명회 기준] 오늘 ${new Date().toISOString().slice(0, 10)} · ${meta.goipYear || '?'}학년도 고입(현 중3) 대상 · 이 학생들의 대입은 ${meta.daeipYear || '?'}학년도`,
+      `[장] ${chapter}. ${chTitle}`,
+      `[지금 슬라이드 ${chSlides.length}장]\n${JSON.stringify(chSlides.map(({ proposal, ...s }) => s))}`,
+      extraText ? `[원장이 올린 개정 자료: ${extraNames.join(', ')}]\n${extraText}` : '',
+      kbText ? `[근거 자료 · 지식베이스]\n${kbText}` : '',
+    ].filter(Boolean).join('\n\n');
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: COMMON_UPDATE_SYSTEM, userMsg, maxTokens: 32000 });
+    const parsed = parseJsonLoose(reply, '갱신 제안 JSON');
+
+    // 제안을 판에 끼워 넣는다 — 다시 읽어 그 사이 저장된 것 위에 얹는다
+    const cur = await getCommon(id);
+    const { slides, counts: { update: nUpd, remove: nRem, new: nNew } } = applyCommonProposals(cur.slides || [], chapter, parsed);
+    const saved = await saveCommon(id, { slides });
+    const summary = String(parsed.summary || '').slice(0, 1000);
+    await appendCommonUpdate(id, { chapter, at: new Date().toISOString(), summary, kbHits, extra: extraNames, counts: { update: nUpd, remove: nRem, new: nNew } });
+    sendDone({ success: true, item: saved, summary, counts: { update: nUpd, remove: nRem, new: nNew, keep: chSlides.length - nUpd - nRem }, kbHits });
+  } catch (err) {
+    console.error('[seminar/common/ai-update] 오류:', err.message);
+    sendDone({ success: false, message: friendlyAIError(err, aiModel) });
   }
 });
 
@@ -5069,11 +5191,13 @@ app.listen(PORT, async () => {
   onDbReady(async () => {
     await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
     await ensureSeminarTable().catch((e) => console.warn('[seminar] 테이블 준비 실패:', e.message));
+    await ensureSeminarCommonTable().catch((e) => console.warn('[seminar-common] 테이블 준비 실패:', e.message));
     await refreshKbCount();
   });
   await initDb();
   await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
   await ensureSeminarTable().catch((e) => console.warn('[seminar] 테이블 준비 실패:', e.message));
+  await ensureSeminarCommonTable().catch((e) => console.warn('[seminar-common] 테이블 준비 실패:', e.message));
   // 📈 실시간 경쟁률 자동 수집 — 접수 기간에만 실제로 돈다(스스로 판단한다).
   startRatioCron().catch((e) => console.warn('[ratio] 예약 실패:', e.message));
   await refreshKbCount();

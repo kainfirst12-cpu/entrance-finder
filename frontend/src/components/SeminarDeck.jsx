@@ -1,43 +1,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
+import { api, postSSE, token } from '../seminar/api';
 import { fetchGzJson, CATALOG_URL, regionLabel } from '../schoolCatalog';
 import { analyzeSchools, factsForAI, SUBJECTS, shortName } from '../seminar/analysis';
 import { useAssistantAgent } from '../assistant/useAssistantAgent';
 import { buildSlides, numberSlides } from '../seminar/deckModel';
 import SlidePreview from '../seminar/SlidePreview';
+import CommonEditor from '../seminar/CommonEditor';
+import { buildCommonSlides } from '../seminar/commonSlides';
 
 // 📽️ 설명회 자료 만들기 — 담당 고등학교를 고르면 학교알리미 1학년 성취도로 학교별 분석·비교·분류 슬라이드를 만들고 PPT 로 내려받는다.
 // 슬라이드는 저장하지 않는다. 담당 학교·옵션·문구만 저장하고 열 때마다 최신 공시 데이터로 다시 그린다
 // (새 공시가 catalog 에 들어오면 같은 자료를 다시 내려받는 것만으로 숫자가 바뀐다).
 // 메뉴 잠금: optIn 'seminar' — 관리자 + 관리자가 직접 체크한 학원 코드만(서버 requireMenu 가 실제로 막는다).
 
-const token = () => localStorage.getItem('ef_token');
-async function api(path, opts = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: opts.method || 'GET',
-    headers: { Authorization: `Bearer ${token()}`, ...(opts.body ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) },
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  });
-  // 401 만 로그아웃, 403 은 서버 메시지만(메뉴 잠금)
-  if (res.status === 401 || res.status === 403) { let m = res.status === 401 ? '로그인이 필요합니다' : '이 학원 코드에는 열려 있지 않은 기능입니다'; try { m = (await res.json()).message || m; } catch { /* 본문 없음 */ } const e = new Error(m); e.auth = res.status === 401; throw e; }
-  return res.json();
-}
-async function postSSE(url, opts) {
-  const res = await fetch(url, opts);
-  const ct = res.headers.get('content-type') || '';
-  if (!ct.includes('text/event-stream')) { try { return await res.json(); } catch { return { success: false, message: `서버 응답 오류 (HTTP ${res.status})` }; } }
-  const reader = res.body.getReader(); const dec = new TextDecoder();
-  let buf = '', result = null;
-  while (true) {
-    const { done, value } = await reader.read(); if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n'); buf = lines.pop();
-    for (const l of lines) if (l.startsWith('data: ')) { try { result = JSON.parse(l.slice(6)); } catch { /* 조각 */ } }
-  }
-  return result || { success: false, message: '서버 응답이 비었습니다 (연결 끊김)' };
-}
-
-const DEFAULT_OPTS = { part: 1, title: '일반고 선택의 기준', region: '', startPage: 1, semester: 'avg', includeCover: true };
+const DEFAULT_OPTS = { part: 1, title: '일반고 선택의 기준', region: '', startPage: 1, semester: 'avg', includeCover: true, includeCommon: false, commonChapters: null };
 const emptyDeck = () => ({ id: null, title: '설명회 자료', school_ids: [], options: { ...DEFAULT_OPTS }, notes: {} });
 
 // 시도별 전 과목 파일 — 학교 항목의 bandsFile(공시정보 화면과 같은 파일)
@@ -47,7 +24,25 @@ function loadBandsFile(file) {
   return bandsCache.get(file);
 }
 
-export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
+export default function SeminarDeck(props) {
+  // 관리자만 '① 제도 설명 공통본' 관리 탭을 본다(서버도 requireAdmin)
+  const isAdmin = localStorage.getItem('ef_role') === 'admin';
+  const [tab, setTab] = useState('deck');
+  return (
+    <div style={S.page}>
+      <h2 style={S.h2}>📽️ 설명회 자료 만들기</h2>
+      {isAdmin && (
+        <div style={{ display: 'flex', gap: 6, margin: '10px 0 4px' }}>
+          <button style={tab === 'deck' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('deck')}>설명회 자료 (담당 학교)</button>
+          <button style={tab === 'common' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('common')}>① 제도 설명 공통본 관리 (관리자)</button>
+        </div>
+      )}
+      {tab === 'common' && isAdmin ? <CommonEditor {...props} /> : <DeckBuilder {...props} />}
+    </div>
+  );
+}
+
+function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
   const [catalog, setCatalog] = useState(null);
   const [catErr, setCatErr] = useState('');
   const [deck, setDeck] = useState(emptyDeck);
@@ -64,6 +59,10 @@ export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAu
   const [big, setBig] = useState(null);         // 크게 볼 슬라이드 index
 
   const fail = useCallback((e) => { if (e?.auth) onAuthError?.(); setErr(e?.message || String(e)); }, [onAuthError]);
+
+  // 발행된 ① 제도 설명 공통본(없으면 null)
+  const [common, setCommon] = useState(null);
+  useEffect(() => { api('/api/seminar/common/published').then((r) => r.success && setCommon(r.item)).catch(() => {}); }, []);
 
   useEffect(() => {
     fetchGzJson(CATALOG_URL).then((c) => setCatalog((c.schools || []).filter((s) => s.schoolLevel === '고등학교'))).catch((e) => setCatErr(e.message));
@@ -94,7 +93,16 @@ export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAu
   }, [chosen]);
   const ready = chosen.length > 0 && chosen.every((s) => full[s.id] || !s.bandsFile); // bandsFile 없는 학교는 catalog 의 국·영·수만
   const analysis = useMemo(() => (ready ? analyzeSchools(chosen.map((s) => ({ ...s, bands: full[s.id] || s.bands || [] })), { semester: opts.semester === 'avg' ? 'avg' : Number(opts.semester) }) : null), [ready, chosen, full, opts.semester]);
-  const slides = useMemo(() => (analysis ? numberSlides(buildSlides({ ...opts, region: opts.region || autoRegion, notes: deck.notes }, analysis), opts.startPage) : []), [analysis, opts, autoRegion, deck.notes]);
+  const commonChNums = useMemo(() => [...new Set((common?.slides || []).map((s) => Number(s.chapter)))].sort((a, b) => a - b), [common]);
+  const commonSlides = useMemo(() => {
+    if (!opts.includeCommon || !common) return [];
+    const chs = Array.isArray(opts.commonChapters) ? opts.commonChapters : commonChNums;
+    return buildCommonSlides({ ...common, slides: common.slides.filter((s) => chs.includes(Number(s.chapter))) });
+  }, [common, opts.includeCommon, opts.commonChapters, commonChNums]);
+  const slides = useMemo(() => {
+    const school = analysis ? buildSlides({ ...opts, region: opts.region || autoRegion, notes: deck.notes }, analysis) : [];
+    return numberSlides([...commonSlides, ...school], opts.startPage);
+  }, [analysis, opts, autoRegion, deck.notes, commonSlides]);
   const skipped = analysis ? analysis.items.filter((it) => !analysis.usable.includes(it)) : [];
 
   const patch = (p) => { setDeck((d) => ({ ...d, ...p })); setDirty(true); };
@@ -255,8 +263,7 @@ export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAu
   const editItem = editId && analysis?.usable.find((x) => x.id === editId);
 
   return (
-    <div style={S.page}>
-      <h2 style={S.h2}>📽️ 설명회 자료 만들기</h2>
+    <div>
       <p style={S.lead}>담당 고등학교를 고르면 학교알리미 1학년 성취도(A~E)로 학교별 분석 · 과목별 비교 · 유형 분류 슬라이드를 만들어 PPT로 내려받습니다.
         표·차트는 파워포인트에서 바로 고칠 수 있는 진짜 표·차트로 들어갑니다. 담당 학교 묶음을 저장해 두면, 새 공시가 반영된 뒤 다시 내려받는 것만으로 숫자가 바뀝니다.</p>
 
@@ -323,6 +330,31 @@ export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAu
               </select>
             </label>
             <label style={S.lbl}><input type="checkbox" checked={opts.includeCover !== false} onChange={(e) => setOpt('includeCover', e.target.checked)} /> 파트 표지 넣기</label>
+            <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0', paddingTop: 8 }}>
+              <label style={S.lbl}><input type="checkbox" checked={!!opts.includeCommon} disabled={!common} onChange={(e) => {
+                // 켜면 학교별 파트 번호를 공통본 다음 번호로 맞춘다(겹치면 '1 . 고교학점제'와 '1 . 일반고 선택'이 같은 번호가 된다)
+                const on = e.target.checked, next = Math.max(0, ...commonChNums) + 1;
+                patch({ options: { ...opts, includeCommon: on, ...(on && Number(opts.part) < next ? { part: next } : {}) } });
+              }} /> ① 제도 설명(공통본) 앞에 넣기</label>
+              {!common && <div style={S.dim}>아직 발행된 공통본이 없습니다.</div>}
+              {common && opts.includeCommon && (
+                <>
+                  <div style={S.dim}>{common.title}</div>
+                  {commonChNums.map((c) => {
+                    const on = !Array.isArray(opts.commonChapters) || opts.commonChapters.includes(c);
+                    return (
+                      <label key={c} style={{ ...S.lbl, marginBottom: 3 }}>
+                        <input type="checkbox" checked={on} onChange={() => {
+                          const cur = Array.isArray(opts.commonChapters) ? opts.commonChapters : commonChNums;
+                          setOpt('commonChapters', on ? cur.filter((x) => x !== c) : [...cur, c].sort((a, b) => a - b));
+                        }} /> {c}. {common.chapters?.[c]}
+                      </label>
+                    );
+                  })}
+                  {Number(opts.part) <= Math.max(0, ...commonChNums) && <div style={{ ...S.dim, color: '#d6a24a' }}>학교별 파트 번호({opts.part})가 공통본 장 번호와 겹칩니다. {Math.max(...commonChNums) + 1} 이상으로 바꾸세요.</div>}
+                </>
+              )}
+            </div>
             <div style={S.dim}>학교마다 그 학교의 가장 최근 공시 학년도를 씁니다. 분류(강세·성취도 층)는 고른 학교들끼리 비교한 결과라, 묶음이 바뀌면 달라질 수 있습니다.</div>
           </section>
 
