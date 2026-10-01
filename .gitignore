@@ -45,3 +45,4 @@ backend/data/ratio/
 !mcp/seminar-deck/plugin/.claude-plugin/plugin.json
 !mcp/seminar-deck/plugin/.mcp.json
 mcp/seminar-deck/node_modules/
+scripts/neis/out/
