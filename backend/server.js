@@ -23,6 +23,7 @@ import {
   listOpenPracticeSets, isOpenInterviewOf, countPracticeToday, addPractice, listPractice, getPracticeStudentId,
   updatePractice, deletePractice, listStudentInterviews, setPracticeOpen, linkInterviewToStudent,
 } from './services/interviewPracticeStore.js';
+import { searchBank, bankUnivs, bankStats, bankForCard, bankPromptBlock } from './services/interviewBank.js';
 import { runAssistantStep } from './services/assistantAgent.js';
 import {
   listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
@@ -2089,6 +2090,10 @@ async function interviewCardFacts(card, kbOpts = {}) {
   const who = `${card.univ} ${card.dept || ''} ${card.track || ''}`.trim();
   parts.push(await kbExcerpt(`${who} 면접 전형방법 평가요소`, ['대학별전형'], '지식베이스 발췌 · 대학별전형', 4, 700, kbOpts));
   parts.push(await kbExcerpt(`${who} 면접 후기 기출 문항 질문 분위기`, ['면접자료'], '면접 자료집·후기·공개 기출 문항 발췌', 6, 900, kbOpts));
+  // 공식 기출(선행학습 영향평가 보고서) — 출제 형식·난이도·어투의 기준. 그대로 베끼지 말고 학생부 소재와 엮으라고 적어 둔다
+  const bankBlock = bankPromptBlock(card.univ, card.dept, 8);
+  if (bankBlock) parts.push(`${bankBlock}
+(위 문항은 이 대학의 실제 출제 형식·난이도·어투 참고용이다. 그대로 옮기지 말고 학생부 소재와 연결해 새 문항을 만든다.)`);
   return parts.filter(Boolean).join('\n\n');
 }
 
@@ -2258,6 +2263,18 @@ app.post('/api/interview', requireMenu('interview'), async (req, res) => {
     if (req.body?.studentId && !(await canEditStudent(req, Number(req.body.studentId)))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
     res.json({ success: true, item: await createInterview(req.user.userId, req.body) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 📚 공식 기출 은행 — /api/interview/:id 보다 먼저 선언해야 'bank' 가 id 로 잡히지 않는다
+app.get('/api/interview/bank', requireMenu('interview'), (req, res) => {
+  const q = req.query || {};
+  res.json({ success: true, ...searchBank({ q: q.q, univ: q.univ, dept: q.dept, type: q.type, year: q.year,
+    passageOnly: q.passage === '1', offset: Number(q.offset) || 0, limit: Math.min(100, Number(q.limit) || 30) }) });
+});
+app.get('/api/interview/bank/meta', requireMenu('interview'), (req, res) => {
+  res.json({ success: true, stats: bankStats(), univs: bankUnivs() });
+});
+app.get('/api/interview/bank/for-card', requireMenu('interview'), (req, res) => {
+  res.json({ success: true, items: bankForCard(req.query.univ || '', req.query.dept || '', Math.min(30, Number(req.query.n) || 10)) });
 });
 app.get('/api/interview/:id', requireMenu('interview'), async (req, res) => {
   try {
@@ -3103,7 +3120,17 @@ app.get('/api/student-view/:code/interview-practice', async (req, res) => {
     const sid = await studentIdFromCode(req.params.code);
     if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
     const [sets, records] = await Promise.all([listOpenPracticeSets(sid), listPractice(sid, 200)]);
-    res.json({ success: true, sets, records });
+    // 공개된 리포트의 지원 카드(대학·학과)마다 그 대학 공식 기출을 붙인다 — 선생님이 연 대학만
+    const seen = new Set(), bank = [];
+    for (const c of sets.flatMap((st) => st.cards)) {
+      const k = `${c.univ}|${c.dept}`;
+      if (seen.has(k)) continue; seen.add(k);
+      const items = bankForCard(c.univ, c.dept, 15);
+      if (items.length) bank.push({ univ: c.univ, dept: c.dept, questions: items.map((it) => ({
+        bankId: it.id, q: it.q, passage: it.psg || '', follow: (it.fu || [])[0] || '', followType: (it.fu || []).length ? '꼬리' : '',
+        intent: it.intent || '', sample: it.ev || '', type: it.type, year: it.y, dept: it.dept, source: it.source })) });
+    }
+    res.json({ success: true, sets, records, bank });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.post('/api/student-view/:code/interview-practice', async (req, res) => {

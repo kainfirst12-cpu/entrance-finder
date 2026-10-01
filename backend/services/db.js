@@ -245,6 +245,8 @@ export async function initDb() {
         created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
       );
     `);
+    // 공식 기출 은행 문항으로 연습한 기록은 리포트 대신 문항 id 를 남긴다
+    await pool.query(`ALTER TABLE ef_interview_practice ADD COLUMN IF NOT EXISTS bank_id TEXT;`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ef_interview_practice_student ON ef_interview_practice(student_id, created_at DESC);`);
     // 생기부 로드맵 — 컨설팅 로드맵 문서를 학생이 체크할 실행 항목으로 보관
     await pool.query(`

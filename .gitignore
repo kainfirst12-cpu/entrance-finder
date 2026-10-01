@@ -21,6 +21,9 @@ dist/
 # 2027 수시 대학별 지원 시 유의사항(SKYPASS) — 입결 판정 보정에 쓰이므로 배포에 포함
 !backend/data/skypass/*.json
 
+# 면접 공식 기출 은행 — 대학 선행학습 영향평가 보고서에서 뽑은 문항(수집 파이프라인은 저장소 밖 C:/tmp/interview-bank)
+!backend/data/interview-bank/questions.json
+
 # 실시간 경쟁률 — 대학별 대행사 페이지 주소록. 이게 없으면 수집기가 어디를 볼지 모른다.
 # (유웨이 주소는 대학마다 다른 암호 토큰이라 규칙으로 만들 수 없다 → 파일로 들고 다녀야 한다)
 !backend/scrapers/ratio/sources.json

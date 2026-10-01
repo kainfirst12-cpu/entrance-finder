@@ -82,6 +82,7 @@ export default function InterviewPractice({ code, major }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [sets, setSets] = useState([]);
+  const [bank, setBank] = useState([]); // 지원 대학의 공식 기출(선행학습 영향평가 보고서)
   const [records, setRecords] = useState([]);
   const [tab, setTab] = useState('home'); // home | session | history
 
@@ -97,7 +98,7 @@ export default function InterviewPractice({ code, major }) {
   }, [code]);
 
   const load = useCallback(async () => {
-    try { const j = await call(); setSets(j.sets || []); setRecords(j.records || []); setErr(''); }
+    try { const j = await call(); setSets(j.sets || []); setBank(j.bank || []); setRecords(j.records || []); setErr(''); }
     catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   }, [call]);
@@ -114,14 +115,19 @@ export default function InterviewPractice({ code, major }) {
   const [retryOnly, setRetryOnly] = useState(false);
   const [queue, setQueue] = useState([]);
 
-  const retryKeys = useMemo(() => new Set(records.filter((r) => r.retry).map((r) => `${r.interview_id}:${r.card_index}:${r.q_index}`)), [records]);
-  const pool = useMemo(() => {
-    if (!set) return [];
-    return set.cards
-      .filter((c) => !cardSel || cardSel.includes(c.cardIndex))
-      .flatMap((c) => c.questions.map((q) => ({ set, card: c, q })))
-      .filter((it) => !retryOnly || retryKeys.has(`${set.id}:${it.card.cardIndex}:${it.q.qIndex}`));
-  }, [set, cardSel, retryOnly, retryKeys]);
+  const [source, setSource] = useState('report'); // report = 내 리포트 문항 | bank = 공식 기출
+  const allTopics = useMemo(() => [...new Set(sets.flatMap((st) => st.topics || []))], [sets]);
+  // 기출 묶음도 리포트 카드와 같은 모양으로 — 답변 시간은 60초 기준
+  const bankCards = useMemo(() => bank.map((g, gi) => ({
+    cardIndex: gi, univ: g.univ, dept: g.dept, track: '공식 기출', kind: '공식 기출', answerSeconds: 60, formula: '', questions: g.questions,
+  })), [bank]);
+  const cardsNow = source === 'bank' ? bankCards : (set?.cards || []);
+  const keyOf = (it) => (it.q.bankId ? `b:${it.q.bankId}` : `${it.set?.id}:${it.card.cardIndex}:${it.q.qIndex}`);
+  const retryKeys = useMemo(() => new Set(records.filter((r) => r.retry).map((r) => (r.bank_id ? `b:${r.bank_id}` : `${r.interview_id}:${r.card_index}:${r.q_index}`))), [records]);
+  const pool = useMemo(() => cardsNow
+    .filter((c) => !cardSel || cardSel.includes(c.cardIndex))
+    .flatMap((c) => c.questions.map((q) => ({ set: source === 'bank' ? null : set, card: c, q, topics: source === 'bank' ? allTopics : (set?.topics || []) })))
+    .filter((it) => !retryOnly || retryKeys.has(keyOf(it))), [cardsNow, source, set, allTopics, cardSel, retryOnly, retryKeys]);
 
   const startSession = (items) => {
     const list = shuffle ? [...items].sort(() => Math.random() - 0.5) : items;
@@ -171,7 +177,21 @@ export default function InterviewPractice({ code, major }) {
             <Stat k="다시 연습할 문항" v={`${stats.retry}개`} />
           </div>
 
-          {sets.length > 1 && (
+          {bank.length > 0 && (
+            <div style={{ ...X.tabs, marginBottom: 6 }}>
+              <button style={source === 'report' ? X.tabOn : X.tab} onClick={() => { setSource('report'); setCardSel(null); }}>내 리포트 문항</button>
+              <button style={source === 'bank' ? X.tabOn : X.tab} onClick={() => { setSource('bank'); setCardSel(null); }}>
+                📚 지원 대학 공식 기출 ({bank.reduce((n, g) => n + g.questions.length, 0)})
+              </button>
+            </div>
+          )}
+          {source === 'bank' && (
+            <p style={{ ...X.hint, margin: '0 0 8px' }}>
+              대학이 공개한 선행학습 영향평가 보고서에 실린 실제 면접 문항·예상 질문이에요. 내 생기부 경험으로 답해 보세요.
+            </p>
+          )}
+
+          {source === 'report' && sets.length > 1 && (
             <label style={X.label}>리포트
               <select style={X.select} value={set?.id || ''} onChange={(e) => { setSetId(Number(e.target.value)); setCardSel(null); }}>
                 {sets.map((s) => <option key={s.id} value={s.id}>{s.title} ({String(s.createdAt).slice(0, 10)})</option>)}
@@ -181,12 +201,12 @@ export default function InterviewPractice({ code, major }) {
 
           <div style={X.subTitle}>지원 카드 — 연습할 대학을 고르세요</div>
           <div style={X.chips}>
-            {set.cards.map((c) => {
+            {cardsNow.map((c) => {
               const on = !cardSel || cardSel.includes(c.cardIndex);
               return (
                 <button key={c.cardIndex} style={on ? X.chipOn : X.chip}
                   onClick={() => {
-                    const all = set.cards.map((x) => x.cardIndex);
+                    const all = cardsNow.map((x) => x.cardIndex);
                     const cur = cardSel || all;
                     const nx = on ? cur.filter((i) => i !== c.cardIndex) : [...cur, c.cardIndex];
                     setCardSel(nx.length === all.length ? null : nx.length ? nx : cur);
@@ -289,7 +309,7 @@ function Session({ queue, prep, limitMode, major, call, onDone }) {
     const dur = Math.round((Date.now() - answerStart) / 1000);
     const a = analyzeAnswer({
       question: it.q.q, answer, durationSec: dur, targetSec: it.card.answerSeconds || limit,
-      inputMode: usedVoice ? 'voice' : 'text', topics: it.set.topics || [], major,
+      inputMode: usedVoice ? 'voice' : 'text', topics: it.topics || [], major,
     });
     setDuration(dur); setAnalysis(a); setFollow(pickFollowUp(it.q, a)); setPhase('review');
   }, [dict, rec, answerStart, it, answer, limit, usedVoice, major]);
@@ -307,7 +327,9 @@ function Session({ queue, prep, limitMode, major, call, onDone }) {
       setSaving(true);
       try {
         await call('', { method: 'POST', body: {
-          interviewId: it.set.id, cardIndex: it.card.cardIndex, qIndex: it.q.qIndex, cardLabel: cardLabel(it.card),
+          interviewId: it.set?.id || null, bankId: it.q.bankId || null,
+          cardIndex: it.q.bankId ? null : it.card.cardIndex, qIndex: it.q.bankId ? null : it.q.qIndex,
+          cardLabel: it.q.bankId ? `기출 · ${it.card.univ}${it.q.dept ? ` · ${it.q.dept}` : ''} · ${it.q.year}학년도` : cardLabel(it.card),
           question: it.q.q, answer, inputMode: usedVoice ? 'voice' : 'text', prepSec: prep, limitSec: limit,
           durationSec: duration, analysis, followUp: follow?.text || '', followAnswer, retry,
         } });
@@ -346,7 +368,18 @@ function Session({ queue, prep, limitMode, major, call, onDone }) {
         <button style={{ ...X.ghost, marginLeft: 'auto' }} onClick={() => { dict.stop(); rec.stop(); done.length ? setPhase('end') : onDone(); }}>연습 그만하기</button>
       </div>
 
+      {it.q.passage && (
+        <div style={X.passage}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: '#7a5fd0', marginBottom: 4 }}>제시문 — 준비 시간 동안 쟁점과 근거를 표시하며 읽으세요</div>
+          {it.q.passage}
+        </div>
+      )}
       <div style={X.question}>{it.q.q}</div>
+      {it.q.source?.name && (
+        <div style={{ fontSize: 11.5, color: '#98a4b3', margin: '4px 2px 0' }}>
+          출처: {it.q.source.name}{it.q.source.page ? ` ${it.q.source.page}쪽` : ''} · {it.q.type}
+        </div>
+      )}
 
       {(phase === 'prep' || phase === 'answer') && (
         <div style={{ ...X.timer, color: danger ? '#d64545' : phase === 'prep' ? '#b7791f' : '#1d6fd6' }}>
@@ -410,7 +443,7 @@ function Session({ queue, prep, limitMode, major, call, onDone }) {
           {(it.q.intent || it.q.sample) && (
             <div style={X.sampleBox}>
               <button style={X.ghost} onClick={() => setShowSample(!showSample)}>
-                {showSample ? '▲ 접기' : '▼ 이 질문의 의도와 예시 답안 설계도 보기'}
+                {showSample ? '▲ 접기' : it.q.bankId ? '▼ 대학이 밝힌 출제 의도와 채점 포인트 보기' : '▼ 이 질문의 의도와 예시 답안 설계도 보기'}
               </button>
               {showSample && (
                 <div style={{ marginTop: 8 }}>
@@ -528,6 +561,7 @@ const X = {
   ghost: { border: '1px solid #d7dfea', background: '#fff', color: '#5c6b7c', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' },
   hint: { fontSize: 12, color: '#8492a5', lineHeight: 1.6, margin: '10px 0 0' },
   sessHead: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 },
+  passage: { fontSize: 13.5, lineHeight: 1.8, whiteSpace: 'pre-wrap', background: '#fbfaff', border: '1px solid #e4ddf7', borderRadius: 12, padding: '12px 14px', marginBottom: 8, maxHeight: 280, overflowY: 'auto', color: '#2e2a3d' },
   question: { fontSize: 18, fontWeight: 800, lineHeight: 1.55, color: '#1c2733', background: '#fff', border: '1px solid #e3e9f1', borderRadius: 12, padding: '16px 18px' },
   timer: { fontSize: 34, fontWeight: 900, textAlign: 'center', margin: '12px 0 6px', fontVariantNumeric: 'tabular-nums' },
   tip: { fontSize: 13, color: '#5c6b7c', textAlign: 'center', marginBottom: 6 },

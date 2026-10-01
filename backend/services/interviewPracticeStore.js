@@ -66,12 +66,12 @@ export async function addPractice(studentId, f = {}) {
   const { rows } = await getPool().query(
     `INSERT INTO ef_interview_practice
        (student_id, interview_id, card_index, q_index, card_label, question, answer, input_mode,
-        prep_sec, limit_sec, duration_sec, analysis, follow_up, follow_answer, retry)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15) RETURNING *`,
+        prep_sec, limit_sec, duration_sec, analysis, follow_up, follow_answer, retry, bank_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,$16) RETURNING *`,
     [studentId, f.interviewId || null, int(f.cardIndex), int(f.qIndex), clip(f.cardLabel, 200),
      clip(f.question, 2000), clip(f.answer, 4000), f.inputMode === 'voice' ? 'voice' : 'text',
      int(f.prepSec), int(f.limitSec), int(f.durationSec), JSON.stringify(analysis),
-     clip(f.followUp, 500), clip(f.followAnswer, 2000), !!f.retry]);
+     clip(f.followUp, 500), clip(f.followAnswer, 2000), !!f.retry, f.bankId ? clip(f.bankId, 40) : null]);
   return rows[0];
 }
 

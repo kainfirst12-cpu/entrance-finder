@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import SendToPapa from './SendToPapa';
 import StudentPicker from './StudentPicker';
+import InterviewBankPanel from './InterviewBankPanel';
 import { univLabel } from '../univName';
 import { buildInterviewHtml } from '../interviewReport';
 import guideHtml from '../interview/guide.html?raw';
@@ -89,6 +90,7 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
   const [items, setItems] = useState([]);
   const [listMsg, setListMsg] = useState('');
   const [doc, setDoc] = useState(null); // { title, html }
+  const [showBank, setShowBank] = useState(false);
 
   const load = useCallback(() => {
     api('/api/interview')
@@ -270,6 +272,7 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <h2 style={S.h2}>🎤 면접 전략</h2>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button style={{ ...S.btn, ...(showBank ? S.btnPrimary : {}) }} onClick={() => setShowBank(!showBank)}>📚 공식 기출 은행</button>
           <button style={S.btn} onClick={() => setDoc({ title: '사용설명서', html: guideHtml })}>📖 사용설명서</button>
           <button style={S.btn} onClick={() => setDoc({ title: '예시 리포트', html: exampleHtml })}>📄 예시 리포트</button>
         </div>
@@ -278,6 +281,12 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
         학생부와 지원 대학·학과·전형을 넣으면 대학별 평가요소에 학생부를 배치하고, 면접 문항·꼬리질문·예시 답안·진위 검증·2주 연습 계획을
         한 권의 A4 가로 리포트로 만듭니다. 면접이 없는 전형은 서류평가 관점으로 따로 정리합니다. 먼저 <b>📖 사용설명서</b>와 <b>📄 예시 리포트</b>를 열어 보세요.
       </p>
+      {showBank && (
+        <div style={S.card}>
+          <div style={S.secTitle}>📚 공식 기출 은행</div>
+          <InterviewBankPanel api={api} onAuthError={onAuthError} initialUniv={cards.find(c => c.univ)?.univ || ''} />
+        </div>
+      )}
 
       {error && <div style={S.error}>⚠ {error}</div>}
       {notice && <div style={S.notice}>{notice} <button style={S.dismiss} onClick={() => setNotice('')}>✕</button></div>}
