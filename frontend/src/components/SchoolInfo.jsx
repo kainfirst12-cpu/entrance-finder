@@ -3,11 +3,11 @@ import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
-import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf } from '../schoolTerms';
+import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf, aDifficulty } from '../schoolTerms';
 import StudentFit from './StudentFit';
 import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE } from '../course/offerings';
 
-// 성적의 무게(A 비율 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
+// A 난이도(A 비율의 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
 const WEIGHTS_URL = CATALOG_URL.replace(/[^/]+$/, 'school-weights.json.gz');
 let weightsP = null;
 export function loadWeights() {
@@ -249,7 +249,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <option value="a-desc">A비율 높은순</option>
           <option value="a-asc">A비율 낮은순</option>
           <option value="mean-desc">평균 높은순</option>
-          {isHigh && weights && <option value="weight-asc">A가 귀한 순 (전국 위치 낮은순)</option>}
+          {isHigh && weights && <option value="weight-asc">A 난이도 높은 순 (A 받기 어려운 학교부터)</option>}
         </select>
       </div>
       {isHigh && (
@@ -318,8 +318,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
               {b && <BandBar band={b} />}
               {isHigh && grade === 1 && weights?.[s.id]?.[subject] && (
                 <div style={S.weight}>
-                  <Term k="성적의 무게" /> · 1학년 {subject} A {weights[s.id][subject].a}% → <Term k="전국 위치" /> <b>{weights[s.id][subject].pct}%</b>
-                  <span style={S.dim}> {weights[s.id][subject].pct <= 25 ? '(A가 귀한 편)' : weights[s.id][subject].pct >= 75 ? '(A가 흔한 편)' : ''}</span>
+                  {(() => { const d = aDifficulty(weights[s.id][subject].pct); return <><Term k="A 난이도" /> · 1학년 {subject} A {weights[s.id][subject].a}% → <b style={{ color: d.color }}>{d.label}</b> <span style={S.dim}>({d.text})</span></>; })()}
                 </div>
               )}
               {want.length > 0 && (
@@ -444,17 +443,18 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
 
         {isHigh && w && (
           <section style={{ marginTop: 16 }}>
-            <h4 style={S.h4}><Term k="성적의 무게" /> <span style={S.dim}>· 1학년 핵심 과목 A 비율과 <Term k="전국 위치" /> ({w.year} 최신 공시, 공시된 학기 평균, 일반고 기준)</span></h4>
+            <h4 style={S.h4}><Term k="A 난이도" /> <span style={S.dim}>· 1학년 핵심 과목에서 A 받기가 전국 일반고 중 얼마나 어려운지 ({w.year} 최신 공시, 공시된 학기 평균)</span></h4>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['국어', '수학', '영어', '통합사회', '통합과학'].filter((k) => w[k]).map((k) => (
                 <div key={k} style={S.weightBox}>
                   <div style={S.statLabel}>{k}</div>
                   <div style={S.statValue}>A {w[k].a}%</div>
-                  <div style={S.statHint}>전국 {w[k].pct}% · 평균 {w[k].mean}{w[k].pct <= 25 ? ' · A 귀함' : w[k].pct >= 75 ? ' · A 흔함' : ''}</div>
+                  <div style={{ ...S.statHint, color: aDifficulty(w[k].pct).color, fontWeight: 700 }}>{aDifficulty(w[k].pct).label}</div>
+                  <div style={S.statHint}>{aDifficulty(w[k].pct).text} · 평균 {w[k].mean}</div>
                 </div>
               ))}
             </div>
-            <div style={S.dim}>전국 위치가 낮을수록 A가 드문 학교입니다 — 받기는 어렵지만 받으면 무겁게 읽힙니다. 평균과 A 비율은 따로 움직일 때가 많아 함께 봅니다.</div>
+            <div style={S.dim}>A 난이도가 높을수록 A가 드문 학교입니다 — 받기는 어렵지만 받으면 대학이 무겁게 읽습니다. 평균과 A 비율은 따로 움직일 때가 많아 함께 봅니다.</div>
           </section>
         )}
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Term } from '../schoolTerms';
+import { Term, aDifficulty } from '../schoolTerms';
 
 // 🎯 지망 판단 보조 — 학생의 지역(학군) 내 석차 백분위를 넣으면, 지금 목록의 학교마다 1학년 핵심 과목에서
 // A 를 기대할 수 있는지(A 가능 · 경계 · B 이하)를 어림한다. 순위를 매기지 않고, 무엇을 앞세울지는 상담에서 정한다.
@@ -94,7 +94,7 @@ export default function StudentFit({ schools, weights, onClose }) {
                     return (
                       <td key={k} style={S.td}>
                         <span style={{ ...S.chip, background: color }}>{label}</span>
-                        <div style={S.dim}>A {c.a}% · 전국 {c.pct ?? '—'}%</div>
+                        <div style={S.dim}>A {c.a}%{c.pct != null ? ` · 난이도 ${aDifficulty(c.pct).label}` : ''}</div>
                       </td>
                     );
                   })}
