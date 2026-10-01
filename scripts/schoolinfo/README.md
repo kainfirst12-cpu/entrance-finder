@@ -40,6 +40,7 @@ node fetch-school-info.mjs            # 학교정보 팝업 → out/school-info.
 ```bash
 node parse-achievement.mjs                          # 확인용 요약 + out/achievement-parsed.json
 node build-catalog.mjs [--enrollment 학년별학급별학생수.xlsx]   # → frontend/public/data/school-catalog.json.gz
+node build-weights.mjs                              # → frontend/public/data/school-weights.json.gz (성적의 무게: A 비율 전국 위치)
 ```
 그 다음 커밋·푸시하면 Vercel 이 배포한다. `out/` 은 .gitignore(*.json) 에 걸려 커밋되지 않는다 — 원본은 여기 PC 에만 있다.
 
@@ -121,3 +122,10 @@ Claude 가 할 일(순서):
 - 중학교 표는 계열 칸이 없는 13칸(`[과목, 1학기 평균, A~E, 2학기 평균, A~E]`) — `parse-achievement.mjs` 가 헤더로 구분한다.
 - 종합고(일반계+상업계 등)는 `과목 [일반계 / 전체학과]` 처럼 계열별 줄만 있고 전체 줄이 없다(493곳). 목록 카드의 대표값은
   전체계열 → 일반계 → 나머지 순으로 고른다(`pickBand`).
+
+## 성적의 무게 (2026-10-01)
+
+`build-weights.mjs` — 학교별 1학년 핵심 과목(국·수·영·통합사회·통합과학) A 비율과 **전국 위치**(일반고 + 자율형 공립고 가운데 A 비율이 이 학교 이하인 비율)를
+미리 계산해 `school-weights.json.gz`(약 140KB)로 둔다. 과목 고르기는 설명회 엔진(`frontend/src/seminar/analysis.js` subjectTable, 1·2학기 평균)과 같다.
+**catalog 를 다시 만들면 반드시 같이 돌릴 것**(안 돌리면 공시정보 화면의 전국 위치·🎯 지망 판단 보조가 옛 숫자).
+화면: 카드의 '성적의 무게' 줄 · 'A가 귀한 순' 정렬 · 상세의 5과목 상자 · 🎯 지망 판단 보조(StudentFit.jsx). 학교 층·학생 성별 필터는 `frontend/src/schoolTerms.jsx`.

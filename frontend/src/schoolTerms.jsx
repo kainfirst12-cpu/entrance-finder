@@ -1,0 +1,67 @@
+import { useState } from 'react';
+
+// 공시정보·설명회 화면의 낱말 풀이 — 점선 밑줄 낱말을 누르면 뜻이 뜬다. 학부모님께 화면을 그대로 보여 줘도 읽히게.
+export const GLOSSARY = {
+  'A 비율': '그 과목에서 성취도 A(보통 90점 이상)를 받은 학생의 비율입니다. 성취도는 절대평가라 시험이 쉬우면 A가 많아지고, 어려우면 적어집니다.',
+  '전국 위치': '전국 일반고(자율형 공립고 포함) 가운데 A 비율이 이 학교 이하인 학교의 비율(0~100)입니다. 낮을수록 A가 드문 학교 — 같은 A라도 무겁게 읽히고 받기는 어렵습니다. 높을수록 A를 받기 쉽지만 A만으로는 눈에 덜 띕니다.',
+  '성적의 무게': '대학은 학생부에서 성취도(A~E)를 그 과목의 A 비율과 함께 읽습니다. 같은 A라도 A가 드문 학교의 A가 더 무겁게 해석될 수 있습니다.',
+  '1등급 자리': '5등급제에서 1등급은 그 과목 수강자의 상위 10%입니다. 1학년 학생 수 × 10% 로 어림합니다. 수강자가 적은 선택과목은 1등급이 한두 명뿐일 수 있습니다.',
+  '석차등급': '같은 과목을 들은 학생 사이의 상대평가입니다. 5등급제 누적 비율: 1등급 10% · 2등급 34% · 3등급 66% · 4등급 90% · 5등급 100%.',
+  '성취도': '점수를 A·B·C·D·E 다섯 단계로 나눈 절대평가 성적입니다. 체육·예술·일부 진로선택은 A·B·C 세 단계만 씁니다.',
+  '상대 표준편차': '2025학년도부터 공시에 표준편차가 빠져, A~E에 5~1점을 매겨 분포의 흩어짐을 계산한 값입니다. 실제 표준편차는 아닙니다.',
+  '학교 층': '학생을 어디서 뽑느냐에 따른 묶음입니다. 거주지 일반고(일반고·자율형 공립고), 시도 단위(외고·국제고·과학고·예고·체고·광역 자사고), 전국 단위(영재학교·전국 자사고), 특성화·마이스터고. 뽑는 범위가 다르면 학생 집단도 달라 따로 봅니다.',
+  '평준화': '원하는 학교를 적어 내면 추첨으로 배정하는 지역입니다. 같은 학군 안의 학교끼리만 지원할 수 있습니다. 비평준화 지역은 학교마다 중학교 내신으로 선발합니다.',
+  '쏠림': '이 학교 평균이 함께 본 학교들 평균보다 얼마나 높은지입니다. 높으면 성적이 좋은 학생이 몰렸거나 시험이 쉬웠다는 뜻이라, 같은 실력이라도 교내 등수가 조금 내려갈 수 있습니다.',
+  '편제': '학교가 3년 동안 어떤 과목을 몇 학년·몇 학기에 몇 학점으로 가르치는지 정한 교육과정 편제표입니다. 학교마다 달라 듣고 싶은 과목이 열리는지 확인해야 합니다.',
+  '권장과목': '대학이 모집단위별로 "고교에서 들어 두면 좋은 과목"으로 발표한 과목입니다. 핵심과목은 이수를 강하게 권하는 과목, 권장과목은 이수하면 도움이 되는 과목입니다. 지원 자격은 아니고 평가 참고 자료입니다.',
+  '융합선택': '여러 분야를 섞은 선택과목입니다. 사회·과학 융합선택 과목은 석차등급 없이 성취도(A~E)만 기록됩니다.',
+  '공동교육과정': '우리 학교에 없는 과목을 다른 학교와 함께 열거나 온라인학교로 듣는 제도입니다. 대학은 "학교에 없어서 못 들은 것"과 "있는데 안 들은 것"을 구분해 봅니다.',
+};
+
+/** <Term k="A 비율" /> 또는 <Term k="A 비율">A</Term> — 점선 밑줄 + 누르면 풀이 */
+export function Term({ k, children }) {
+  const [open, setOpen] = useState(false);
+  const text = GLOSSARY[k];
+  if (!text) return children ?? k;
+  return (
+    <span style={{ position: 'relative', display: 'inline' }}>
+      <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} onKeyDown={(e) => e.key === 'Enter' && setOpen((o) => !o)}
+        style={{ borderBottom: '1px dotted currentColor', cursor: 'help' }} title={text}>
+        {children ?? k}<sup style={{ fontSize: '0.7em', marginLeft: 1, opacity: 0.7 }}>ⓘ</sup>
+      </span>
+      {open && (
+        <span onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+          style={{ position: 'absolute', zIndex: 50, top: '1.6em', left: 0, width: 280, background: 'var(--surface, #1e2a36)', color: 'var(--text, #e8eef3)', border: '1px solid var(--border, #3a4a5a)', borderRadius: 8, padding: '8px 10px', fontSize: 12, fontWeight: 400, lineHeight: 1.55, boxShadow: '0 6px 18px rgba(0,0,0,.35)', whiteSpace: 'normal', textAlign: 'left' }}>
+          <b>{k}</b><br />{text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// ── 학교 층 — 뽑는 범위가 다른 학교끼리는 한 줄로 비교하지 않는다 ──
+// 전국 단위 자사고·영재학교는 이름 목록으로 가른다(학교알리미 유형만으로는 광역·전국 자사고가 구분되지 않음).
+const NATIONAL_JASA = ['민족사관고등학교', '상산고등학교', '하나고등학교', '용인한국외국어대학교부설고등학교', '포항제철고등학교', '광양제철고등학교', '김천고등학교', '현대청운고등학교', '인천하늘고등학교'];
+const GIFTED = ['서울과학고등학교', '경기과학고등학교', '대구과학고등학교', '대전과학고등학교', '광주과학고등학교', '한국과학영재학교', '세종과학예술영재학교', '인천과학예술영재학교'];
+export const LAYERS = [
+  { key: 'local', label: '거주지 일반고', hint: '일반고·자율형 공립고' },
+  { key: 'region', label: '시도 단위', hint: '외고·국제고·과학고·예고·체고·광역 자사고' },
+  { key: 'national', label: '전국 단위', hint: '영재학교·전국 자사고' },
+  { key: 'vocational', label: '특성화·마이스터', hint: '특성화고·마이스터고' },
+];
+export function layerOf(s) {
+  const n = String(s.schoolName || '').replace(/\s+/g, '');
+  if (GIFTED.includes(n) || /영재학교$/.test(n)) return 'national';
+  if (NATIONAL_JASA.includes(n) || (n === '북일고등학교' && s.sido === '충청남도')) return 'national';
+  if (s.schoolType === '특성화고등학교') return 'vocational';
+  // 특목고 가운데 외고·국제고·과학고·예고·체고가 아니면 산업수요 맞춤형(마이스터고)
+  if (s.schoolType === '특수목적고등학교' && !/외국어|국제|과학|예술|체육|영재/.test(n)) return 'vocational';
+  if (s.schoolType === '일반고등학교' || (s.schoolType === '자율고등학교' && s.fond === '공립')) return 'local';
+  return 'region';
+}
+/** 학생 성별로 지원 가능한지 — 남학생은 여고 제외, 여학생은 남고 제외 */
+export function genderOk(s, student) {
+  if (student === '남학생') return s.gender !== '여자';
+  if (student === '여학생') return s.gender !== '남자';
+  return true;
+}

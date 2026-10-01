@@ -3,6 +3,16 @@ import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
+import { Term, LAYERS, layerOf, genderOk } from '../schoolTerms';
+import StudentFit from './StudentFit';
+
+// 성적의 무게(A 비율 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
+const WEIGHTS_URL = CATALOG_URL.replace(/[^/]+$/, 'school-weights.json.gz');
+let weightsP = null;
+export function loadWeights() {
+  if (!weightsP) weightsP = fetchGzJson(WEIGHTS_URL).catch(() => { weightsP = null; return null; });
+  return weightsP;
+}
 
 // 전국 고교·중학 공시정보 — 학교알리미 교과별 학업성취(A~E 비율·평균) + 학년별 재적 + EDSS 학급·교원.
 // 데이터는 /data/school-catalog.json.gz 하나(정적 파일). 서버·로그인 토큰이 필요 없어 백엔드를 건드리지 않는다.
@@ -66,6 +76,9 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const [limit, setLimit] = useState(PAGE);
   const [detailId, setDetailId] = useState(null);
   const [compare, setCompare] = useState([]);
+  const [layer, setLayer] = useState('전체');           // 학교 층 — 뽑는 범위가 다른 학교끼리는 따로 본다
+  const [weights, setWeights] = useState(null);         // { [id]: { 국어:{a,pct,mean}, … } }
+  const [fitOpen, setFitOpen] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   // 입시 해설 보고서 — 생성 중 표시, 열려 있는 편집기, 보관함
   const [explaining, setExplaining] = useState('');
@@ -79,6 +92,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   useEffect(() => {
     let dead = false;
     loadCatalog().then((c) => { if (!dead) setCat(c); }).catch((e) => { if (!dead) setErr(e.message || '데이터 로드 실패'); });
+    loadWeights().then((w) => { if (!dead && w) setWeights(w.schools); });
     return () => { dead = true; };
   }, []);
 
@@ -92,7 +106,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const fonds = useMemo(() => [...new Set(schools.map((s) => s.fond).filter(Boolean))].sort(), [schools]);
 
   useEffect(() => { setSigungu('전체'); }, [sido]);
-  useEffect(() => { setLimit(PAGE); }, [level, q, sido, sigungu, type, fond, gender, sort, subject, grade]);
+  useEffect(() => { setLimit(PAGE); }, [level, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer]);
   useEffect(() => { setType('전체'); }, [level]);
 
   const filtered = useMemo(() => {
@@ -102,7 +116,8 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       (sigungu === '전체' || s.sigungu === sigungu) &&
       (type === '전체' || s.schoolType === type) &&
       (fond === '전체' || s.fond === fond) &&
-      (gender === '전체' || s.gender === gender) &&
+      (gender === '전체' || (gender === '남학생' || gender === '여학생' ? genderOk(s, gender) : s.gender === gender)) &&
+      (level !== '고등학교' || layer === '전체' || layerOf(s) === layer) &&
       (!kw || s.schoolName.replace(/\s+/g, '').includes(kw)),
     );
     const key = (s) => pickBand(s, subject, grade);
@@ -120,10 +135,11 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       'a-desc': cmpNum((s) => key(s)?.a ?? null, true),
       'a-asc': cmpNum((s) => key(s)?.a ?? null, false),
       'mean-desc': cmpNum((s) => key(s)?.mean ?? null, true),
+      'weight-asc': cmpNum((s) => weights?.[s.id]?.[subject]?.pct ?? null, false),
     };
     list = [...list].sort(sorters[sort] || sorters.name);
     return list;
-  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade]);
+  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights]);
 
   const detail = detailId ? schools.find((s) => s.id === detailId) || (cat?.schools || []).find((s) => s.id === detailId) : null;
   const compareSchools = compare.map((id) => (cat?.schools || []).find((s) => s.id === id)).filter(Boolean);
@@ -203,6 +219,8 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
         </select>
         <select style={S.select} value={gender} onChange={(e) => setGender(e.target.value)}>
           <option value="전체">남녀 전체</option>
+          <option value="남학생">남학생 지원 가능 (여고 제외)</option>
+          <option value="여학생">여학생 지원 가능 (남고 제외)</option>
           <option value="남녀공학">남녀공학</option>
           <option value="남자">남자</option>
           <option value="여자">여자</option>
@@ -214,14 +232,26 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <option value="a-desc">A비율 높은순</option>
           <option value="a-asc">A비율 낮은순</option>
           <option value="mean-desc">평균 높은순</option>
+          {isHigh && weights && <option value="weight-asc">A가 귀한 순 (전국 위치 낮은순)</option>}
         </select>
       </div>
+      {isHigh && (
+        <div style={S.filters}>
+          <span style={S.filterLabel}><Term k="학교 층" /></span>
+          {['전체', ...LAYERS.map((l) => l.key)].map((k) => {
+            const L = LAYERS.find((l) => l.key === k);
+            return <button key={k} title={L?.hint || ''} style={{ ...S.chip, ...(layer === k ? S.chipOn : {}) }} onClick={() => setLayer(k)}>{L ? L.label : '전체'}</button>;
+          })}
+          <span style={{ ...S.dim, marginLeft: 6 }}>뽑는 범위가 다른 학교끼리는 학생 집단이 달라 따로 보세요.</span>
+        </div>
+      )}
       <div style={S.filters}>
         <span style={S.filterLabel}>성취도 과목</span>
         {SUBJECTS.map((s) => <button key={s} style={{ ...S.chip, ...(subject === s ? S.chipOn : {}) }} onClick={() => setSubject(s)}>{s}</button>)}
         <span style={{ ...S.filterLabel, marginLeft: 12 }}>학년</span>
         {[1, 2, 3].map((g) => <button key={g} style={{ ...S.chip, ...(grade === g ? S.chipOn : {}) }} onClick={() => setGrade(g)}>{g}학년</button>)}
         <span style={{ flex: 1 }} />
+        {isHigh && weights && <button style={S.smallBtn} onClick={() => setFitOpen(true)} title="학생 석차 백분위로 학교별 A 가능·경계·B 이하 어림">🎯 지망 판단 보조</button>}
         <span style={S.count}>{scopeLabel} {level} <b>{num(filtered.length)}곳</b></span>
       </div>
 
@@ -249,7 +279,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
                 {s.enrollment?.grade1 == null && s.current?.students != null && <span style={S.badgeDim}>학생 {s.current.students}명 · 교원 {s.current.teachers ?? '—'}명 (2026 학교정보)</span>}
               </div>
               {isHigh && seats !== null && (
-                <div style={S.seats}>1학년 {s.enrollment.grade1}명 중 1등급권 <b>{seats}자리</b> <span style={S.dim}>· 5등급제 상위 10% 가정</span></div>
+                <div style={S.seats}>1학년 {s.enrollment.grade1}명 중 <Term k="1등급 자리">1등급권</Term> <b>{seats}자리</b> <span style={S.dim}>· 5등급제 상위 10% 가정</span></div>
               )}
               {s.edss && (s.edss.classes !== null || s.edss.teachers !== null) && (
                 <div style={S.dim}>{s.edss.classes !== null ? `${s.edss.classes}학급` : ''}{s.edss.classes !== null && (s.current?.teachers ?? s.edss.teachers) !== null ? ' · ' : ''}{(s.current?.teachers ?? s.edss.teachers) != null ? `교원 ${s.current?.teachers ?? s.edss.teachers}명` : ''}</div>
@@ -258,6 +288,12 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
                 {b ? <>{isHigh ? '고' : '중'}{grade} {b.subject} · {b.year} {b.semester}학기 · A <b>{pct(b.a)}</b> · 평균 <b>{dec1(b.mean)}</b></> : <span style={S.dim}>{grade}학년 {subject} 성취도 공시 없음</span>}
               </div>
               {b && <BandBar band={b} />}
+              {isHigh && grade === 1 && weights?.[s.id]?.[subject] && (
+                <div style={S.weight}>
+                  <Term k="성적의 무게" /> · 1학년 {subject} A {weights[s.id][subject].a}% → <Term k="전국 위치" /> <b>{weights[s.id][subject].pct}%</b>
+                  <span style={S.dim}> {weights[s.id][subject].pct <= 25 ? '(A가 귀한 편)' : weights[s.id][subject].pct >= 75 ? '(A가 흔한 편)' : ''}</span>
+                </div>
+              )}
               <div style={S.cardFoot}>
                 <button style={S.linkBtn} onClick={() => setDetailId(s.id)}>상세 보기 →</button>
               </div>
@@ -287,7 +323,8 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
         </div>
       )}
 
-      {detail && <DetailModal school={detail} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
+      {fitOpen && <StudentFit schools={filtered} weights={weights} onClose={() => setFitOpen(false)} />}
+      {detail && <DetailModal school={detail} weights={weights?.[detail.id]} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('school', [detail], focus) }} />}
       {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('compare', compareSchools, focus) }} />}
@@ -324,7 +361,7 @@ function Stat({ label, value, hint }) {
   );
 }
 
-function DetailModal({ school: s, onClose, inCompare, onToggleCompare, explain }) {
+function DetailModal({ school: s, weights: w, onClose, inCompare, onToggleCompare, explain }) {
   const isHigh = s.schoolLevel === '고등학교';
   const seats = seatsOf(s);
   // 전 과목 표(기타 과목)는 열릴 때 따로 받는다 — 받기 전엔 catalog 에 실린 국·영·수만 보인다.
@@ -370,6 +407,22 @@ function DetailModal({ school: s, onClose, inCompare, onToggleCompare, explain }
           <Stat label="입학생 / 졸업생" value={s.edss ? `${s.edss.entrants ?? '—'} / ${s.edss.graduates ?? '—'}` : '—'} hint="EDSS 조사년도 기준" />
           {s.current && <Stat label="현재 학생 · 교원" value={`${num(s.current.students)}명 · ${num(s.current.teachers)}명`} hint={`남 ${num(s.current.male)} · 여 ${num(s.current.female)} · 학교알리미 학교정보(2026)${s.current.founded ? ` · 개교 ${s.current.founded}` : ''}`} />}
         </div>
+
+        {isHigh && w && (
+          <section style={{ marginTop: 16 }}>
+            <h4 style={S.h4}><Term k="성적의 무게" /> <span style={S.dim}>· 1학년 핵심 과목 A 비율과 <Term k="전국 위치" /> ({w.year}, 1·2학기 평균, 일반고 기준)</span></h4>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {['국어', '수학', '영어', '통합사회', '통합과학'].filter((k) => w[k]).map((k) => (
+                <div key={k} style={S.weightBox}>
+                  <div style={S.statLabel}>{k}</div>
+                  <div style={S.statValue}>A {w[k].a}%</div>
+                  <div style={S.statHint}>전국 {w[k].pct}% · 평균 {w[k].mean}{w[k].pct <= 25 ? ' · A 귀함' : w[k].pct >= 75 ? ' · A 흔함' : ''}</div>
+                </div>
+              ))}
+            </div>
+            <div style={S.dim}>전국 위치가 낮을수록 A가 드문 학교입니다 — 받기는 어렵지만 받으면 무겁게 읽힙니다. 평균과 A 비율은 따로 움직일 때가 많아 함께 봅니다.</div>
+          </section>
+        )}
 
         {families.map((fam) => {
           const rows = bandsBy(fam);
@@ -504,6 +557,8 @@ const S = {
   badge: { fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-bg)', padding: '2px 8px', borderRadius: 999 },
   badgeDim: { fontSize: 11, color: 'var(--text2)', background: 'var(--surface2)', padding: '2px 8px', borderRadius: 999 },
   seats: { fontSize: 13, color: 'var(--text)' },
+  weight: { fontSize: 12, color: 'var(--text2)', marginTop: 2 },
+  weightBox: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 12px', minWidth: 120 },
   dim: { fontSize: 12, color: 'var(--text3)' },
   bandTitle: { fontSize: 13, color: 'var(--text)', marginTop: 4 },
   bar: { display: 'flex', height: 10, borderRadius: 6, overflow: 'hidden', background: 'var(--surface2)' },
