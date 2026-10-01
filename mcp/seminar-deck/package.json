@@ -1,0 +1,19 @@
+{
+  "name": "seminar-deck-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "입시파인더 설명회 자료 MCP — 담당 고교 성취도 분석 → 설명회 PPT (Claude Code·Cowork 플러그인)",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "pptxgenjs": "^3.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "engines": { "node": ">=20" }
+}

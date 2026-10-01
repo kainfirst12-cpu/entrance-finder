@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "seminar-deck": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/seminar-mcp.mjs"]
+    }
+  }
+}
