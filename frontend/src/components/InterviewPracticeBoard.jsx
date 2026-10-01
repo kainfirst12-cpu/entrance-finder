@@ -1,4 +1,38 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { API_BASE } from '../apiBase';
+
+// 설정에 저장된 AI 키 (Board 와 같은 규칙)
+const aiCreds = () => {
+  const model = localStorage.getItem('ef_model') || 'claude';
+  const group = model.startsWith('gemini') ? 'gemini' : model.startsWith('gpt') || model.startsWith('o') ? 'gpt' : 'claude';
+  const keyName = { claude: 'ef_apikey', gemini: 'ef_geminikey', gpt: 'ef_gptkey' }[group];
+  return { model, group, apiKey: localStorage.getItem(keyName) };
+};
+
+// AI 첨삭은 SSE(keepalive)로 온다 — success 가 있는 이벤트가 결과, 나머지는 진행 알림
+async function postSSE(path, onStage) {
+  const { model, group, apiKey } = aiCreds();
+  if (!apiKey) return { success: false, message: 'AI 키가 없습니다 — 설정에서 키를 넣어 주세요' };
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('ef_token')}`, 'x-api-key': apiKey, 'x-ai-model': group, 'x-ai-submodel': model },
+  });
+  if (res.status === 401) { const e = new Error('세션 만료 — 다시 로그인하세요'); e.auth = true; throw e; }
+  if (!(res.headers.get('content-type') || '').includes('text/event-stream')) return res.json().catch(() => ({ success: false, message: `서버 응답 오류 (HTTP ${res.status})` }));
+  const reader = res.body.getReader(), dec = new TextDecoder();
+  let buf = '', result = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n'); buf = lines.pop();
+    for (const l of lines) {
+      if (!l.startsWith('data: ')) continue;
+      try { const o = JSON.parse(l.slice(6)); if (o.success !== undefined) result = o; else if (o.message) onStage?.(o.message); } catch { /* 조각 */ }
+    }
+  }
+  return result || { success: false, message: '서버 응답이 비었습니다 (연결 끊김)' };
+}
 
 // 선생님 보드(학생 상세) — 🎤 면접 연습
 // ① 이 학생의 면접 전략 리포트를 학생 페이지 연습에 공개/비공개
@@ -14,6 +48,7 @@ export default function InterviewPracticeBoard({ student, api, onError }) {
   const [open, setOpen] = useState(null);
   const [drafts, setDrafts] = useState({});
   const [filter, setFilter] = useState('all'); // all | retry | nocomment
+  const [reviewing, setReviewing] = useState(null); // { id, msg }
 
   const base = `/api/board/students/${student.id}`;
   const load = useCallback(async () => {
@@ -33,6 +68,20 @@ export default function InterviewPracticeBoard({ student, api, onError }) {
       setMsg(okMsg || '');
     } catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); }
   };
+
+  const aiReview = async (r) => {
+    setReviewing({ id: r.id, msg: 'AI 첨삭 시작…' }); setMsg('');
+    try {
+      const d = await postSSE(`${base}/interview-practice/${r.id}/ai-review`, (m) => setReviewing({ id: r.id, msg: m }));
+      if (!d.success) throw new Error(d.message || 'AI 첨삭 실패');
+      await load(); setMsg('✓ AI 첨삭이 끝났습니다 — 코멘트로 옮겨 저장하면 학생에게 보입니다');
+    } catch (e) { if (e.auth) onError?.(e); else setMsg('⚠ ' + e.message); }
+    finally { setReviewing(null); }
+  };
+  const appendDraft = (r, text) => setDrafts((d) => {
+    const cur = d[r.id] ?? r.teacher_comment ?? '';
+    return { ...d, [r.id]: cur ? `${cur}\n\n${text}` : text };
+  });
 
   const shown = useMemo(() => records.filter((r) =>
     filter === 'retry' ? r.retry : filter === 'nocomment' ? !r.teacher_comment : true), [records, filter]);
@@ -91,6 +140,7 @@ export default function InterviewPracticeBoard({ student, api, onError }) {
                     <span style={T.chip}>{fmtSec(r.duration_sec)}</span>
                     {r.retry && <span style={T.warn}>다시 연습</span>}
                     {r.teacher_comment && <span style={T.good}>💬</span>}
+                    {r.ai_review && <span style={T.ai}>🤖</span>}
                   </div>
                   {isOpen && (
                     <div style={T.recBody}>
@@ -104,6 +154,14 @@ export default function InterviewPracticeBoard({ student, api, onError }) {
                           {(a.fix || []).map((t, i) => <div key={'f' + i} style={{ color: '#fbbf24' }}>△ {t}</div>)}
                         </div>
                       )}
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '6px 0', flexWrap: 'wrap' }}>
+                        <button style={T.aiBtn} disabled={!!reviewing || !r.answer} onClick={() => aiReview(r)}>
+                          {reviewing?.id === r.id ? '첨삭 중…' : r.ai_review ? '🤖 AI 첨삭 다시' : '🤖 AI 첨삭'}
+                        </button>
+                        {reviewing?.id === r.id && <span style={T.muted2}>{reviewing.msg}</span>}
+                        {!reviewing && !r.ai_review && <span style={T.muted2}>학생부와 대조해 고칠 점·개선 답안·코멘트 초안을 만듭니다(설정의 AI 키, 30초~1분)</span>}
+                      </div>
+                      {r.ai_review && <AiReview rv={r.ai_review} at={r.ai_reviewed_at} onUse={(t) => appendDraft(r, t)} />}
                       <textarea style={T.textarea} rows={3} value={draft} placeholder="학생에게 보일 코멘트 (예: 첫 문장 결론 좋음. 실험 수치를 한 번만 넣자)"
                         onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))} />
                       <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
@@ -126,7 +184,64 @@ export default function InterviewPracticeBoard({ student, api, onError }) {
   );
 }
 
+// AI 첨삭 결과 — 선생님만 본다. '코멘트에 넣기'로 학생에게 보일 코멘트 칸에 옮긴다
+function AiReview({ rv, at, onUse }) {
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const stColor = (st) => (/확인/.test(st) ? '#34d399' : /다름/.test(st) ? '#f87171' : '#fbbf24');
+  return (
+    <div style={T.rv}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <b style={{ color: '#c4b5fd' }}>🤖 AI 첨삭</b>
+        {rv.summary && <span style={{ fontSize: 13 }}>{rv.summary}</span>}
+        <span style={{ ...T.muted2, marginLeft: 'auto' }}>{at ? new Date(at).toLocaleString('ko-KR') : ''}{rv.model ? ` · ${rv.model}` : ''} · 선생님만 보임</span>
+      </div>
+      {arr(rv.good).length > 0 && <div style={T.rvSec}>{arr(rv.good).map((g, i) => <div key={i} style={{ color: '#34d399' }}>✓ {g}</div>)}</div>}
+      {arr(rv.fix).length > 0 && (
+        <div style={T.rvSec}>
+          {arr(rv.fix).map((f, i) => (
+            <div key={i} style={{ marginBottom: 4 }}>
+              <span style={{ color: '#fbbf24' }}>△ {f.point}</span>
+              {f.why && <span style={T.muted2}> — {f.why}</span>}
+              {f.how && <div style={{ marginLeft: 14, color: '#cfd8e0' }}>→ {f.how}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {arr(rv.factCheck).length > 0 && (
+        <div style={T.rvSec}>
+          <div style={T.rvTitle}>학생부 사실 대조</div>
+          {arr(rv.factCheck).map((c, i) => (
+            <div key={i}><span style={{ ...T.stChip, color: stColor(c.status), borderColor: stColor(c.status) }}>{c.status}</span> {c.claim}{c.note && <span style={T.muted2}> · {c.note}</span>}</div>
+          ))}
+        </div>
+      )}
+      {rv.improved && (
+        <div style={T.rvSec}>
+          <div style={T.rvTitle}>개선 답안 (학생 문장을 살려 다듬음 · {String(rv.improved).replace(/\s+/g, ' ').trim().length}자)
+            <button style={T.useBtn} onClick={() => onUse(`[다듬은 답안]\n${rv.improved}`)}>코멘트에 넣기</button>
+          </div>
+          <div style={T.answer}>{rv.improved}</div>
+        </div>
+      )}
+      {arr(rv.followUps).length > 0 && <div style={T.rvSec}><div style={T.rvTitle}>이어질 꼬리질문</div>{arr(rv.followUps).map((q, i) => <div key={i}>• {q}</div>)}</div>}
+      {rv.studentComment && (
+        <div style={T.rvSec}>
+          <div style={T.rvTitle}>학생 코멘트 초안 <button style={T.useBtn} onClick={() => onUse(rv.studentComment)}>코멘트에 넣기</button></div>
+          <div style={{ color: '#e8eef3' }}>{rv.studentComment}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const T = {
+  ai: { fontSize: 11, color: '#c4b5fd', whiteSpace: 'nowrap' },
+  aiBtn: { background: 'rgba(167,139,250,0.15)', border: '1px solid rgba(167,139,250,0.5)', color: '#c4b5fd', fontSize: 12, cursor: 'pointer', borderRadius: 7, padding: '4px 11px', whiteSpace: 'nowrap' },
+  rv: { background: 'rgba(167,139,250,0.07)', border: '1px solid rgba(167,139,250,0.25)', borderRadius: 9, padding: '9px 11px', margin: '4px 0 8px', fontSize: 12.5, lineHeight: 1.65 },
+  rvSec: { marginTop: 7 },
+  rvTitle: { fontSize: 12, fontWeight: 700, color: '#9db0bd', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 },
+  stChip: { fontSize: 10.5, border: '1px solid', borderRadius: 5, padding: '0 6px', whiteSpace: 'nowrap' },
+  useBtn: { background: 'transparent', border: '1px solid #334556', color: '#2dd4bf', fontSize: 11, cursor: 'pointer', borderRadius: 6, padding: '1px 8px' },
   title: { fontSize: 14, fontWeight: 700, color: '#e8eef3', margin: '20px 0 8px', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
   titleSub: { fontSize: 12, fontWeight: 500, color: '#9db0bd' },
   panel: { background: '#1c2937', borderRadius: 9, padding: '9px 11px' },

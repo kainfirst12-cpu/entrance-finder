@@ -22,8 +22,10 @@ import { listInterviews, getInterview, createInterview, deleteInterview, getInte
 import {
   listOpenPracticeSets, isOpenInterviewOf, countPracticeToday, addPractice, listPractice, getPracticeStudentId,
   updatePractice, deletePractice, listStudentInterviews, setPracticeOpen, linkInterviewToStudent,
+  getPractice, setPracticeAiReview, forStudent,
 } from './services/interviewPracticeStore.js';
-import { searchBank, bankUnivs, bankStats, bankForCard, bankPromptBlock } from './services/interviewBank.js';
+import { searchBank, bankUnivs, bankStats, bankForCard, bankPromptBlock, getBankItem } from './services/interviewBank.js';
+import { PRACTICE_REVIEW_SYSTEM, questionInfo, reviewUserMsg } from './services/practiceReview.js';
 import { runAssistantStep } from './services/assistantAgent.js';
 import {
   listRoadmaps, getRoadmap, createRoadmap, updateRoadmap, deleteRoadmap,
@@ -3130,7 +3132,7 @@ app.get('/api/student-view/:code/interview-practice', async (req, res) => {
         bankId: it.id, q: it.q, passage: it.psg || '', follow: (it.fu || [])[0] || '', followType: (it.fu || []).length ? '꼬리' : '',
         intent: it.intent || '', sample: it.ev || '', type: it.type, year: it.y, dept: it.dept, source: it.source })) });
     }
-    res.json({ success: true, sets, records, bank });
+    res.json({ success: true, sets, records: records.map(forStudent), bank });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.post('/api/student-view/:code/interview-practice', async (req, res) => {
@@ -3143,7 +3145,7 @@ app.post('/api/student-view/:code/interview-practice', async (req, res) => {
       return res.status(403).json({ success: false, message: '연습이 공개된 리포트가 아닙니다' });
     if (await countPracticeToday(sid) >= PRACTICE_DAILY_LIMIT)
       return res.status(429).json({ success: false, message: `하루 연습 저장은 ${PRACTICE_DAILY_LIMIT}개까지입니다` });
-    res.json({ success: true, record: await addPractice(sid, { ...b, interviewId: b.interviewId ? Number(b.interviewId) : null }) });
+    res.json({ success: true, record: forStudent(await addPractice(sid, { ...b, interviewId: b.interviewId ? Number(b.interviewId) : null })) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.patch('/api/student-view/:code/interview-practice/:pid', async (req, res) => {
@@ -3152,7 +3154,7 @@ app.patch('/api/student-view/:code/interview-practice/:pid', async (req, res) =>
     if (!sid) return res.status(404).json({ success: false, message: '유효하지 않은 코드입니다' });
     const pid = Number(req.params.pid);
     if (await getPracticeStudentId(pid) !== sid) return res.status(403).json({ success: false, message: '본인 기록이 아닙니다' });
-    res.json({ success: true, record: await updatePractice(pid, { retry: req.body?.retry }) });
+    res.json({ success: true, record: forStudent(await updatePractice(pid, { retry: req.body?.retry })) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 app.delete('/api/student-view/:code/interview-practice/:pid', async (req, res) => {
@@ -3193,6 +3195,40 @@ app.delete('/api/board/students/:id/interview-practice/:pid', requireAuth, async
     res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
+// 🤖 면접 연습 AI 첨삭 — 선생님 키로. 결과는 선생님만 본다(학생에게는 선생님이 코멘트로 옮긴 것만)
+app.post('/api/board/students/:id/interview-practice/:pid/ai-review', requireAuth, async (req, res) => {
+  const sid = Number(req.params.id), pid = Number(req.params.pid);
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+  if (!(await canEditStudent(req, sid))) return res.status(403).json({ success: false, message: '학생 권한 없음' });
+  const rec = await getPractice(pid).catch(() => null);
+  if (!rec || rec.student_id !== sid) return res.status(404).json({ success: false, message: '기록 없음' });
+  if (!String(rec.answer || '').trim()) return res.status(400).json({ success: false, message: '답변이 비어 있어 첨삭할 수 없습니다' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} };
+  const sendDone = (obj) => { send(obj); clearInterval(keepAlive); res.end(); };
+  try {
+    send({ stage: 'context', message: '학생부와 문항 자료를 모으는 중…' });
+    const interview = rec.interview_id ? await getInterview(rec.interview_id).catch(() => null) : null;
+    const bankItem = !interview && rec.bank_id ? getBankItem(rec.bank_id) : null;
+    const ctx = await pickStudentContext(req, sid);
+    if (ctx.error) return sendDone({ success: false, message: ctx.error });
+    send({ stage: 'review', message: '답변을 학생부와 대조하며 첨삭하는 중…' });
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: PRACTICE_REVIEW_SYSTEM,
+      userMsg: reviewUserMsg(rec, ctx.section, questionInfo(rec, { interview, bankItem })), maxTokens: 6000 });
+    const review = parseJsonLoose(reply, '첨삭 JSON');
+    review.model = submodel;
+    sendDone({ success: true, record: await setPracticeAiReview(pid, review) });
+  } catch (e) { sendDone({ success: false, message: e.message }); }
+});
+
 app.patch('/api/board/students/:id/interviews/:iid/practice-open', requireAuth, async (req, res) => {
   try {
     const sid = Number(req.params.id);

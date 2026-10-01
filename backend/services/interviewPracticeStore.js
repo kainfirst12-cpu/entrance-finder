@@ -82,6 +82,21 @@ export async function listPractice(studentId, limit = 300) {
   return rows;
 }
 
+export async function getPractice(id) {
+  const { rows } = await getPool().query(`SELECT * FROM ef_interview_practice WHERE id = $1`, [id]);
+  return rows[0] || null;
+}
+
+export async function setPracticeAiReview(id, review) {
+  const { rows } = await getPool().query(
+    `UPDATE ef_interview_practice SET ai_review = $1::jsonb, ai_reviewed_at = now() WHERE id = $2 RETURNING *`,
+    [JSON.stringify(review || {}), id]);
+  return rows[0] || null;
+}
+
+// 학생에게 내보낼 때는 AI 첨삭(선생님용)을 뗀다
+export const forStudent = (r) => { if (!r) return r; const { ai_review, ai_reviewed_at, ...rest } = r; return rest; };
+
 export async function getPracticeStudentId(id) {
   const { rows } = await getPool().query(`SELECT student_id FROM ef_interview_practice WHERE id = $1`, [id]);
   return rows[0]?.student_id ?? null;

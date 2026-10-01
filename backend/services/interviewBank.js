@@ -29,6 +29,11 @@ function view(it) {
   return { ...it, source: { name: s.name || '', year: s.year || '', url: s.url || '', page: it.pg || null } };
 }
 
+export function getBankItem(id) {
+  const it = bank().items.find((x) => x.id === id);
+  return it ? view(it) : null;
+}
+
 export function bankStats() {
   const b = bank();
   return { total: b.items.length, univs: new Set(b.items.map((i) => i.univ)).size, generatedAt: b.generatedAt || null };
