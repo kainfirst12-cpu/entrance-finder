@@ -85,6 +85,31 @@ export default function App() {
     return () => clearInterval(id);
   }, [isLoggedIn]);
 
+  // 공개 메뉴 새로고침 — 관리자가 코드에 메뉴를 열거나 닫으면 다시 로그인하지 않아도 1분 안(창으로 돌아오면 바로)에 반영된다.
+  // 예전엔 로그인 때 받은 값(localStorage ef_menus)만 써서, 허락받은 메뉴가 재로그인 전까지 안 보였다(원장 지시 2026-10-01).
+  useEffect(() => {
+    if (!isLoggedIn || role === 'admin') return;
+    const sync = () => {
+      const token = localStorage.getItem('ef_token');
+      if (!token) return;
+      fetch(`${API_BASE}/api/me/menus`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!j?.success) return;
+          const next = j.menus ?? null;
+          const raw = next === null ? null : JSON.stringify(next);
+          if (raw === localStorage.getItem('ef_menus')) return;
+          if (raw === null) localStorage.removeItem('ef_menus'); else localStorage.setItem('ef_menus', raw);
+          setMenus(next);
+        })
+        .catch(() => {});
+    };
+    sync();
+    const id = setInterval(sync, 60000);
+    window.addEventListener('focus', sync);
+    return () => { clearInterval(id); window.removeEventListener('focus', sync); };
+  }, [isLoggedIn, role]);
+
   const handleLogout = () => {
     localStorage.removeItem('ef_token');
     localStorage.removeItem('ef_role');
