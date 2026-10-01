@@ -17,7 +17,7 @@ import { buildSlides, numberSlides, buildTitleSlide, buildContents, buildClosing
 import { buildCommonSlides, renderCommonSlide } from '../../../frontend/src/seminar/commonSlides.js';
 import { downloadPptx } from '../../../frontend/src/seminar/pptx.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const API = (process.env.EF_API || 'https://entrance-finder-production.up.railway.app').replace(/\/+$/, '');
 const WEB = (process.env.EF_WEB || 'https://entrance-finder.vercel.app').replace(/\/+$/, '');
 const HOME = path.join(os.homedir(), '.seminar-deck');
