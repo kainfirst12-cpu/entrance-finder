@@ -9,12 +9,14 @@
 //   table     { columns:[], rows:[[]], note? }
 //   compare   { left:{title, items:[]}, right:{title, items:[]} }
 //   figure    { caption, note? }   — 그림·차트 자리(파워포인트에서 직접 붙인다)
+//   image     { src?, w?, h?, caption?, note? }        — 사진 한 장(src = 줄인 JPEG data URL, w·h = 원래 픽셀 비율)
+//   imageText { src?, w?, h?, lead?, items:[] }        — 왼쪽 사진 + 오른쪽 설명(학원 소개에 많이 쓴다)
 // 글자 안의 **굵게** 는 초록 굵은 글씨로 그린다.
 
 import { C, t, header } from './deckModel.js';
 
-export const LAYOUTS = ['section', 'statement', 'qa', 'cards', 'bullets', 'table', 'compare', 'figure'];
-export const LAYOUT_LABEL = { section: '장 표지', statement: '강조 문장', qa: '질문·답', cards: '카드', bullets: '목록', table: '표', compare: '좌우 비교', figure: '그림 자리' };
+export const LAYOUTS = ['section', 'statement', 'qa', 'cards', 'bullets', 'table', 'compare', 'figure', 'image', 'imageText'];
+export const LAYOUT_LABEL = { section: '장 표지', statement: '강조 문장', qa: '질문·답', cards: '카드', bullets: '목록', table: '표', compare: '좌우 비교', figure: '그림 자리', image: '사진', imageText: '사진 + 설명' };
 
 // "**굵게**" → runs
 export function rich(text, base = {}) {
@@ -52,6 +54,20 @@ function paraRuns(paras, base, { gap = false } = {}) {
 function sourceEl(src) {
   return src ? [{ t: 'text', x: 0.35, y: 5.18, w: 8.9, h: 0.3, runs: [t(`[출처] ${src}`, { size: 8, color: C.dim })] }] : [];
 }
+// 사진을 상자 안에 비율 유지(contain)로 — 원래 픽셀 w·h 가 있어야 한다. 사진이 없으면 '사진 자리' 상자.
+function imageEls(d, x, y, w, h) {
+  if (!d.src) {
+    return [
+      { t: 'shape', shape: 'rect', x, y, w, h, fill: 'F7F7F7', line: C.dim },
+      { t: 'text', x, y, w, h, align: 'center', runs: [t('사진 자리', { size: 16, b: true, color: C.dim, br: true }), t('학원 소개 편집에서 사진을 올리세요', { size: 10, color: C.dim })] },
+    ];
+  }
+  const r = d.w && d.h ? d.w / d.h : w / h;
+  let iw = w, ih = w / r;
+  if (ih > h) { ih = h; iw = h * r; }
+  return [{ t: 'image', x: x + (w - iw) / 2, y: y + (h - ih) / 2, w: iw, h: ih, src: d.src }];
+}
+
 function headingEl(text, y = 0.98) {
   return text ? [{ t: 'text', x: 0.35, y, w: 9.2, h: 0.42, runs: rich(text, { size: 16, b: true }) }] : [];
 }
@@ -165,6 +181,20 @@ export function renderCommonSlide(s, chapters = {}) {
       { t: 'text', x: 1.2, y: 1.6, w: 7.6, h: 3.0, align: 'center', runs: [t('그림 자리', { size: 18, b: true, color: C.dim, br: true }), t(plain(d.caption), { size: 12, color: C.dim })] },
     );
     if (d.note) els.push({ t: 'text', x: 0.6, y: 4.7, w: 8.8, h: 0.45, align: 'center', runs: rich(d.note, { size: 13, b: true }) });
+  } else if (s.layout === 'image') {
+    els.push(...headingEl(s.heading));
+    const hasCap = d.caption || d.note;
+    els.push(...imageEls(d, 0.6, 1.55, 8.8, hasCap ? 3.15 : 3.55));
+    if (hasCap) els.push({ t: 'text', x: 0.6, y: 4.75, w: 8.8, h: 0.4, align: 'center', runs: rich([d.caption, d.note].filter(Boolean).join(' — '), { size: 12, color: C.sub }) });
+  } else if (s.layout === 'imageText') {
+    els.push(...headingEl(s.heading));
+    els.push(...imageEls(d, 0.4, 1.55, 4.6, 3.5));
+    let y = 1.6;
+    if (d.lead) { els.push({ t: 'text', x: 5.25, y, w: 4.35, h: 0.6, valign: 'top', runs: rich(d.lead, { size: 13, color: C.sub }) }); y += 0.7; }
+    const items = (d.items || []).map((v) => `•  ${v}`);
+    const h = 5.05 - y;
+    const size = fitSize(items, 4.3, h - 0.12 * items.length, [18, 16, 15, 14, 13, 12, 11]);
+    els.push({ t: 'text', x: 5.25, y, w: 4.35, h, valign: 'top', runs: paraRuns(items, { size }, { gap: true }) });
   }
   els.push(...sourceEl(s.source));
   return els;

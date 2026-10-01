@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import { api, postSSE, token } from './api';
-import { buildCommonSlides, renderCommonSlide, LAYOUTS, LAYOUT_LABEL } from './commonSlides';
+import { buildCommonSlides, renderCommonSlide } from './commonSlides';
 import { numberSlides } from './deckModel';
-import { toForm, fromForm, FORM_FIELDS } from './slideForm';
+import SlideEditModal from './SlideEditModal';
 import SlidePreview from './SlidePreview';
 
 // ① 제도 설명 '공통본' 관리(관리자 전용) — 판(version)을 만들고, 장마다 AI 가 지식베이스·개정 자료와 비교해
@@ -21,7 +21,7 @@ export default function CommonEditor({ getActiveKey, selectedModel, aiGroup, onA
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [extra, setExtra] = useState({ names: [], text: '' });   // 올린 개정 자료(이 화면에서만)
-  const [edit, setEdit] = useState(null);    // { id, form }
+  const [edit, setEdit] = useState(null);    // 고치는 슬라이드 id
   const [chFilter, setChFilter] = useState('all');
 
   const fail = useCallback((e) => { if (e?.auth) onAuthError?.(); setErr(e?.message || String(e)); }, [onAuthError]);
@@ -122,8 +122,8 @@ export default function CommonEditor({ getActiveKey, selectedModel, aiGroup, onA
   const approveAll = (ch) => (v.slides || []).filter((s) => s.proposal && (ch === 'all' || Number(s.chapter) === ch)).forEach((s) => approve(s.id));
   const toggleRemoved = (id) => setSlides((ss) => ss.map((s) => (s.id === id ? { ...s, removed: !s.removed } : s)));
   const move = (id, dir) => setSlides((ss) => { const i = ss.findIndex((s) => s.id === id), j = i + dir; if (i < 0 || j < 0 || j >= ss.length || ss[j].chapter !== ss[i].chapter) return ss; const n = [...ss]; [n[i], n[j]] = [n[j], n[i]]; return n; });
-  const addSlide = (ch) => { const id = `m${ch}${Date.now() % 100000}`; setSlides((ss) => { const at = ss.reduce((last, s, i) => (Number(s.chapter) === ch ? i + 1 : last), ss.length); const n = [...ss]; n.splice(at, 0, { id, chapter: ch, layout: 'bullets', heading: '새 슬라이드', data: { items: ['내용을 넣으세요'] } }); return n; }); setEdit({ id, form: toForm({ layout: 'bullets', heading: '새 슬라이드', data: { items: ['내용을 넣으세요'] } }) }); };
-  const applyEdit = () => { const patch = fromForm(edit.form); setSlides((ss) => ss.map((s) => (s.id === edit.id ? { ...s, ...patch, ...(patch.source ? {} : { source: undefined }) } : s))); setEdit(null); };
+  const addSlide = (ch) => { const id = `m${ch}${Date.now() % 100000}`; setSlides((ss) => { const at = ss.reduce((last, s, i) => (Number(s.chapter) === ch ? i + 1 : last), ss.length); const n = [...ss]; n.splice(at, 0, { id, chapter: ch, layout: 'bullets', heading: '새 슬라이드', data: { items: ['내용을 넣으세요'] } }); return n; }); setEdit(id); };
+  const applyEdit = (patch) => { setSlides((ss) => ss.map((s) => (s.id === edit ? { ...s, ...patch, ...(patch.source ? {} : { source: undefined }) } : s))); setEdit(null); };
 
   const download = async () => {
     setBusy('pptx');
@@ -202,48 +202,15 @@ export default function CommonEditor({ getActiveKey, selectedModel, aiGroup, onA
             {last && <div style={S.dim}>마지막 AI 갱신 {new Date(last.at).toLocaleString('ko-KR')} · 근거 발췌 {last.kbHits}건{last.extra?.length ? ` · 개정 자료 ${last.extra.join(', ')}` : ''} — {last.summary}</div>}
             <div style={S.grid}>
               {items.map((s) => <SlideCard key={s.id} s={s} chapters={chapters} locked={locked}
-                onApprove={() => approve(s.id)} onReject={() => reject(s.id)} onEdit={() => setEdit({ id: s.id, form: toForm(s) })}
+                onApprove={() => approve(s.id)} onReject={() => reject(s.id)} onEdit={() => setEdit(s.id)}
                 onToggle={() => toggleRemoved(s.id)} onUp={() => move(s.id, -1)} onDown={() => move(s.id, 1)} />)}
             </div>
           </section>
         );
       })}
 
-      {edit && (
-        <div style={S.overlay} onClick={() => setEdit(null)}>
-          <div style={S.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={{ ...S.row, justifyContent: 'space-between', marginBottom: 8 }}>
-              <b style={{ color: 'var(--text)' }}>✏ 슬라이드 고치기</b>
-              <select style={S.input} value={edit.form.layout} onChange={(e) => setEdit({ ...edit, form: { ...toForm({ layout: e.target.value, data: {} }), heading: edit.form.heading, source: edit.form.source } })}>
-                {LAYOUTS.map((l) => <option key={l} value={l}>{LAYOUT_LABEL[l]}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 320px' }}>
-                {edit.form.layout !== 'section' && <Field label="슬라이드 제목" v={edit.form.heading} on={(x) => setEdit({ ...edit, form: { ...edit.form, heading: x } })} />}
-                {(FORM_FIELDS[edit.form.layout] || []).map(([k, label, multi]) => <Field key={k} label={label} multi={multi} v={edit.form[k] || ''} on={(x) => setEdit({ ...edit, form: { ...edit.form, [k]: x } })} />)}
-                <Field label="출처(선택)" v={edit.form.source} on={(x) => setEdit({ ...edit, form: { ...edit.form, source: x } })} />
-                <div style={S.dim}>**굵게** 로 감싸면 초록 강조가 됩니다.</div>
-              </div>
-              <div><SlidePreview slide={{ els: renderCommonSlide({ ...v.slides.find((s) => s.id === edit.id), ...fromForm(edit.form) }, chapters) }} width={420} /></div>
-            </div>
-            <div style={{ ...S.row, justifyContent: 'flex-end', marginTop: 10 }}>
-              <button style={S.btn} onClick={() => setEdit(null)}>취소</button>
-              <button style={{ ...S.btn, ...S.primary }} onClick={applyEdit}>적용 (저장은 💾)</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {edit && v.slides.find((s) => s.id === edit) && <SlideEditModal slide={v.slides.find((s) => s.id === edit)} chapters={chapters} onApply={applyEdit} onClose={() => setEdit(null)} />}
     </div>
-  );
-}
-
-function Field({ label, v, on, multi }) {
-  return (
-    <label style={{ display: 'block', marginBottom: 8, fontSize: 12, color: 'var(--text2)', fontWeight: 700 }}>{label}
-      {multi ? <textarea rows={6} style={{ ...S.input, width: '100%', marginTop: 3, resize: 'vertical' }} value={v} onChange={(e) => on(e.target.value)} />
-        : <input style={{ ...S.input, width: '100%', marginTop: 3 }} value={v} onChange={(e) => on(e.target.value)} />}
-    </label>
   );
 }
 

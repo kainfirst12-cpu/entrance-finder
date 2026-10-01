@@ -4,17 +4,21 @@ import { api, postSSE, token } from '../seminar/api';
 import { fetchGzJson, CATALOG_URL, regionLabel } from '../schoolCatalog';
 import { analyzeSchools, factsForAI, SUBJECTS, shortName } from '../seminar/analysis';
 import { useAssistantAgent } from '../assistant/useAssistantAgent';
-import { buildSlides, numberSlides } from '../seminar/deckModel';
+import { buildSlides, numberSlides, buildTitleSlide, buildContents, buildClosing } from '../seminar/deckModel';
+import AcademyEditor from '../seminar/AcademyEditor';
+import { SendToPapaDialog } from './SendToPapa';
+import { readBrand } from '../brand';
 import SlidePreview from '../seminar/SlidePreview';
 import CommonEditor from '../seminar/CommonEditor';
-import { buildCommonSlides } from '../seminar/commonSlides';
+import { buildCommonSlides, renderCommonSlide } from '../seminar/commonSlides';
 
 // 📽️ 설명회 자료 만들기 — 담당 고등학교를 고르면 학교알리미 1학년 성취도로 학교별 분석·비교·분류 슬라이드를 만들고 PPT 로 내려받는다.
 // 슬라이드는 저장하지 않는다. 담당 학교·옵션·문구만 저장하고 열 때마다 최신 공시 데이터로 다시 그린다
 // (새 공시가 catalog 에 들어오면 같은 자료를 다시 내려받는 것만으로 숫자가 바뀐다).
 // 메뉴 잠금: optIn 'seminar' — 관리자 + 관리자가 직접 체크한 학원 코드만(서버 requireMenu 가 실제로 막는다).
 
-const DEFAULT_OPTS = { part: 1, title: '일반고 선택의 기준', region: '', startPage: 1, semester: 'avg', includeCover: true, includeCommon: false, commonChapters: null };
+const DEFAULT_OPTS = { part: 1, title: '일반고 선택의 기준', region: '', startPage: 1, semester: 'avg', includeCover: true, includeCommon: false, commonChapters: null,
+  includeTitle: true, coverKicker: '대학입시, 미리 알고 준비하자!', coverTitle: '', coverPlace: '', coverDate: '', includeContents: true, includeAcademy: false, includeClosing: true };
 const emptyDeck = () => ({ id: null, title: '설명회 자료', school_ids: [], options: { ...DEFAULT_OPTS }, notes: {} });
 
 // 시도별 전 과목 파일 — 학교 항목의 bandsFile(공시정보 화면과 같은 파일)
@@ -31,13 +35,12 @@ export default function SeminarDeck(props) {
   return (
     <div style={S.page}>
       <h2 style={S.h2}>📽️ 설명회 자료 만들기</h2>
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 6, margin: '10px 0 4px' }}>
-          <button style={tab === 'deck' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('deck')}>설명회 자료 (담당 학교)</button>
-          <button style={tab === 'common' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('common')}>① 제도 설명 공통본 관리 (관리자)</button>
-        </div>
-      )}
-      {tab === 'common' && isAdmin ? <CommonEditor {...props} /> : <DeckBuilder {...props} />}
+      <div style={{ display: 'flex', gap: 6, margin: '10px 0 4px', flexWrap: 'wrap' }}>
+        <button style={tab === 'deck' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('deck')}>설명회 자료 만들기</button>
+        <button style={tab === 'academy' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('academy')}>③ 우리 학원 소개</button>
+        {isAdmin && <button style={tab === 'common' ? { ...S.btn, ...S.btnPrimary } : S.btn} onClick={() => setTab('common')}>① 제도 설명 공통본 관리 (관리자)</button>}
+      </div>
+      {tab === 'common' && isAdmin ? <CommonEditor {...props} /> : tab === 'academy' ? <AcademyEditor {...props} /> : <DeckBuilder {...props} />}
     </div>
   );
 }
@@ -59,6 +62,21 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
   const [big, setBig] = useState(null);         // 크게 볼 슬라이드 index
 
   const fail = useCallback((e) => { if (e?.auth) onAuthError?.(); setErr(e?.message || String(e)); }, [onAuthError]);
+
+  // ③ 우리 학원 소개(저장 전이면 처음 모양) · 학원 브랜드(설정 → 브랜드, 로고는 비율을 재서 표지·마무리에)
+  const [academy, setAcademy] = useState(null);
+  useEffect(() => { api('/api/seminar/academy').then((r) => r.success && setAcademy(r.item)).catch(() => {}); }, []);
+  const [brand, setBrand] = useState(() => readBrand());
+  useEffect(() => {
+    const b = readBrand(); if (!b.logo) return;
+    const im = new Image(); im.onload = () => setBrand({ ...b, logoRatio: im.width / im.height || 1 }); im.src = b.logo;
+  }, []);
+  // 🔗 공유 링크
+  const [share, setShare] = useState(null);        // { token, url }
+  const [shares, setShares] = useState([]);
+  const [papaOpen, setPapaOpen] = useState(false);
+  const loadShares = useCallback(() => api('/api/seminar/shares').then((r) => r.success && setShares(r.items || [])).catch(() => {}), []);
+  useEffect(() => { loadShares(); }, [loadShares]);
 
   // 발행된 ① 제도 설명 공통본(없으면 null)
   const [common, setCommon] = useState(null);
@@ -99,10 +117,23 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
     const chs = Array.isArray(opts.commonChapters) ? opts.commonChapters : commonChNums;
     return buildCommonSlides({ ...common, slides: common.slides.filter((s) => chs.includes(Number(s.chapter))) });
   }, [common, opts.includeCommon, opts.commonChapters, commonChNums]);
+  // 순서: 표지 → 목차 → ① 공통본 → ② 학교별 → ③ 학원 소개 → Q&A·감사(연락처)
+  const academyPart = Number(opts.part) + 1;
   const slides = useMemo(() => {
     const school = analysis ? buildSlides({ ...opts, region: opts.region || autoRegion, notes: deck.notes }, analysis) : [];
-    return numberSlides([...commonSlides, ...school], opts.startPage);
-  }, [analysis, opts, autoRegion, deck.notes, commonSlides]);
+    const acad = opts.includeAcademy && academy ? (academy.slides || []).map((s) => ({ key: `academy:${s.id}`, title: `학원 소개 · ${s.heading || s.data?.title || ''}`, els: renderCommonSlide({ ...s, chapter: academyPart }, { [academyPart]: academy.title }) })) : [];
+    const parts = [
+      ...(commonSlides.length ? (Array.isArray(opts.commonChapters) ? opts.commonChapters : commonChNums).map((c) => ({ no: c, title: common.chapters?.[c] || '' })) : []),
+      ...(school.length ? [{ no: opts.part, title: opts.title }] : []),
+      ...(acad.length ? [{ no: academyPart, title: academy.title }] : []),
+    ];
+    const head = [
+      ...(opts.includeTitle ? [buildTitleSlide(opts, brand)] : []),
+      ...(opts.includeContents && parts.length > 1 ? [buildContents(parts)] : []),
+    ];
+    const tail = opts.includeClosing && (school.length || acad.length || commonSlides.length) ? buildClosing(academy?.info || {}, brand, opts) : [];
+    return numberSlides([...head, ...commonSlides, ...school, ...acad, ...tail], opts.startPage);
+  }, [analysis, opts, autoRegion, deck.notes, commonSlides, academy, academyPart, brand, common, commonChNums]);
   const skipped = analysis ? analysis.items.filter((it) => !analysis.usable.includes(it)) : [];
 
   const patch = (p) => { setDeck((d) => ({ ...d, ...p })); setDirty(true); };
@@ -167,6 +198,27 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
       setMsg(`AI 해설을 ${Object.keys(r.notes).length}개 학교에 넣었습니다. 슬라이드에서 확인하고 '문구 고치기'로 다듬으세요.`);
     } catch (e) { fail(e); } finally { setBusy(''); }
   };
+
+  const shareUrl = (tk) => `${window.location.origin}/deck/${tk}`;
+  const makeShare = async () => {
+    setBusy('share'); setErr('');
+    try {
+      const r = await api('/api/seminar/shares', { method: 'POST', body: { title: deck.title || '설명회 자료', academy: brand.name, slides: slides.map(({ title, els }) => ({ title, els })) } });
+      if (!r.success) throw new Error(r.message || '링크 만들기 실패');
+      setShare({ token: r.token, url: shareUrl(r.token) }); loadShares();
+      try { await navigator.clipboard.writeText(shareUrl(r.token)); setMsg('공유 링크를 만들고 복사했습니다. 학부모님 단톡·문자에 붙여 넣으면 로그인 없이 슬라이드를 봅니다.'); } catch { setMsg('공유 링크를 만들었습니다.'); }
+    } catch (e) { fail(e); } finally { setBusy(''); }
+  };
+  const removeShare = async (tk) => {
+    if (!confirm('이 링크를 지울까요? 받은 분들도 더는 볼 수 없습니다.')) return;
+    try { await api(`/api/seminar/shares/${tk}`, { method: 'DELETE' }); if (share?.token === tk) setShare(null); loadShares(); } catch (e) { fail(e); }
+  };
+  // 나만의 패파 문서 — 링크 + 목차(파트 제목)
+  const papaMarkdown = () => [
+    `# ${deck.title || '설명회 자료'}`,
+    '', `${brand.name || ''} 설명회 자료를 보내 드립니다. 아래 링크를 누르면 휴대폰에서도 슬라이드를 넘겨 보실 수 있습니다.`,
+    '', `👉 [설명회 슬라이드 보기](${share?.url || ''})`,
+  ].join('\n');
 
   const download = async () => {
     setBusy('pptx'); setErr('');
@@ -359,12 +411,53 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
           </section>
 
           <section style={S.card}>
+            <div style={S.secTitle}>표지 · 목차 · 마무리</div>
+            <label style={S.lbl}><input type="checkbox" checked={!!opts.includeTitle} onChange={(e) => setOpt('includeTitle', e.target.checked)} /> 맨 앞 표지</label>
+            {opts.includeTitle && <>
+              <label style={S.lbl}>머리말 <input style={{ ...S.input, flex: 1 }} value={opts.coverKicker} onChange={(e) => setOpt('coverKicker', e.target.value)} /></label>
+              <label style={S.lbl}>큰 제목 <input style={{ ...S.input, flex: 1 }} value={opts.coverTitle} placeholder="예: 2027 고입 및 2030 대입 설명회" onChange={(e) => setOpt('coverTitle', e.target.value)} /></label>
+              <label style={S.lbl}>장소 <input style={{ ...S.input, flex: 1 }} value={opts.coverPlace} placeholder="예: 5층 대강의실" onChange={(e) => setOpt('coverPlace', e.target.value)} /></label>
+              <label style={S.lbl}>날짜 <input style={{ ...S.input, flex: 1 }} value={opts.coverDate} placeholder="예: 2026년 11월 20일(금)" onChange={(e) => setOpt('coverDate', e.target.value)} /></label>
+            </>}
+            <label style={S.lbl}><input type="checkbox" checked={!!opts.includeContents} onChange={(e) => setOpt('includeContents', e.target.checked)} /> 목차(파트가 둘 이상일 때)</label>
+            <label style={S.lbl}><input type="checkbox" checked={!!opts.includeAcademy} disabled={!academy} onChange={(e) => setOpt('includeAcademy', e.target.checked)} /> ③ 우리 학원 소개 넣기{academy ? ` (${(academy.slides || []).length}장)` : ''}</label>
+            <label style={S.lbl}><input type="checkbox" checked={!!opts.includeClosing} onChange={(e) => setOpt('includeClosing', e.target.checked)} /> 마무리(Q&A · 감사 · 연락처)</label>
+            <div style={S.dim}>학원 이름·로고는 설정 → 브랜드{brand.name ? ` (${brand.name})` : ''}, 연락처·소개 슬라이드는 ‘③ 우리 학원 소개’ 탭에서 고칩니다.</div>
+          </section>
+
+          <section style={S.card}>
             <div style={S.secTitle}>만들기</div>
             <button style={{ ...S.btn, width: '100%' }} onClick={aiNotes} disabled={!analysis || busy === 'ai'}>{busy === 'ai' ? '🤖 해설 쓰는 중… (1~2분)' : '🤖 AI로 해설 문구 다듬기'}</button>
             <div style={{ ...S.dim, margin: '4px 0 8px' }}>키가 없어도 규칙으로 만든 해설이 들어갑니다. AI는 문구만 다듬고 숫자·분류는 바꾸지 않습니다.</div>
             <button style={{ ...S.btn, ...S.btnPrimary, width: '100%', padding: '11px 14px', fontSize: 14 }} onClick={download} disabled={!slides.length || busy === 'pptx'}>
               {busy === 'pptx' ? 'PPT 만드는 중…' : `⬇ PPT 내려받기 (${slides.length}장)`}
             </button>
+            <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0 8px' }} />
+            <div style={S.secTitle}>보내기</div>
+            <button style={{ ...S.btn, width: '100%' }} onClick={makeShare} disabled={!slides.length || busy === 'share'}>{busy === 'share' ? '링크 만드는 중…' : '🔗 공유 링크 만들기 (로그인 없이 보기)'}</button>
+            {share && (
+              <div style={{ marginTop: 6 }}>
+                <input readOnly style={{ ...S.input, width: '100%' }} value={share.url} onFocus={(e) => e.target.select()} />
+                <div style={{ ...S.row, marginTop: 6 }}>
+                  <button style={S.btn} onClick={() => navigator.clipboard?.writeText(share.url).then(() => setMsg('복사했습니다.'))}>복사</button>
+                  <a style={{ ...S.btn, textDecoration: 'none' }} href={share.url} target="_blank" rel="noreferrer">열어 보기</a>
+                  <button style={S.btn} onClick={() => setPapaOpen(true)}>📨 나만의 패파 학생에게</button>
+                </div>
+              </div>
+            )}
+            <div style={S.dim}>링크는 만든 순간의 슬라이드를 그대로 보여 줍니다. 고친 뒤에는 새 링크를 만드세요.</div>
+            {shares.length > 0 && (
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ ...S.dim, cursor: 'pointer' }}>만든 링크 {shares.length}개</summary>
+                {shares.map((x) => (
+                  <div key={x.token} style={{ ...S.row, fontSize: 12, color: 'var(--text2)', margin: '4px 0' }}>
+                    <a href={shareUrl(x.token)} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{x.title}</a>
+                    <span>{x.slide_count}장 · 조회 {x.views} · {new Date(x.created_at).toLocaleDateString('ko-KR')}</span>
+                    <button style={S.x} onClick={() => removeShare(x.token)} title="지우기">×</button>
+                  </div>
+                ))}
+              </details>
+            )}
           </section>
         </div>
 
@@ -389,6 +482,10 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
         </div>
       </div>
 
+      {papaOpen && share && (
+        <SendToPapaDialog kind="설명회 자료" menu="seminar" title={deck.title || '설명회 자료'} markdown={papaMarkdown()}
+          onClose={() => setPapaOpen(false)} onSent={() => { setPapaOpen(false); setMsg('나만의 패파로 보냈습니다.'); }} onAuthError={onAuthError} />
+      )}
       {big !== null && slides[big] && (
         <div style={S.overlay} onClick={() => setBig(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>

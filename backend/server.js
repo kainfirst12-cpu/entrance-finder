@@ -50,6 +50,8 @@ import {
 } from './services/schoolReportStore.js';
 import { ensureSeminarTable, listSeminarDecks, getSeminarDeck, createSeminarDeck, updateSeminarDeck, deleteSeminarDeck } from './services/seminarStore.js';
 import { ensureSeminarCommonTable, listCommon, getCommon, getPublishedCommon, createCommonFrom, saveCommon, appendCommonUpdate, publishCommon, deleteCommon, applyCommonProposals } from './services/seminarCommonStore.js';
+import { ensureSeminarAcademyTables, getAcademy, saveAcademy, createShare, listShares, readShare, deleteShare } from './services/seminarAcademyStore.js';
+import { pathfinderAcademySeed, blankAcademySeed } from './services/seminarAcademySeed.js';
 import { buildReportData } from './services/schoolReportData.js';
 import { listLibrary, libraryOwners, getLibraryItem, updateLibraryItem, deleteLibraryItem, BODY_EDITABLE, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
 import jwt from 'jsonwebtoken';
@@ -1574,6 +1576,52 @@ app.post('/api/seminar/common/:id/ai-update', requireAdmin, async (req, res) => 
     console.error('[seminar/common/ai-update] 오류:', err.message);
     sendDone({ success: false, message: friendlyAIError(err, aiModel) });
   }
+});
+
+// ── 📽️ 설명회 ③ 학원 소개(학원 코드마다 한 벌) ──
+// 처음 열면 저장된 게 없으니 처음 모양을 준다: 관리자 = 2025 패스파인더 소개, 다른 학원 = 빈 틀(저장해야 남는다)
+app.get('/api/seminar/academy', SEMINAR, async (req, res) => {
+  try {
+    if (!(await seminarGuard(req, res))) return;
+    const a = await getAcademy(req.user.userId);
+    if (a) return res.json({ success: true, item: a, seeded: false });
+    const seed = isAdminReq(req) ? pathfinderAcademySeed() : blankAcademySeed(req.user.name || '');
+    res.json({ success: true, item: { owner_id: req.user.userId, ...seed }, seeded: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.put('/api/seminar/academy', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; res.json({ success: true, item: await saveAcademy(req.user.userId, req.body || {}) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 🔗 공유 링크 — 그 순간의 슬라이드를 얼려 두고, 링크를 받은 학부모님은 로그인 없이 본다 ──
+app.get('/api/seminar/shares', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; res.json({ success: true, items: await listShares(req.user.userId) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/seminar/shares', SEMINAR, async (req, res) => {
+  try {
+    if (!(await seminarGuard(req, res))) return;
+    const slides = Array.isArray(req.body?.slides) ? req.body.slides.slice(0, 200) : [];
+    if (!slides.length) return res.status(400).json({ success: false, message: '슬라이드가 없습니다' });
+    const token = await createShare(req.user.userId, { title: req.body?.title, academy: req.body?.academy, slides });
+    res.json({ success: true, token });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/seminar/shares/:token', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; await deleteShare(req.user.userId, String(req.params.token)); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// 공개(로그인 없음) — /api/seminar 밖에 둬서 메뉴 검사에 걸리지 않게 한다. 토큰을 아는 사람만 볼 수 있다.
+app.get('/api/public/seminar-share/:token', async (req, res) => {
+  try {
+    if (!dbEnabled()) return res.status(503).json({ success: false, message: '잠시 뒤 다시 열어 주세요' });
+    const t = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{8,32}$/.test(t)) return res.status(404).json({ success: false, message: '링크가 올바르지 않습니다' });
+    const s = await readShare(t);
+    if (!s) return res.status(404).json({ success: false, message: '지워졌거나 없는 링크입니다' });
+    res.json({ success: true, item: s });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 const ACADEMY_VIDEO_URL = (process.env.ACADEMY_VIDEO_URL || 'https://academy-video.vercel.app').replace(/\/+$/, '');
@@ -5192,12 +5240,14 @@ app.listen(PORT, async () => {
     await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
     await ensureSeminarTable().catch((e) => console.warn('[seminar] 테이블 준비 실패:', e.message));
     await ensureSeminarCommonTable().catch((e) => console.warn('[seminar-common] 테이블 준비 실패:', e.message));
+    await ensureSeminarAcademyTables().catch((e) => console.warn('[seminar-academy] 테이블 준비 실패:', e.message));
     await refreshKbCount();
   });
   await initDb();
   await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
   await ensureSeminarTable().catch((e) => console.warn('[seminar] 테이블 준비 실패:', e.message));
   await ensureSeminarCommonTable().catch((e) => console.warn('[seminar-common] 테이블 준비 실패:', e.message));
+  await ensureSeminarAcademyTables().catch((e) => console.warn('[seminar-academy] 테이블 준비 실패:', e.message));
   // 📈 실시간 경쟁률 자동 수집 — 접수 기간에만 실제로 돈다(스스로 판단한다).
   startRatioCron().catch((e) => console.warn('[ratio] 예약 실패:', e.message));
   await refreshKbCount();

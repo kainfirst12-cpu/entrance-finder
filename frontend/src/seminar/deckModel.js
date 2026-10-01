@@ -223,3 +223,52 @@ export function buildSlides(deck, analysis) {
 export function numberSlides(slides, start = 1) {
   return slides.map((sl, i) => ({ ...sl, els: [...sl.els, ...pageBadge((Number(start) || 1) + i)] }));
 }
+
+// ── 맨 앞 표지 · 목차 · 마무리(Q&A·감사·연락처) — 작년 1·2·110~116쪽 모양 ──
+// brand = { name, sub, logo? }  (설정 → 브랜드, frontend/src/brand.js readBrand)
+function logoEls(brand, x, y, h) {
+  if (!brand?.logo) return [];
+  return [{ t: 'image', x, y, w: h * (brand.logoRatio || 1), h, src: brand.logo }];
+}
+export function buildTitleSlide(o, brand) {
+  return {
+    key: 'title', title: '표지', els: [
+      ...logoEls(brand, 0.5, 0.35, 0.6),
+      { t: 'text', x: 0.5, y: 1.35, w: 9, h: 0.5, align: 'center', runs: [t(o.coverKicker || '대학입시, 미리 알고 준비하자!', { size: 18, b: true, color: C.green })] },
+      { t: 'text', x: 0.5, y: 1.9, w: 9, h: 1.2, align: 'center', runs: [t(o.coverTitle || '고입 · 대입 설명회', { size: 40, b: true })] },
+      { t: 'line', x: 4.4, y: 3.25, w: 1.2, color: C.green },
+      { t: 'text', x: 0.5, y: 3.45, w: 9, h: 0.9, align: 'center', runs: [
+        t([o.coverPlace, o.coverDate].filter(Boolean).join('  ·  ') || ' ', { size: 15, color: C.sub, br: true }),
+        t(brand?.name || '', { size: 15, b: true, color: C.ink })] },
+    ],
+  };
+}
+export function buildContents(parts) {
+  // parts = [{ no, title }]
+  const half = Math.ceil(parts.length / 2);
+  const col = (list, x) => ({ t: 'text', x, y: 1.5, w: 4.3, h: 3.6, valign: 'top', runs: list.flatMap((p, i) => [
+    t(`Part. ${String(p.no).padStart(2, '0')}  `, { size: 14, b: true, color: C.green }), t(p.title, { size: 16, b: true, br: i < list.length - 1 }), ...(i < list.length - 1 ? [t(' ', { size: 10, br: true })] : [])]) });
+  return { key: 'contents', title: '목차', els: [
+    { t: 'text', x: 0.5, y: 0.45, w: 9, h: 0.8, runs: [t('CONTENTS', { size: 34, b: true })] },
+    { t: 'line', x: 0.5, y: 1.25, w: 1.2, color: C.green },
+    col(parts.slice(0, half), 0.6), ...(parts.length > half ? [col(parts.slice(half), 5.2)] : []),
+  ] };
+}
+export function buildClosing(info = {}, brand, o = {}) {
+  const contact = [info.phone && `☎  ${info.phone}`, info.address && `📍  ${info.address}`, info.sns && `💬  ${info.sns}`].filter(Boolean);
+  return [
+    { key: 'qna', title: 'Q&A', els: [
+      { t: 'text', x: 0.5, y: 1.6, w: 9, h: 1.2, align: 'center', runs: [t('Q&A', { size: 60, b: true, color: C.green })] },
+      { t: 'text', x: 0.5, y: 2.9, w: 9, h: 0.6, align: 'center', runs: [t('사전 질문과 현장 질문', { size: 18, color: C.sub })] },
+    ] },
+    { key: 'thanks', title: '감사 인사', els: [
+      ...logoEls(brand, 4.6, 0.55, 0.8),
+      { t: 'text', x: 0.5, y: 1.45, w: 9, h: 1.3, align: 'center', runs: [t('참석하여 자리를 빛내주셔서', { size: 26, b: true, br: true }), t('진심으로 감사드립니다.', { size: 26, b: true, color: C.green })] },
+      { t: 'text', x: 0.5, y: 2.85, w: 9, h: 0.45, align: 'center', runs: [t(info.closing || '', { size: 13, color: C.sub })] },
+      { t: 'text', x: 0.5, y: 3.4, w: 9, h: 1.4, align: 'center', valign: 'top', runs: [
+        t(brand?.name || '', { size: 16, b: true, br: contact.length > 0 }),
+        ...contact.map((c, i) => t(c, { size: 14, color: C.ink, br: i < contact.length - 1 }))] },
+      { t: 'text', x: 0.5, y: 4.95, w: 9, h: 0.35, align: 'center', runs: [t(o.coverTitle || '', { size: 10, color: C.dim })] },
+    ] },
+  ];
+}

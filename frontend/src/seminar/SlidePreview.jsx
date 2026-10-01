@@ -28,6 +28,9 @@ export default function SlidePreview({ slide, width = 520 }) {
             </div>
           );
         }
+        if (e.t === 'image') {
+          return <img key={i} src={e.src} alt="" style={{ ...box(e), objectFit: 'fill' }} />;
+        }
         if (e.t === 'shape') {
           let clip;
           if (CLIP[e.shape]) clip = CLIP[e.shape];
