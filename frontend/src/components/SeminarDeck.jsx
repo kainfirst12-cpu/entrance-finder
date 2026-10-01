@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import { fetchGzJson, CATALOG_URL, regionLabel } from '../schoolCatalog';
-import { analyzeSchools, factsForAI, SUBJECTS } from '../seminar/analysis';
-import { buildSlides } from '../seminar/deckModel';
+import { analyzeSchools, factsForAI, SUBJECTS, shortName } from '../seminar/analysis';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
+import { buildSlides, numberSlides } from '../seminar/deckModel';
 import SlidePreview from '../seminar/SlidePreview';
 
 // 📽️ 설명회 자료 만들기 — 담당 고등학교를 고르면 학교알리미 1학년 성취도로 학교별 분석·비교·분류 슬라이드를 만들고 PPT 로 내려받는다.
@@ -93,7 +94,7 @@ export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAu
   }, [chosen]);
   const ready = chosen.length > 0 && chosen.every((s) => full[s.id] || !s.bandsFile); // bandsFile 없는 학교는 catalog 의 국·영·수만
   const analysis = useMemo(() => (ready ? analyzeSchools(chosen.map((s) => ({ ...s, bands: full[s.id] || s.bands || [] })), { semester: opts.semester === 'avg' ? 'avg' : Number(opts.semester) }) : null), [ready, chosen, full, opts.semester]);
-  const slides = useMemo(() => (analysis ? buildSlides({ ...opts, region: opts.region || autoRegion, notes: deck.notes }, analysis) : []), [analysis, opts, autoRegion, deck.notes]);
+  const slides = useMemo(() => (analysis ? numberSlides(buildSlides({ ...opts, region: opts.region || autoRegion, notes: deck.notes }, analysis), opts.startPage) : []), [analysis, opts, autoRegion, deck.notes]);
   const skipped = analysis ? analysis.items.filter((it) => !analysis.usable.includes(it)) : [];
 
   const patch = (p) => { setDeck((d) => ({ ...d, ...p })); setDirty(true); };
@@ -167,6 +168,88 @@ export default function SeminarDeck({ getActiveKey, selectedModel, aiGroup, onAu
       await downloadPptx(slides, { fileName: name, title: deck.title });
     } catch (e) { setErr(`PPT 만들기 실패: ${e.message}`); } finally { setBusy(''); }
   };
+
+  // 🤖 AI 선생님 도구 — "부천여고, 상동고 담당학교로 불러와줘" 같은 말로 학교를 넣고 뺀다
+  const matchSchools = (names, region) => {
+    const found = [], missing = [], ambiguous = [];
+    const here = new Set(chosen.map((s) => s.sigungu));
+    for (const raw of names || []) {
+      const n = String(raw).trim().replace(/\s+/g, '');
+      if (!n) continue;
+      let list = (catalog || []).filter((s) => s.schoolName === n || shortName(s.schoolName) === n || s.schoolName === `${n}등학교` || s.schoolName.replace(/고등학교$/, '고') === n);
+      if (region) list = list.filter((s) => `${s.sido} ${s.sigungu}`.includes(region));
+      if (list.length > 1 && here.size) { const near = list.filter((s) => here.has(s.sigungu)); if (near.length) list = near; }
+      if (list.length === 1) found.push(list[0]);
+      else if (!list.length) missing.push(raw);
+      else ambiguous.push(`${raw}(${list.slice(0, 4).map(regionLabel).join(' / ')})`);
+    }
+    return { found, missing, ambiguous };
+  };
+  useAssistantAgent('screen', {
+    key: 'seminar',
+    title: '설명회 자료 만들기',
+    describe: () => [
+      '[화면] 설명회 자료 만들기 — 담당 고등학교를 고르면 학교알리미 1학년 성취도로 학교별 분석·비교·분류 슬라이드를 만들고 PPT로 내려받는다.',
+      `[자료] ${deck.title}${deck.id ? ' (저장됨)' : ' (새 자료)'}${dirty ? ' · 저장 안 한 변경 있음' : ''}`,
+      `[담당 학교 ${chosen.length}곳] ${chosen.map((s) => s.schoolName).join(', ') || '없음'}`,
+      `[저장된 자료] ${saved.map((d) => d.title).join(', ') || '없음'}`,
+      `[슬라이드] ${slides.length}장 · 파트 ${opts.part} · 제목 ${opts.title} · 학기 ${opts.semester}`,
+      '[도구] 학교 넣기 add_schools(이름 목록, 지역 선택), 빼기 remove_schools, 비우기 clear_schools, 지역 일반고 전부 add_region_schools, 설정 set_seminar_options, 저장 save_seminar_deck, PPT 내려받기 download_seminar_pptx.',
+    ].join('\n'),
+    examples: ['부천여고, 상동고, 송내고 담당학교로 넣어줘', '부천시 일반고 전부 넣어줘', '파트 번호 6으로 바꾸고 저장해줘'],
+    tools: [
+      {
+        name: 'add_schools',
+        description: '담당 학교를 이름으로 넣는다. 줄임말(부천여고·상동고)도 된다. 같은 이름이 여러 지역에 있으면 region(예: "부천")으로 좁힌다.',
+        schema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } }, region: { type: 'string', description: '시도·시군구 일부(선택)' } }, required: ['names'] },
+        run: ({ names, region }) => {
+          if (!catalog) return '학교 목록을 아직 불러오는 중입니다. 잠시 뒤 다시 시도하세요.';
+          const { found, missing, ambiguous } = matchSchools(names, region);
+          if (found.length) addIds(found.map((s) => s.id));
+          return [found.length ? `넣음: ${found.map((s) => `${s.schoolName}(${regionLabel(s)})`).join(', ')}` : '',
+            missing.length ? `못 찾음: ${missing.join(', ')}` : '', ambiguous.length ? `여러 곳이라 지역을 알려 주세요: ${ambiguous.join(', ')}` : ''].filter(Boolean).join('\n');
+        },
+      },
+      {
+        name: 'remove_schools',
+        description: '담당 학교에서 이름으로 뺀다.',
+        schema: { type: 'object', properties: { names: { type: 'array', items: { type: 'string' } } }, required: ['names'] },
+        run: ({ names }) => {
+          const want = (names || []).map((n) => String(n).replace(/\s+/g, ''));
+          const out = chosen.filter((s) => want.some((n) => s.schoolName === n || shortName(s.schoolName) === n));
+          patch({ school_ids: deck.school_ids.filter((id) => !out.some((s) => String(s.id) === id)) });
+          return out.length ? `뺌: ${out.map((s) => s.schoolName).join(', ')}` : '담당 학교 중에 그 이름이 없습니다.';
+        },
+      },
+      { name: 'clear_schools', description: '담당 학교를 모두 뺀다.', schema: { type: 'object', properties: {} }, confirm: '담당 학교를 모두 뺄까요?', run: () => { patch({ school_ids: [] }); return '모두 뺐습니다.'; } },
+      {
+        name: 'add_region_schools',
+        description: '한 시군구(또는 시도)의 일반고를 전부 넣는다.',
+        schema: { type: 'object', properties: { sido: { type: 'string', description: '예: 경기도' }, sigungu: { type: 'string', description: '예: 부천시(없으면 시도 전체)' } }, required: ['sido'] },
+        run: ({ sido: sd, sigungu: sg }) => {
+          const list = (catalog || []).filter((s) => (s.sido || '').includes(sd) && (!sg || (s.sigungu || '').includes(sg)) && s.schoolType === '일반고등학교');
+          if (!list.length) return '그 지역에서 일반고를 찾지 못했습니다.';
+          addIds(list.map((s) => s.id));
+          return `${list.length}곳을 넣었습니다.`;
+        },
+      },
+      {
+        name: 'set_seminar_options',
+        description: '슬라이드 설정을 바꾼다. part(파트 번호), title(제목), region(지역 이름), startPage(시작 쪽번호), semester("avg"|1|2), includeCover(파트 표지), deckTitle(자료 제목).',
+        schema: { type: 'object', properties: { part: { type: 'number' }, title: { type: 'string' }, region: { type: 'string' }, startPage: { type: 'number' }, semester: { type: ['string', 'number'] }, includeCover: { type: 'boolean' }, deckTitle: { type: 'string' } } },
+        run: (inp) => {
+          const { deckTitle, ...rest } = inp || {};
+          const next = { ...opts };
+          for (const k of ['part', 'title', 'region', 'startPage', 'includeCover']) if (rest[k] !== undefined) next[k] = rest[k];
+          if (rest.semester !== undefined) next.semester = rest.semester === 'avg' ? 'avg' : Number(rest.semester) || 'avg';
+          patch({ options: next, ...(deckTitle ? { title: deckTitle } : {}) });
+          return '설정을 바꿨습니다.';
+        },
+      },
+      { name: 'save_seminar_deck', description: '지금 자료(담당 학교·설정·문구)를 저장한다.', schema: { type: 'object', properties: {} }, run: async () => { await save(); return '저장을 요청했습니다.'; } },
+      { name: 'download_seminar_pptx', description: '지금 슬라이드를 PPT 파일로 내려받는다.', schema: { type: 'object', properties: {} }, run: async () => { if (!slides.length) return '담당 학교가 없어 만들 슬라이드가 없습니다.'; await download(); return `${slides.length}장 PPT 내려받기를 시작했습니다.`; } },
+    ],
+  });
 
   const setNote = (id, p) => patch({ notes: { ...deck.notes, [id]: { ...(deck.notes[id] || {}), ...p } } });
   const editItem = editId && analysis?.usable.find((x) => x.id === editId);

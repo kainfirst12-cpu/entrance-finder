@@ -23,18 +23,18 @@ export const BAND = { a: '16A34A', b: '4ADE80', c: 'FACC15', d: 'FB923C', e: 'EF
 
 const fmt = (v) => (v === null || v === undefined ? '—' : Number(v).toFixed(1));
 const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
-const t = (text, o = {}) => ({ text, ...o });
+export const t = (text, o = {}) => ({ text, ...o });
 // 받침 있으면 '은', 없으면 '는'
 const eunNeun = (w) => { const c = String(w).charCodeAt(String(w).length - 1); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? '은' : '는'; };
 
 // 공통 머리 — "7 . 일반고 선택의 기준: 과목별 분류"
-function header(part, title) {
+export function header(part, title) {
   return {
     t: 'text', x: 0.35, y: 0.18, w: 8.6, h: 0.75, valign: 'middle',
     runs: [t(String(part), { size: 40, b: true }), t(' . ', { size: 22, b: true }), t(title, { size: 22, b: true })],
   };
 }
-function pageBadge(n) {
+export function pageBadge(n) {
   return [
     { t: 'shape', shape: 'offpage', x: 9.35, y: 0, w: 0.5, h: 0.6, fill: C.badge },
     { t: 'text', x: 9.35, y: 0.06, w: 0.5, h: 0.3, runs: [t(String(n), { size: 9, color: C.sub })], align: 'center' },
@@ -216,8 +216,10 @@ export function buildSlides(deck, analysis) {
     add(`cls:type:${i}`, `학교별 분류${pages.length > 1 ? ` ${i + 1}` : ''}`, els);
   });
 
-  // 쪽번호
-  const start = Number(deck.startPage) || 1;
-  slides.forEach((sl, i) => { sl.els.push(...pageBadge(start + i)); });
   return slides;
+}
+
+/** 쪽번호 — ① 공통본 + ② 학교별을 이어 붙인 뒤 한 번에 매긴다 */
+export function numberSlides(slides, start = 1) {
+  return slides.map((sl, i) => ({ ...sl, els: [...sl.els, ...pageBadge((Number(start) || 1) + i)] }));
 }

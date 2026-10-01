@@ -13,9 +13,28 @@ import './assistant.css';
 // 여기 왕복에 끼지 않는다(backend/services/assistantAgent.js 주석 참고).
 
 const MAX_STEPS = 16;
+// 고른 모델이 안 될 때(키 틀림·잔액 없음·도구 미지원·장애) 키가 있는 다른 제공사로 넘어간다 — 이 순서로.
+// 원장 제보(2026-10-01): Gemini 키만 쓰여서 Gemini 키가 막히면 Claude·GPT 키가 있어도 AI 선생님이 멈췄다.
+const FALLBACK_ORDER = ['claude', 'gpt', 'gemini'];
+const GROUP_MODEL = { claude: 'claude', gpt: 'gpt', gemini: 'gemini' };   // 제공사별 기본 모델(App modelConfig 키)
+const GROUP_NAME = { claude: 'Claude', gpt: 'GPT', gemini: 'Gemini' };
+const SWITCHABLE = new Set(['key', 'credit', 'unsupported', 'down', 'rate']);
 const STUDENT_KEY = 'ef_assistant_student';
 
-export default function AssistantPanel({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
+export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel, aiGroup, onAuthError }) {
+  // 자동 전환으로 정해진 제공사 — 왼쪽에서 모델을 새로 고르면 그 모델부터 다시 시도한다
+  const [fallback, setFallback] = useState(null);   // { group, model }
+  useEffect(() => { setFallback(null); }, [aiGroup, selectedModel]);
+  // 시도할 순서: (자동 전환해 둔 것) → 고른 모델 → 키가 있는 다른 제공사
+  const candidates = useCallback(() => {
+    const keyOf = (g) => (getKeyFor ? getKeyFor(g) : g === aiGroup ? getActiveKey() : '') || '';
+    const list = [];
+    if (fallback) list.push({ ...fallback, key: keyOf(fallback.group) });
+    list.push({ group: aiGroup, model: selectedModel, key: keyOf(aiGroup) });
+    for (const g of FALLBACK_ORDER) list.push({ group: g, model: GROUP_MODEL[g], key: keyOf(g) });
+    const seen = new Set();
+    return list.filter((c) => c.key && !seen.has(c.group) && seen.add(c.group));
+  }, [aiGroup, fallback, getActiveKey, getKeyFor, selectedModel]);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);          // 화면에 보이는 대화 흔적
   const [input, setInput] = useState('');
@@ -50,15 +69,15 @@ export default function AssistantPanel({ getActiveKey, selectedModel, aiGroup, o
   const push = useCallback((item) => setItems((prev) => [...prev, item]), []);
 
   // ── 한 걸음: 서버에 물어본다 ──────────────────────────
-  const askServer = useCallback(async (turns) => {
+  const askOnce = useCallback(async (turns, cand) => {
     const token = localStorage.getItem('ef_token');
     const res = await fetch(`${API_BASE}/api/assistant`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': getActiveKey() || '',
-        'x-ai-model': aiGroup,
-        'x-ai-submodel': selectedModel,
+        'x-api-key': cand.key,
+        'x-ai-model': cand.group,
+        'x-ai-submodel': cand.model,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
@@ -72,9 +91,31 @@ export default function AssistantPanel({ getActiveKey, selectedModel, aiGroup, o
     });
     if (res.status === 401) { onAuthError?.(); throw new Error('로그인이 풀렸습니다. 다시 로그인해 주세요.'); }
     const json = await res.json().catch(() => ({ success: false, message: `서버 응답을 읽지 못했습니다 (HTTP ${res.status})` }));
-    if (!json.success) throw new Error(json.message || `요청 실패 (HTTP ${res.status})`);
+    if (!json.success) { const e = new Error(json.message || `요청 실패 (HTTP ${res.status})`); e.aiError = json.aiError || null; throw e; }
     return json;
-  }, [aiGroup, getActiveKey, onAuthError, selectedModel, student]);
+  }, [onAuthError, student]);
+
+  // 한 걸음 — 고른 모델이 막히면 키가 있는 다음 제공사로 바꿔 같은 걸음을 다시 묻는다(대화 형식은 제공사 공통)
+  const askServer = useCallback(async (turns) => {
+    const list = candidates();
+    let lastErr = null;
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const r = await askOnce(turns, list[i]);
+        if (i > 0) setFallback({ group: list[i].group, model: list[i].model });
+        return r;
+      } catch (e) {
+        lastErr = e;
+        if (!SWITCHABLE.has(e.aiError)) throw e;
+        if (i === list.length - 1) {
+          if (i > 0) e.message = `넣어 두신 키(${list.map((c) => GROUP_NAME[c.group]).join('·')})가 모두 안 됩니다. 설정에서 키를 확인해 주세요. — 마지막 오류: ${e.message}`;
+          throw e;
+        }
+        push({ kind: 'trace', text: `${GROUP_NAME[list[i].group] || list[i].group} 이(가) 지금 안 돼서 ${GROUP_NAME[list[i + 1].group]} 키로 바꿔 다시 합니다` });
+      }
+    }
+    throw lastErr || new Error('쓸 수 있는 AI 키가 없습니다');
+  }, [askOnce, candidates, push]);
 
   // ── 화면 도구 하나 실행 ───────────────────────────────
   const runUiTool = useCallback(async (call) => {
@@ -98,8 +139,8 @@ export default function AssistantPanel({ getActiveKey, selectedModel, aiGroup, o
   const send = useCallback(async (raw) => {
     const text = String(raw || '').trim();
     if (!text || busy) return;
-    if (!getActiveKey()) {
-      push({ kind: 'error', text: '먼저 설정에서 이 모델의 API 키를 넣어 주세요.' });
+    if (!candidates().length) {
+      push({ kind: 'error', text: '먼저 설정에서 Claude·GPT·Gemini 중 하나의 API 키를 넣어 주세요.' });
       return;
     }
     setInput('');
@@ -135,7 +176,7 @@ export default function AssistantPanel({ getActiveKey, selectedModel, aiGroup, o
       turnsRef.current = turns.slice(-40);
       setBusy(false);
     }
-  }, [askServer, busy, getActiveKey, push, runUiTool]);
+  }, [askServer, busy, candidates, push, runUiTool]);
 
   // ── 말로 시키기 ───────────────────────────────────────
   const SpeechRecognition = typeof window !== 'undefined'
@@ -209,7 +250,7 @@ export default function AssistantPanel({ getActiveKey, selectedModel, aiGroup, o
 
       <div className="ef-as-bar">
         <StudentPicker value={student} onChange={setStudent} placeholder="학생 선택 안 함" />
-        <span className="ef-as-model">{selectedModel}</span>
+        <span className="ef-as-model" title={fallback ? `고른 모델(${selectedModel})이 안 돼서 자동으로 바꿨습니다` : ''}>{fallback ? `${fallback.model} (자동 전환)` : selectedModel}</span>
       </div>
 
       <div className="ef-as-log" ref={scrollRef}>

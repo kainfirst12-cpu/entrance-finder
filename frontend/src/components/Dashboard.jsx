@@ -10,7 +10,7 @@ const ACTIONS = [
   { key: 'ratio', icon: '⏱️', label: '실시간 경쟁률', desc: '마감 남은 시간·전형별 현황·흐름', color: '#e05b7a', bg: 'rgba(224,91,122,0.16)' },
   { key: 'suharchive', icon: '🗂️', label: '수행평가 아카이브', desc: '자료 분석·분류 보관·재활용 배정', color: '#c46ad6', bg: 'rgba(196,106,214,0.16)' },
   { key: 'interview', icon: '🎤', label: '면접 전략', desc: '대학별 문항·예시 답안·평가표 매핑', color: '#d6a24a', bg: 'rgba(214,162,74,0.16)' },
-  { key: 'seminar', icon: '📽️', label: '설명회 자료 만들기', desc: '담당 학교 성취도 분석 → 설명회 PPT', color: '#00b765', bg: 'rgba(0,183,101,0.14)' },
+  { key: 'seminar', icon: '📽️', label: '설명회 자료 만들기', desc: '담당 학교 성취도 분석 → 설명회 PPT', color: '#00b765', bg: 'rgba(0,183,101,0.14)', hideWhenLocked: true },
   { key: 'list', icon: '👥', label: '학생 목록', desc: '저장된 분석 목록', color: '#5b86d6', bg: 'rgba(91,134,214,0.16)' },
   { key: 'import', icon: '📂', label: '분석 불러오기', desc: 'JSON 파일 열기', color: '#8a857c', bg: 'rgba(255,255,255,0.05)' },
 ];
@@ -25,7 +25,8 @@ export default function Dashboard({ onNav, onImport, onAuthError, onOpenAnalysis
   // 서버도 같은 표(MENU_BY_PATH·requireAdmin)로 막으니 화면을 억지로 열어도 자료는 나오지 않는다.
   const [lockedMsg, setLockedMsg] = useState('');
   const isLocked = (a) => (a.adminOnly && role !== 'admin') || !(a.key === 'import' ? menuAllowed(menus, role, 'form') : menuAllowed(menus, role, a.key));
-  const actions = ACTIONS.map(a => ({ ...a, locked: isLocked(a) }));
+  // hideWhenLocked: 잠긴 코드에는 카드 자체를 숨긴다 — 설명회 자료는 관리자 + 관리자가 연 코드에만 보인다(원장 지시 2026-10-01).
+  const actions = ACTIONS.map(a => ({ ...a, locked: isLocked(a) })).filter(a => !(a.hideWhenLocked && a.locked));
   const onCard = (a) => {
     if (a.locked) { setLockedMsg(`🔒 '${a.label}' 메뉴는 이 학원 코드에 아직 열려 있지 않습니다. 이용을 원하시면 패스파인더에 추가 신청해 주세요.`); return; }
     setLockedMsg('');

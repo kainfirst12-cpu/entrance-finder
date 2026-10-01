@@ -968,6 +968,17 @@ async function callAIModel({ aiModel, submodel, apiKey, systemPrompt, userMsg, m
 // SDK 오류를 그대로 내보내면 화면에 `400 {"type":"error",...}` 원문이 뜬다.
 // 그러면 결제·키 문제가 "기능 고장"으로 읽혀서, 고칠 수 있는 사람이 고치질 못한다.
 const AI_LABEL = { claude: 'Claude(Anthropic)', gpt: 'GPT(OpenAI)', gemini: 'Gemini(Google)' };
+// 오류 종류(기계용) — 화면이 '다른 제공사 키로 바꿔 다시 하기'를 판단할 때 쓴다(AI 선생님 자동 전환).
+//   key=키 틀림·폐기, credit=잔액 없음, rate=호출량 제한, down=제공사 과부하·장애
+function aiErrorKind(err) {
+  const t = String(err?.message || err || '').toLowerCase();
+  const status = err?.status ?? err?.statusCode ?? null;
+  if (t.includes('credit balance is too low') || t.includes('insufficient_quota') || t.includes('exceeded your current quota') || t.includes('billing')) return 'credit';
+  if (status === 401 || status === 403 || t.includes('invalid x-api-key') || t.includes('incorrect api key') || t.includes('api key not valid') || t.includes('api_key_invalid') || t.includes('authentication_error')) return 'key';
+  if (status === 429 || t.includes('rate limit') || t.includes('rate_limit')) return 'rate';
+  if (status === 529 || status === 503 || (status >= 500 && status < 600) || t.includes('overloaded')) return 'down';
+  return null;
+}
 function friendlyAIError(err, group = 'claude') {
   const label = AI_LABEL[group] || AI_LABEL.claude;
   const other = group === 'gpt' ? 'Claude·Gemini' : group === 'gemini' ? 'Claude·GPT' : 'GPT·Gemini';
@@ -4468,7 +4479,7 @@ app.post('/api/chat/agent', requireAuth, async (req, res) => {
   // OpenAI pro 계열만 예외 — chat/completions 를 아예 지원하지 않아 도구 호출을 걸 자리가 없다.
   // 조용히 다른 모델로 바꾸지 않고 이유를 밝히고 거절한다.
   if (aiModel === 'gpt' && /-pro$/.test(modelId)) {
-    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. 왼쪽 목록에서 'Pro'가 아닌 GPT 모델(Sol·Terra·Luna·GPT-5.5)이나 Claude·Gemini 를 골라 주세요.` });
+    return res.status(400).json({ success: false, aiError: 'unsupported', message: `${modelId} 는 도구 호출을 지원하지 않습니다. 왼쪽 목록에서 'Pro'가 아닌 GPT 모델(Sol·Terra·Luna·GPT-5.5)이나 Claude·Gemini 를 골라 주세요.` });
   }
 
   // 학생 컨텍스트 — 유한한 자료라 프롬프트에 직접 넣는다(입결과 달리).
@@ -4547,7 +4558,7 @@ app.post('/api/assistant', requireAuth, async (req, res) => {
   const modelId = getModelId(aiModel, submodel);
   // OpenAI pro 계열은 chat/completions 자체가 없어 도구 호출을 걸 자리가 없다 — 이유를 밝히고 거절한다.
   if (aiModel === 'gpt' && /-pro$/.test(modelId)) {
-    return res.status(400).json({ success: false, message: `${modelId} 는 도구 호출을 지원하지 않습니다. 왼쪽 목록에서 'Pro'가 아닌 GPT 모델(Sol·Terra·Luna·GPT-5.5)이나 Claude·Gemini 를 골라 주세요.` });
+    return res.status(400).json({ success: false, aiError: 'unsupported', message: `${modelId} 는 도구 호출을 지원하지 않습니다. 왼쪽 목록에서 'Pro'가 아닌 GPT 모델(Sol·Terra·Luna·GPT-5.5)이나 Claude·Gemini 를 골라 주세요.` });
   }
 
   const picked = await pickStudentContext(req, studentId);
@@ -4596,7 +4607,7 @@ ${picked.section}
     res.json({ success: true, ...out });
   } catch (err) {
     console.error('[assistant] 오류:', err.message);
-    res.status(502).json({ success: false, message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
+    res.status(502).json({ success: false, aiError: err.userFacing ? null : aiErrorKind(err), message: err.userFacing ? err.message : friendlyAIError(err, aiModel) });
   }
 });
 

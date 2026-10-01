@@ -94,6 +94,8 @@ export default function App() {
     setRole('user');
   };
 
+  // 제공사별 키 — AI 선생님이 고른 모델이 막히면 다른 제공사 키로 넘어갈 때 쓴다
+  const getKeyFor = (group) => (group === 'gemini' ? geminiKey : group === 'gpt' ? gptKey : apiKey);
   const getActiveKey = () => {
     const group = modelConfig[selectedModel]?.group || selectedModel;
     if (group === 'gemini') return geminiKey;
@@ -519,6 +521,7 @@ export default function App() {
 
       <AssistantPanel
         getActiveKey={getActiveKey}
+        getKeyFor={getKeyFor}
         selectedModel={selectedModel}
         aiGroup={modelConfig[selectedModel]?.group || selectedModel}
         onAuthError={handleLogout}
