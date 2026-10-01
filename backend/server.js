@@ -48,6 +48,7 @@ import {
   createSchoolReport, updateSchoolReport, deleteSchoolReport, appendSchoolReportSent,
   listForCuration, setReviewStatus, findRep, repBriefForSchool,
 } from './services/schoolReportStore.js';
+import { ensureSeminarTable, listSeminarDecks, getSeminarDeck, createSeminarDeck, updateSeminarDeck, deleteSeminarDeck } from './services/seminarStore.js';
 import { buildReportData } from './services/schoolReportData.js';
 import { listLibrary, libraryOwners, getLibraryItem, updateLibraryItem, deleteLibraryItem, BODY_EDITABLE, LIBRARY_KINDS, KIND_LABEL } from './services/libraryStore.js';
 import jwt from 'jsonwebtoken';
@@ -324,11 +325,12 @@ function requireAuth(req, res, next) {
 
 // 관리자 전용
 // 학원 코드별 공개 메뉴 — 토큰의 menus(null=전부) 로 1차, 관리자가 그 사이 바꿨을 수 있어 DB 값으로 2차 확인
-const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list', 'schoolreports'];
+const MENU_KEYS = ['form', 'assessment', 'chat', 'admissions', 'univinfo', 'schoolinfo', 'ipgyeol', 'ratio', 'suharchive', 'interview', 'list', 'schoolreports', 'seminar'];
 // optIn 메뉴는 '전체 공개(null)'여도 닫혀 있다 — 관리자가 코드마다 직접 넣어야 열린다(frontend/src/menus.js 와 같은 표).
 // 'schoolreports' = 입시 해설 보고서 보관(ef_school_reports 저장·목록·열기) — DB 용량을 쓰므로 기본 잠금(원장 지시 2026-09-21).
 // 'interview' = 면접 전략 — 원래 관리자 전용. 관리자가 고른 학원 코드(원장)에게만 연다(2026-09-26). 보관함은 코드별 owner_id 로 분리.
-const OPT_IN_MENUS = new Set(['schoolreports', 'interview']);
+// 'seminar' = 설명회 자료 만들기 — 관리자 전용으로 시작, 관리자가 고른 코드에만 연다(원장 지시 2026-10-01).
+const OPT_IN_MENUS = new Set(['schoolreports', 'interview', 'seminar']);
 function menuAllowed(menus, key) {
   if (OPT_IN_MENUS.has(key)) return Array.isArray(menus) && menus.includes(key);
   return !Array.isArray(menus) || menus.includes(key);
@@ -366,6 +368,7 @@ const MENU_BY_PATH = [
   [/^\/api\/ratio\b/, 'ratio'],
   [/^\/api\/suhaeng\b/, 'suharchive'],
   [/^\/api\/interview\b/, 'interview'],
+  [/^\/api\/seminar\b/, 'seminar'],
   [/^\/api\/(board|roadmap|students)\b/, 'list'],
 ];
 app.use('/api', (req, res, next) => {
@@ -1358,6 +1361,84 @@ app.post('/api/schoolinfo/explain', requireAuth, async (req, res) => {
     sendDone({ success: true, content: body, title, kind: isCompare ? 'compare' : 'school', data, snapshot });
   } catch (err) {
     console.error('[schoolinfo/explain] 오류:', err.message);
+    sendDone({ success: false, message: err.message });
+  }
+});
+
+// ══ 🎤 설명회 자료 만들기 (seminar) ═════════════════════════════════════════════
+// 담당 학교·옵션·해설 문구만 저장하고, 슬라이드는 화면이 최신 학교알리미 데이터로 그때그때 그린다(PPT 도 화면에서 만든다).
+// 메뉴 잠금: optIn — 관리자 + 관리자가 직접 체크한 학원 코드만. requireMenu 가 인증·메뉴를 함께 본다.
+const SEMINAR = requireMenu('seminar');
+async function seminarGuard(req, res) {
+  if (!dbEnabled()) { res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' }); return null; }
+  if (!req.user.userId) { res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' }); return null; }
+  if (!req.params.id) return true;
+  const deck = await getSeminarDeck(Number(req.params.id));
+  if (!deck) { res.status(404).json({ success: false, message: '자료 없음' }); return null; }
+  if (deck.owner_id !== req.user.userId) { res.status(403).json({ success: false, message: '권한 없음' }); return null; }
+  return deck;
+}
+app.get('/api/seminar/decks', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; res.json({ success: true, items: await listSeminarDecks(req.user.userId) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.get('/api/seminar/decks/:id', SEMINAR, async (req, res) => {
+  try { const d = await seminarGuard(req, res); if (!d) return; res.json({ success: true, item: d }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.post('/api/seminar/decks', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; res.json({ success: true, item: await createSeminarDeck(req.user.userId, req.body || {}) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.put('/api/seminar/decks/:id', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; res.json({ success: true, item: await updateSeminarDeck(Number(req.params.id), req.body || {}) }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+app.delete('/api/seminar/decks/:id', SEMINAR, async (req, res) => {
+  try { if (!(await seminarGuard(req, res))) return; await deleteSeminarDeck(Number(req.params.id)); res.json({ success: true }); }
+  catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// AI 해설 문구 — 화면이 계산한 수치(analysis.factsForAI)만 받아 학교마다 과목 한 줄·강점/보완·유형 한 줄을 쓴다.
+// 숫자·분류는 화면 규칙이 이미 정했다. AI 는 표현만 다듬는다(없는 사실·순위 단정 금지).
+const SEMINAR_NOTES_SYSTEM = `당신은 학원 고입설명회 자료를 만드는 입시 컨설턴트입니다. 학교알리미 1학년 교과별 성취도(A~E 비율) 수치를 보고
+설명회 슬라이드에 들어갈 짧은 해설을 씁니다. 청중은 중3 학생과 학부모님입니다.
+규칙:
+- 주어진 수치(평균, A~E %, relativeLevel=함께 비교한 학교들 대비 성취 수준 z, relativeSpread=흩어짐 z, shape)에 근거한 말만 쓴다. 없는 사실·순위·대학 실적을 지어내지 않는다.
+- 학교를 깎아내리는 표현(나쁜 학교, 수준 낮음 등) 금지. 하위권 비율이 높으면 '기초 보완이 중요', '격차가 큼'처럼 쓴다.
+- 과장·보장 표현 금지. 학부모를 부를 일이 있으면 '학부모님'.
+- 과목 한 줄은 "평균 높고 편차 낮음 → 상·중위권이 고르게 분포한 안정형 과목" 형태, 40자 이내. subjects 의 키는 받은 subject 이름 그대로.
+- strong/weak 는 과목 이름 하나(국어·수학·영어·사회·과학·한국사 중) 또는 null. strong 은 그 학교에서 상대적으로 가장 강한 과목, weak 는 보완이 필요한 과목.
+- typeLine 은 "상위권 안정 / 수리·탐구형"처럼 '/'로 나눈 2~3토막, 25자 이내. 받은 type 의 층(상위권 안정·중위권 성장형·기초 보완형)은 바꾸지 않는다.
+반드시 JSON 하나만 출력: {"schools":[{"id":"…","subjects":{"국어":"…","수학":"…"},"strong":"국어","weak":"수학","typeLine":"…"}]}`;
+app.post('/api/seminar/notes', SEMINAR, async (req, res) => {
+  const facts = Array.isArray(req.body?.schools) ? req.body.schools.slice(0, 40) : [];
+  if (!facts.length) return res.status(400).json({ success: false, message: '학교 자료가 없습니다' });
+  const aiModel = req.headers['x-ai-model'] || 'claude';
+  const submodel = req.headers['x-ai-submodel'] || aiModel;
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey) return res.status(400).json({ success: false, message: 'API 키 없음 (설정에서 입력)' });
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch {} }, 8000);
+  const sendDone = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {} clearInterval(keepAlive); res.end(); };
+  try {
+    const userMsg = `[지역] ${String(req.body?.region || '').slice(0, 40)}\n[함께 비교한 학교 ${facts.length}곳 수치]\n${JSON.stringify(facts)}`;
+    const reply = await callAIModel({ aiModel, submodel, apiKey, systemPrompt: SEMINAR_NOTES_SYSTEM, userMsg, maxTokens: 24000 });
+    const parsed = parseJsonLoose(reply, '해설 JSON');
+    const ids = new Set(facts.map((f) => String(f.id)));
+    const notes = {};
+    for (const s of Array.isArray(parsed.schools) ? parsed.schools : []) {
+      if (!ids.has(String(s.id))) continue;
+      const subjects = {};
+      for (const [k, v] of Object.entries(s.subjects || {})) if (typeof v === 'string') subjects[k] = v.slice(0, 80);
+      notes[String(s.id)] = { subjects, strong: s.strong || null, weak: s.weak || null, typeLine: typeof s.typeLine === 'string' ? s.typeLine.slice(0, 60) : undefined, ai: true };
+    }
+    sendDone({ success: true, notes });
+  } catch (err) {
+    console.error('[seminar/notes] 오류:', err.message);
     sendDone({ success: false, message: err.message });
   }
 });
@@ -4976,10 +5057,12 @@ app.listen(PORT, async () => {
   // 부팅 때 DB 가 꺼져 있었으면 initDb 가 스스로 다시 붙는다 — 그때 아래 준비 작업도 다시 돌린다.
   onDbReady(async () => {
     await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
+    await ensureSeminarTable().catch((e) => console.warn('[seminar] 테이블 준비 실패:', e.message));
     await refreshKbCount();
   });
   await initDb();
   await ensureSchoolReportTable().catch((e) => console.warn('[school-reports] 테이블 준비 실패:', e.message));
+  await ensureSeminarTable().catch((e) => console.warn('[seminar] 테이블 준비 실패:', e.message));
   // 📈 실시간 경쟁률 자동 수집 — 접수 기간에만 실제로 돈다(스스로 판단한다).
   startRatioCron().catch((e) => console.warn('[ratio] 예약 실패:', e.message));
   await refreshKbCount();

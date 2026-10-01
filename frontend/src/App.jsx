@@ -16,6 +16,7 @@ import RatioLive from './components/RatioLive';
 import SuhaengArchive from './components/SuhaengArchive';
 import { menuAllowed, readMenus } from './menus';
 import InterviewStrategy from './components/InterviewStrategy';
+import SeminarDeck from './components/SeminarDeck';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import AssistantPanel from './components/AssistantPanel';
@@ -497,6 +498,14 @@ export default function App() {
         )}
         {menuAllowed(menus, role, view) && view === 'interview' && (
           <InterviewStrategy
+            getActiveKey={getActiveKey}
+            selectedModel={selectedModel}
+            aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+            onAuthError={handleLogout}
+          />
+        )}
+        {menuAllowed(menus, role, view) && view === 'seminar' && (
+          <SeminarDeck
             getActiveKey={getActiveKey}
             selectedModel={selectedModel}
             aiGroup={modelConfig[selectedModel]?.group || selectedModel}

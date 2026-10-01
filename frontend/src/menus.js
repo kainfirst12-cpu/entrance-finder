@@ -15,6 +15,8 @@ export const MENU_ITEMS = [
   //   해설 보고서 보관은 서버 DB 용량을 쓰므로(원장 지시 2026-09-21) 기본 잠금. 생성·수정·Word/PDF 내려받기는 그대로 된다.
   // 면접 전략 — 원래 관리자 전용. 관리자가 고른 원장님 코드에만 연다(2026-09-26).
   { key: 'interview', label: '면접 전략(선택한 코드만, 기본 잠금)', optIn: true },
+  // 설명회 자료 만들기 — 관리자 전용으로 시작, 관리자가 고른 코드에만 연다(2026-10-01).
+  { key: 'seminar', label: '설명회 자료 만들기(선택한 코드만, 기본 잠금)', optIn: true },
   { key: 'schoolreports', label: '입시 해설 보고서 보관함(서버 저장 — 용량 사용, 기본 잠금)', optIn: true },
 ];
 export const OPT_IN_MENUS = MENU_ITEMS.filter((m) => m.optIn).map((m) => m.key);
