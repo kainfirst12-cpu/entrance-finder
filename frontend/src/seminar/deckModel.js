@@ -3,7 +3,7 @@
 //
 // 요소:
 //   { t:'text', x,y,w,h, runs:[{text, b, color, size, br}], size, color, b, align, valign, fill, line, inset }
-//   { t:'shape', shape:'rect'|'roundRect'|'triangle'|'trapezoid'|'offpage', x,y,w,h, fill, line }
+//   { t:'shape', shape:'rect'|'roundRect'|'triangle'|'trapezoid'|'offpage'|'poly', x,y,w,h, fill, line, pts:[[fx,fy]…](poly, 상자 안 비율) }
 //   { t:'line', x,y,w, color, dash }
 //   { t:'table', x,y,w, colW:[], rowH, size, rows:[[{text, fill, color, b, align}]] }
 //   { t:'bars', x,y,w,h, categories:[], series:[{name, color, values:[]}] }   ← 100% 누적 가로 막대(PPT 에선 진짜 차트)
@@ -170,25 +170,30 @@ export function buildSlides(deck, analysis) {
 
   // ── 성취도별 분류(피라미드) ──
   const tier = (k) => analysis.tiers[k].map((s) => s.short).join(', ') || '—';
+  // 하나의 삼각형을 세 칸으로 자른다(칸 사이 흰 틈) — 칸마다 따로 그린 도형은 빗변이 어긋나 보였다(원장 지적 2026-10-01).
+  const PY = { cx: 2.2, top: 1.0, bottom: 5.0, half: 2.0, gap: 0.08 };
+  const hw = (y) => (PY.half * (y - PY.top)) / (PY.bottom - PY.top);
+  const cuts = [PY.top, 2.33, 3.66, PY.bottom];
+  const band = (i, fill) => {
+    const y0 = cuts[i] + (i ? PY.gap / 2 : 0), y1 = cuts[i + 1] - (i < 2 ? PY.gap / 2 : 0);
+    const w0 = hw(y0), w1 = hw(y1);
+    const x = PY.cx - w1, w = 2 * w1, h = y1 - y0;
+    // 점은 도형 상자 안의 비율(0~1)
+    const pts = i === 0 ? [[0.5, 0], [1, 1], [0, 1]] : [[(w1 - w0) / w, 0], [(w1 + w0) / w, 0], [1, 1], [0, 1]];
+    return { t: 'shape', shape: 'poly', x, y: y0, w, h, pts, fill };
+  };
+  const tierText = (i, head, sub, k, note) => ({ t: 'text', x: 4.55, y: cuts[i] + 0.08, w: 5.15, h: cuts[i + 1] - cuts[i] - 0.12, valign: 'top', runs: [
+    t(head, { size: 14, b: true }), t(` ${sub}`, { size: 11, b: true, color: C.sub, br: true }),
+    t(tier(k), { size: 12, br: true }), t(note, { size: 11, color: C.green }),
+  ] });
   add('cls:tier', '성취도별 분류', [
     header(part, `${sec}: 성취도별 분류`),
-    { t: 'shape', shape: 'triangle', x: 1.45, y: 1.05, w: 1.5, h: 1.25, fill: C.greenLight },
-    { t: 'shape', shape: 'trapezoid', x: 0.95, y: 2.4, w: 2.5, h: 1.15, fill: C.green },
-    { t: 'shape', shape: 'trapezoid', x: 0.45, y: 3.65, w: 3.5, h: 1.25, fill: C.ink },
-    { t: 'text', x: 3.4, y: 1.05, w: 6.3, h: 1.2, valign: 'top', runs: [
-      t('상위권 ', { size: 14, b: true }), t('(꾸준한 학습, 안정적인 성취 지향)', { size: 12, b: true, br: true }),
-      t(tier('top'), { size: 12, br: true }), t('평균 성취가 높고 고르게 분포 → ‘실력 유지형 환경’', { size: 11, color: C.green }),
-    ] },
-    { t: 'line', x: 3.4, y: 2.32, w: 6.2, color: C.dim, dash: true },
-    { t: 'text', x: 3.9, y: 2.4, w: 5.8, h: 1.2, valign: 'top', runs: [
-      t('중위권 ', { size: 14, b: true }), t('(상위권으로의 도약을 원함)', { size: 12, b: true, br: true }),
-      t(tier('mid'), { size: 12, br: true }), t('성취도 편차가 있어 노력에 따른 성적 상승이 가능한 학교', { size: 11, color: C.green }),
-    ] },
-    { t: 'line', x: 3.9, y: 3.6, w: 5.7, color: C.dim, dash: true },
-    { t: 'text', x: 4.4, y: 3.68, w: 5.3, h: 1.3, valign: 'top', runs: [
-      t('기초 보완 ', { size: 14, b: true }), t('(기초를 다지는 것이 무엇보다 중요)', { size: 12, b: true, br: true }),
-      t(tier('low'), { size: 12, br: true }), t('학생 간 성취도 격차가 크고 하위권 비율이 높음', { size: 11, color: C.green }),
-    ] },
+    band(0, C.greenLight), band(1, C.green), band(2, C.ink),
+    { t: 'line', x: PY.cx + hw(cuts[1]) + 0.15, y: cuts[1], w: 9.6 - (PY.cx + hw(cuts[1]) + 0.15), color: C.line, dash: true },
+    { t: 'line', x: PY.cx + hw(cuts[2]) + 0.15, y: cuts[2], w: 9.6 - (PY.cx + hw(cuts[2]) + 0.15), color: C.line, dash: true },
+    tierText(0, '상위권', '(꾸준한 학습, 안정적인 성취 지향)', 'top', '평균 성취가 높고 고르게 분포 → ‘실력 유지형 환경’'),
+    tierText(1, '중위권', '(상위권으로의 도약을 원함)', 'mid', '성취도 편차가 있어 노력에 따른 성적 상승이 가능한 학교'),
+    tierText(2, '기초 보완', '(기초를 다지는 것이 무엇보다 중요)', 'low', '학생 간 성취도 격차가 크고 하위권 비율이 높음'),
     { t: 'text', x: 0.35, y: 5.15, w: 9.3, h: 0.3, runs: [t(`※ 함께 비교한 ${schools.length}개 학교를 6개 과목 상대 성취로 3등분한 결과입니다.`, { size: 8, color: C.dim })] },
   ]);
 

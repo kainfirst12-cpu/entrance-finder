@@ -31,6 +31,7 @@ export default function SlidePreview({ slide, width = 520 }) {
         if (e.t === 'shape') {
           let clip;
           if (CLIP[e.shape]) clip = CLIP[e.shape];
+          if (e.shape === 'poly') clip = `polygon(${e.pts.map(([fx, fy]) => `${fx * 100}% ${fy * 100}%`).join(', ')})`;
           if (e.shape === 'trapezoid') { const ins = (0.25 * Math.min(e.w, e.h)) / e.w * 100; clip = `polygon(${ins}% 0, ${100 - ins}% 0, 100% 100%, 0 100%)`; }
           return <div key={i} style={{ ...box(e), background: hex(e.fill), clipPath: clip, borderRadius: e.shape === 'roundRect' ? Math.min(e.w, e.h) * k / 2 : 0, border: e.line ? `1px solid ${hex(e.line)}` : undefined }} />;
         }

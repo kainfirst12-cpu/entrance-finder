@@ -28,6 +28,12 @@ export async function downloadPptx(slides, { fileName = '설명회 자료.pptx',
           x: e.x, y: e.y, w: e.w, h: e.h, fontFace: FONT, align: e.align || 'left', valign: e.valign || 'middle',
           margin: e.inset ?? 2, fit: 'shrink', ...(e.fill ? { fill: { color: e.fill } } : {}),
         });
+      } else if (e.t === 'shape' && e.shape === 'poly') {
+        // 자유 도형 — 점은 상자 안 비율이라 인치로 바꿔 넣는다
+        s.addShape('custGeom', {
+          x: e.x, y: e.y, w: e.w, h: e.h, fill: { color: e.fill || 'FFFFFF' }, line: { type: 'none' },
+          points: [...e.pts.map(([fx, fy]) => ({ x: fx * e.w, y: fy * e.h })), { close: true }],
+        });
       } else if (e.t === 'shape') {
         s.addShape(SHAPE[e.shape] || 'rect', {
           x: e.x, y: e.y, w: e.w, h: e.h, fill: { color: e.fill || 'FFFFFF' },
