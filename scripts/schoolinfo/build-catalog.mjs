@@ -97,8 +97,25 @@ async function main() {
   }
 
   // ① 학업성취 교체
-  const rawDir = path.join(here, 'out', 'achievement-raw');
-  const parsed = fs.existsSync(rawDir) ? loadAll(rawDir) : [];
+  //   차수마다 원본 폴더가 따로 있다: achievement-raw(1차 — 전년도 1·2학기) + achievement-raw-<차수>(예: 20263 — 올해 1학기).
+  //   3차가 1차를 대체하지 않으므로 학교마다 두 원본의 밴드를 합친다. 같은 (학년·학년도·학기·과목)이 겹치면 먼저 읽은 1차를 둔다
+  //   (전년도 3차 20253 처럼 옛 차수가 섞여 와도, 같은 학년도라면 1·2학기를 다 담은 1차가 더 새 자료다).
+  //   화면·엔진은 학교마다 '가장 최근 학년도'를 먼저 고른다(SchoolInfo pickBand · schoolReportData · seminar/analysis).
+  const rawDirs = fs.readdirSync(path.join(here, 'out')).filter((d) => /^achievement-raw(-\d+)?$/.test(d)).sort()
+    .map((d) => path.join(here, 'out', d)).filter((d) => fs.statSync(d).isDirectory());
+  const byId = new Map();
+  for (const dir of rawDirs) {
+    for (const p of loadAll(dir)) {
+      const cur = byId.get(p.id);
+      if (!cur) { byId.set(p.id, { ...p, chasus: [p.chasu] }); continue; }
+      const seen = new Set(cur.bands.map((b) => `${b.grade}|${b.year}|${b.semester}|${b.subject}`));
+      cur.bands.push(...p.bands.filter((b) => !seen.has(`${b.grade}|${b.year}|${b.semester}|${b.subject}`)));
+      cur.chasus.push(p.chasu);
+      if (String(p.chasu || '') > String(cur.chasu || '')) { cur.chasu = p.chasu; cur.capturedAt = p.capturedAt; }
+    }
+  }
+  const parsed = [...byId.values()];
+  console.log(`원본 폴더 ${rawDirs.map((d) => path.basename(d)).join(' + ')} → ${parsed.length}곳`);
   let replaced = 0, missing = [];
   const years = new Set();
   for (const p of parsed) {

@@ -1213,11 +1213,13 @@ function schoolFacts(s) {
   if (s.current) lines.push(`- 현재 학생 ${n(s.current.students)}명(남 ${n(s.current.male)} · 여 ${n(s.current.female)}) · 교원 ${n(s.current.teachers)}명${s.current.founded ? ` · 개교 ${s.current.founded}` : ''} (학교알리미 학교정보)`);
   const year = [...new Set(bands.map((b) => b.year).filter(Boolean))].join(', ') || '—';
   lines.push(`- 성취도 학년도: ${year}${s.achievementChasu ? ` (공시 ${s.achievementChasu.slice(0, 4)}년)` : ''}`);
-  const fmt = (b) => `${b.grade}-${b.semester} | ${b.subject}${b.credit ? `(${b.credit})` : ''} | ${n(b.mean)} | ${n(b.a)} | ${n(b.b)} | ${n(b.c)} | ${n(b.d)} | ${n(b.e)}`;
-  const sortB = (x, y) => x.grade - y.grade || x.semester - y.semester || x.subject.localeCompare(y.subject, 'ko');
+  // 학년도가 섞여 온다(1차 공시 = 전년도 1·2학기, 3차 = 올해 1학기) — 줄마다 학년도를 붙이고 최근 학년도부터
+  const yn = (v) => parseInt(String(v || ''), 10) || 0;
+  const fmt = (b) => `${yn(b.year) || '—'} ${b.grade}-${b.semester} | ${b.subject}${b.credit ? `(${b.credit})` : ''} | ${n(b.mean)} | ${n(b.a)} | ${n(b.b)} | ${n(b.c)} | ${n(b.d)} | ${n(b.e)}`;
+  const sortB = (x, y) => yn(y.year) - yn(x.year) || x.grade - y.grade || x.semester - y.semester || x.subject.localeCompare(y.subject, 'ko');
   const core = bands.filter((b) => b.family).sort(sortB);
   if (core.length) {
-    lines.push(`- 국어·영어·수학 성취도 (학년-학기 | 과목(단위) | 평균 | A% | B% | C% | D% | E%)`);
+    lines.push(`- 국어·영어·수학 성취도 (학년도 학년-학기 | 과목(단위) | 평균 | A% | B% | C% | D% | E%) — 최근 학년도가 학교의 지금 모습`);
     core.forEach((b) => lines.push(`  ${fmt(b)}`));
   }
   const others = bands.filter((b) => !b.family).sort(sortB);

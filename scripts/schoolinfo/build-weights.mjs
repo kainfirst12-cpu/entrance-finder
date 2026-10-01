@@ -44,7 +44,7 @@ for (const id of Object.keys(rows)) for (const k of KEYS) if (rows[id][k]) rows[
 
 const out = {
   generatedAt: new Date().toISOString(),
-  basis: '1학년 핵심 과목 · 학교별 최신 공시 학년도 · 1·2학기 평균 A 비율',
+  basis: '1학년 핵심 과목 · 학교별 최신 공시 학년도 · 그 학년도에 공시된 학기 평균 A 비율(3차 공시면 1학기)',
   refGroup: '일반고 + 자율형 공립고',
   refCount: Object.fromEntries(KEYS.map((k) => [k, ref[k].length])),
   subjects: KEYS,

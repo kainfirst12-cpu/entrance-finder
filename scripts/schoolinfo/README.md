@@ -129,3 +129,13 @@ Claude 가 할 일(순서):
 미리 계산해 `school-weights.json.gz`(약 140KB)로 둔다. 과목 고르기는 설명회 엔진(`frontend/src/seminar/analysis.js` subjectTable, 1·2학기 평균)과 같다.
 **catalog 를 다시 만들면 반드시 같이 돌릴 것**(안 돌리면 공시정보 화면의 전국 위치·🎯 지망 판단 보조가 옛 숫자).
 화면: 카드의 '성적의 무게' 줄 · 'A가 귀한 순' 정렬 · 상세의 5과목 상자 · 🎯 지망 판단 보조(StudentFit.jsx). 학교 층·학생 성별 필터는 `frontend/src/schoolTerms.jsx`.
+
+## 3차 공시(올해 1학기) 반영 (2026-10-02)
+
+학교알리미는 한 해에 차수별로 공시한다 — 1차(4월) = 전년도 1·2학기, 3차(9월) = 올해 1학기. **3차가 1차를 대체하지 않는다.**
+1. 다른 세션·PC 수집 묶음 → 학교당 원본: `node ingest-export.mjs <묶음 폴더> --to achievement-raw-20263`
+   (공시없음 묶음은 `out/achievement-skipped-20263.json`)
+2. `node build-catalog.mjs` — `out/achievement-raw*` 폴더를 모두 읽어 학교마다 밴드를 합친다(같은 학년도·학기·과목은 1차 우선).
+3. `node build-weights.mjs` — 성적의 무게 다시 계산(학교마다 최신 학년도 = 3차면 1학기).
+화면·엔진 규칙: 학교마다 **가장 최근 학년도**를 먼저 고른다(SchoolInfo pickBand · schoolReportData · seminar/analysis). 상세 표는 학년도 열을 함께 보여 준다.
+2026-10-02 반영: 5,721곳(고 2,396 · 중 3,325), 공시없음 211곳.

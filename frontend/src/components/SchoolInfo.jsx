@@ -47,11 +47,13 @@ function loadFullBands(school) {
 // 과목군(국어/영어/수학)·학년의 성취도 — 같은 학년이면 뒤 학기(2학기)를 우선한다.
 // 종합고·특성화고는 '과목 [일반계 / 전체학과]' 처럼 계열별 줄만 있고 전체 줄이 없는 곳이 있다(493곳) →
 // 전체계열 줄 > 일반계 줄 > 나머지 순으로 고른다.
+const yearNum = (y) => parseInt(String(y || ''), 10) || 0;
 function trackRank(subject) { return !/\[/.test(subject) ? 0 : /일반계/.test(subject) ? 1 : 2; }
 function pickBand(school, subject, grade) {
   const list = (school.bands || []).filter((b) => b.family === subject && b.grade === grade && b.a !== null);
   if (!list.length) return null;
-  return list.sort((x, y) => trackRank(x.subject) - trackRank(y.subject) || (y.semester || 0) - (x.semester || 0))[0];
+  // 학년도가 여럿 섞여 있다(1차 공시 = 전년도 1·2학기, 3차 공시 = 올해 1학기) → 가장 최근 학년도 먼저, 같은 해면 뒤 학기
+  return list.sort((x, y) => yearNum(y.year) - yearNum(x.year) || trackRank(x.subject) - trackRank(y.subject) || (y.semester || 0) - (x.semester || 0))[0];
 }
 function seatsOf(s) {
   const g1 = s.enrollment?.grade1;
@@ -408,7 +410,8 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
   const bands = full || s.bands || [];
   // 과목군 → 학년·학기 순으로 표를 만든다. 3학년 선택과목은 A~C 만 있는 것도 있어 null 은 '—' 로 둔다.
   const families = ['국어', '영어', '수학'];
-  const bandsBy = (fam) => bands.filter((b) => b.family === fam).sort((x, y) => x.grade - y.grade || x.semester - y.semester);
+  // 최근 학년도부터(3차 2026학년도 1학기 → 1차 2025학년도 1·2학기), 그 안에서 학년·학기 순
+  const bandsBy = (fam) => bands.filter((b) => b.family === fam).sort((x, y) => yearNum(y.year) - yearNum(x.year) || x.grade - y.grade || x.semester - y.semester);
   const others = bands.filter((b) => !families.includes(b.family));
   return (
     <div style={S.overlay} onClick={onClose}>
@@ -441,7 +444,7 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
 
         {isHigh && w && (
           <section style={{ marginTop: 16 }}>
-            <h4 style={S.h4}><Term k="성적의 무게" /> <span style={S.dim}>· 1학년 핵심 과목 A 비율과 <Term k="전국 위치" /> ({w.year}, 1·2학기 평균, 일반고 기준)</span></h4>
+            <h4 style={S.h4}><Term k="성적의 무게" /> <span style={S.dim}>· 1학년 핵심 과목 A 비율과 <Term k="전국 위치" /> ({w.year} 최신 공시, 공시된 학기 평균, 일반고 기준)</span></h4>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['국어', '수학', '영어', '통합사회', '통합과학'].filter((k) => w[k]).map((k) => (
                 <div key={k} style={S.weightBox}>
@@ -471,15 +474,15 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
           if (!rows.length) return null;
           return (
             <section key={fam} style={{ marginTop: 18 }}>
-              <h4 style={S.h4}>{fam} 성취도 <span style={S.dim}>({rows[0].year})</span></h4>
+              <h4 style={S.h4}>{fam} 성취도 <span style={S.dim}>({[...new Set(rows.map((r) => r.year))].sort().reverse().join(' · ')})</span></h4>
               <BandTable rows={rows} />
             </section>
           );
         })}
         {others.length > 0 && (
           <section style={{ marginTop: 18 }}>
-            <h4 style={S.h4}>기타 과목 <span style={S.dim}>({others[0].year})</span></h4>
-            <BandTable rows={others.sort((x, y) => x.grade - y.grade || x.semester - y.semester)} />
+            <h4 style={S.h4}>기타 과목 <span style={S.dim}>({[...new Set(others.map((r) => r.year))].sort().reverse().join(' · ')})</span></h4>
+            <BandTable rows={others.sort((x, y) => yearNum(y.year) - yearNum(x.year) || x.grade - y.grade || x.semester - y.semester)} />
           </section>
         )}
         {explain && (
@@ -501,11 +504,12 @@ function BandTable({ rows }) {
     <div style={{ overflowX: 'auto' }}>
       <table style={S.table}>
         <thead>
-          <tr>{['학년·학기', '과목', '평균', '표준편차', 'A', 'B', 'C', 'D', 'E', '분포'].map((h) => <th key={h} style={S.th}>{h}</th>)}</tr>
+          <tr>{['학년도', '학년·학기', '과목', '평균', '표준편차', 'A', 'B', 'C', 'D', 'E', '분포'].map((h) => <th key={h} style={S.th}>{h}</th>)}</tr>
         </thead>
         <tbody>
           {rows.map((b, i) => (
             <tr key={i}>
+              <td style={S.td}>{String(b.year || '').replace('학년도', '')}</td>
               <td style={S.td}>{b.grade}학년 {b.semester}학기</td>
               <td style={S.td}>{b.subject}</td>
               <td style={S.tdNum}>{dec1(b.mean)}</td>

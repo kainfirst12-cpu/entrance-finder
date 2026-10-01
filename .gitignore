@@ -38,6 +38,8 @@ backend/data/ratio/
 !scripts/schoolinfo/out/school-info.json
 !scripts/schoolinfo/out/achievement-skipped.json
 !scripts/schoolinfo/out/achievement-raw/*.json
+!scripts/schoolinfo/out/achievement-raw-*/*.json
+!scripts/schoolinfo/out/achievement-skipped-*.json
 !scripts/schoolinfo/out/base-catalog-2024.json.gz
 # 📽️ 설명회 자료 MCP 플러그인 — 매니페스트·패키지 json 은 커밋(위의 *.json 규칙보다 뒤에 있어야 한다)
 !mcp/seminar-deck/package.json

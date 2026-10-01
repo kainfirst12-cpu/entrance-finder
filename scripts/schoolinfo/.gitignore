@@ -4,5 +4,8 @@ out/*
 !out/school-info.json
 !out/achievement-skipped.json
 !out/achievement-raw/
+# 차수별 원본(3차 = 올해 1학기) — 1차를 대체하지 않아 따로 둔다(build-catalog 가 합친다)
+!out/achievement-raw-*/
+!out/achievement-skipped-*.json
 standalone/data/school-catalog.js
 !out/base-catalog-2024.json.gz

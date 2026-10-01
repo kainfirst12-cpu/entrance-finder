@@ -17,7 +17,9 @@ const trackRank = (subject) => (!/\[/.test(subject) ? 0 : /일반계/.test(subje
 function pickBand(bands, family, grade) {
   const list = bands.filter((b) => b.family === family && b.grade === grade && b.a !== null && b.a !== undefined);
   if (!list.length) return null;
-  const b = list.sort((x, y) => trackRank(x.subject) - trackRank(y.subject) || (y.semester || 0) - (x.semester || 0))[0];
+  // 학년도가 섞여 있다(1차 = 전년도 1·2학기, 3차 = 올해 1학기) → 최근 학년도 먼저(화면 pickBand 와 같은 규칙)
+  const yn = (v) => parseInt(String(v || ''), 10) || 0;
+  const b = list.sort((x, y) => yn(y.year) - yn(x.year) || trackRank(x.subject) - trackRank(y.subject) || (y.semester || 0) - (x.semester || 0))[0];
   return { subject: b.subject, sem: b.semester, mean: b.mean, a: b.a, b: b.b, c: b.c, d: b.d, e: b.e };
 }
 

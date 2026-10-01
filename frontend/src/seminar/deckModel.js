@@ -53,7 +53,9 @@ export function buildSlides(deck, analysis) {
   const schools = analysis.usable;
   const years = [...new Set(schools.map((s) => s.year).filter(Boolean))].sort();
   const yearLabel = years.length ? years.join('·') : '';
-  const semLabel = deck.semester === 1 ? '1학기' : deck.semester === 2 ? '2학기' : '1·2학기 평균';
+  // 학교마다 최신 학년도를 쓰므로(3차 공시면 올해 1학기만) 실제로 들어간 학기로 적는다
+  const usedSems = [...new Set(schools.flatMap((s) => Object.values(s.rows).flatMap((m) => m.semesters || [])))].sort();
+  const semLabel = deck.semester === 1 ? '1학기' : deck.semester === 2 ? '2학기' : usedSems.length === 1 ? `${usedSems[0]}학기` : '1·2학기 평균';
   const slides = [];
   const add = (key, title, els) => slides.push({ key, title, els });
 
