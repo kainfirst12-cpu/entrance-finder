@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '../apiBase';
-import { fetchGzJson } from '../schoolCatalog';
+import { fetchGzJson, CATALOG_URL, regionLabel } from '../schoolCatalog';
+import { loadOfferings, offerStatus, MARK_COLOR } from '../course/offerings';
 import { resolve, AFTER, KIND_COLOR, SEMESTERS } from '../course/curriculum';
 import { Term } from '../schoolTerms';
 import StudentPicker from './StudentPicker';
@@ -24,9 +25,20 @@ export default function CourseHelper({ onAuthError }) {
   const [unitQ, setUnitQ] = useState('');
   const [student, setStudent] = useState(null);
   const [msg, setMsg] = useState('');
+  // 우리 학교 — 2026 나이스 시간표로 개설 여부
+  const [school, setSchool] = useState(() => { try { return JSON.parse(localStorage.getItem(PLAN_KEY))?.school || null; } catch { return null; } });
+  const [schoolQ, setSchoolQ] = useState('');
+  const [highs, setHighs] = useState(null);
+  const [offers, setOffers] = useState(null);
 
   useEffect(() => { fetchGzJson(DATA_URL).then(setData).catch((e) => setErr(e.message)); }, []);
-  useEffect(() => { try { localStorage.setItem(PLAN_KEY, JSON.stringify({ targets, plan })); } catch { /* 저장소 막힘 */ } }, [targets, plan]);
+  useEffect(() => {
+    loadOfferings().then((o) => o && setOffers(o.schools));
+    fetchGzJson(CATALOG_URL).then((c) => setHighs((c.schools || []).filter((x) => x.schoolLevel === '고등학교').map((x) => ({ id: x.id, name: x.schoolName, region: regionLabel(x) })))).catch(() => {});
+  }, []);
+  const schoolHits = useMemo(() => (schoolQ.trim().length < 2 || !highs ? [] : highs.filter((h) => h.name.includes(schoolQ.trim())).slice(0, 8)), [schoolQ, highs]);
+  const myOffer = school && offers ? offers[school.id] || null : null;
+  useEffect(() => { try { localStorage.setItem(PLAN_KEY, JSON.stringify({ targets, plan, school })); } catch { /* 저장소 막힘 */ } }, [targets, plan, school]);
 
   const univObj = data?.univs.find((u) => u.name === univ);
   const units = useMemo(() => (univObj?.units || []).filter((x) => !unitQ.trim() || x.name.includes(unitQ.trim())), [univObj, unitQ]);
@@ -66,17 +78,22 @@ export default function CourseHelper({ onAuthError }) {
           else if (ORDER[pa] !== undefined && ORDER[at] !== undefined && ORDER[pa] > ORDER[at]) out.push({ lv: 'warn', text: `‘${p}’(${PLACE_LABEL[pa]})이 ‘${x.name}’(${PLACE_LABEL[at]})보다 늦습니다.` });
         }
       }
+      if (school && offers && (x.core.length || at)) {
+        const st = offerStatus(myOffer, x.name);
+        if (st.mark === 'no') out.push({ lv: x.core.length ? 'warn' : 'info', text: `‘${x.name}’은(는) ${school.name} 2026 시간표에 없습니다 — 수강 신청 수요·공동교육과정·온라인학교를 확인하세요.` });
+      }
       if (at && x.subject.grading === 'abs') out.push({ lv: 'info', text: `‘${x.name}’은(는) 석차등급 없이 성취도(A~E)만 기록됩니다.` });
     }
     return out;
-  }, [merged, plan]);
+  }, [merged, plan, school, offers, myOffer]);
   const perSem = SEMESTERS.map((s) => ({ s, n: Object.values(plan).filter((v) => v === s).length }));
 
   const markdown = () => [
     `# 2·3학년 과목 이수 계획${student ? ` — ${student.name}` : ''}`,
     '', `목표: ${targets.map((t) => `${t.univ} ${t.unit}`).join(' / ') || '(없음)'}`,
-    '', '| 과목 | 구분 | 목표에서 | 계획 |', '|---|---|---|---|',
-    ...merged.list.map((x) => `| ${x.name} | ${x.subject.area} ${x.subject.kind}${x.subject.grading === 'abs' ? ' (성취도만)' : ''} | ${x.core.length ? '핵심' : '권장'} | ${PLACE_LABEL[plan[x.name]] || '—'} |`),
+    ...(school ? ['', `우리 학교: ${school.name} (2026 나이스 시간표 기준)`] : []),
+    '', `| 과목 | 구분 | 목표에서 |${school ? ' 우리 학교 |' : ''} 계획 |`, `|---|---|---|${school ? '---|' : ''}---|`,
+    ...merged.list.map((x) => `| ${x.name} | ${x.subject.area} ${x.subject.kind}${x.subject.grading === 'abs' ? ' (성취도만)' : ''} | ${x.core.length ? '핵심' : x.pre ? '먼저 들을 과목' : '권장'} |${school ? ` ${offerStatus(myOffer, x.name).text} |` : ''} ${PLACE_LABEL[plan[x.name]] || '—'} |`),
     '', ...(checks.length ? ['## 점검', ...checks.map((c) => `- ${c.lv === 'warn' ? '⚠' : 'ℹ'} ${c.text}`)] : []),
     '', `※ ${data?.source || ''}. 권장과목은 지원 자격이 아니라 평가 참고 자료이며, 학교 편제·수요조사에 따라 개설 과목이 달라질 수 있습니다.`,
   ].join('\n');
@@ -118,6 +135,20 @@ export default function CourseHelper({ onAuthError }) {
             </div>
           </>}
           <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0', paddingTop: 8 }}>
+            <div style={S.secTitle}>우리 학교 (개설 여부)</div>
+            {school ? (
+              <div style={{ fontSize: 13, color: 'var(--text)' }}><b>{school.name}</b> <span style={S.dim}>{school.region}</span> <button style={S.x} onClick={() => setSchool(null)}>×</button>
+                {offers && !myOffer && <div style={S.dim}>나이스 시간표에서 이 학교를 찾지 못했습니다.</div>}
+              </div>
+            ) : (
+              <>
+                <input style={{ ...S.input, width: '100%' }} placeholder="학교 이름 2자 이상 (예: 상동고)" value={schoolQ} onChange={(e) => setSchoolQ(e.target.value)} />
+                {schoolHits.map((h) => <button key={h.id} style={{ ...S.unitBtn, marginTop: 3, width: '100%' }} onClick={() => { setSchool(h); setSchoolQ(''); }}><b>{h.name}</b><span style={S.dim}>{h.region}</span></button>)}
+              </>
+            )}
+            <div style={S.dim}>2026 나이스 시간표로 확인합니다. 2026 3학년은 아직 2015 교육과정이라 3학년 과목은 ‘가능성’으로만 보여요.</div>
+          </div>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0', paddingTop: 8 }}>
             <div style={S.secTitle}>학생</div>
             <StudentPicker value={student} onChange={setStudent} placeholder="학생 선택 안 함 (저장하려면 선택)" />
             <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
@@ -149,7 +180,7 @@ export default function CourseHelper({ onAuthError }) {
                 {perSem.map(({ s, n }) => <span key={s} style={S.semBadge}>{PLACE_LABEL[s]} {n}과목</span>)}
               </div>
               <table style={S.table}>
-                <thead><tr><th style={S.th}>과목</th><th style={S.th}>구분</th><th style={S.th}>목표에서</th><th style={S.th}>먼저 들을 과목</th><th style={S.th}>계획</th></tr></thead>
+                <thead><tr><th style={S.th}>과목</th><th style={S.th}>구분</th><th style={S.th}>목표에서</th><th style={S.th}>먼저 들을 과목</th>{school && <th style={S.th}>우리 학교</th>}<th style={S.th}>계획</th></tr></thead>
                 <tbody>
                   {merged.list.map((x) => (
                     <tr key={x.name}>
@@ -157,6 +188,7 @@ export default function CourseHelper({ onAuthError }) {
                       <td style={S.td}><span style={{ ...S.kind, background: KIND_COLOR[x.subject.kind] }}>{x.subject.area} {x.subject.kind}</span>{x.subject.grading === 'abs' && <span style={S.abs}>성취도만</span>}</td>
                       <td style={S.td}>{x.core.length ? <span style={S.core}>핵심 {x.core.map((i) => i + 1).join('·')}</span> : null} {x.rec.length ? <span style={S.dim}>권장 {x.rec.map((i) => i + 1).join('·')}</span> : null}{x.pre ? <span style={S.dim}>먼저 들을 과목</span> : null}</td>
                       <td style={S.td}><span style={S.dim}>{(AFTER[x.name] || []).join(', ') || '—'}</span></td>
+                      {school && (() => { const st = offerStatus(myOffer, x.name); return <td style={S.td}><span style={{ fontSize: 11.5, fontWeight: 700, color: MARK_COLOR[st.mark] }}>{st.text}</span></td>; })()}
                       <td style={S.td}>
                         <select style={S.input} value={plan[x.name] || ''} onChange={(e) => setPlan({ ...plan, [x.name]: e.target.value || undefined })}>
                           <option value="">— 안 정함</option>
@@ -177,7 +209,7 @@ export default function CourseHelper({ onAuthError }) {
               {checks.map((c, i) => <div key={i} style={{ fontSize: 13, color: c.lv === 'warn' ? '#d6a24a' : 'var(--text2)', margin: '3px 0' }}>{c.lv === 'warn' ? '⚠ ' : 'ℹ '}{c.text}</div>)}
             </section>
           )}
-          {targets.length > 0 && <div style={S.dim}>우리 학교에 그 과목이 열리는지(편제)는 학교별 편제 데이터를 모으는 중입니다. 들어오면 학교를 골라 ✓/✗ 와 같은 선택군 충돌까지 함께 보여 드립니다.</div>}
+          {targets.length > 0 && !school && <div style={S.dim}>왼쪽 ‘우리 학교’를 고르면 과목마다 2026 실제 수업 여부(✓ / 3학년 가능성 / 없음)가 함께 나옵니다.</div>}
         </div>
       </div>
     </div>

@@ -5,6 +5,7 @@ import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, r
 import { menuAllowed, readMenus } from '../menus';
 import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf } from '../schoolTerms';
 import StudentFit from './StudentFit';
+import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE } from '../course/offerings';
 
 // 성적의 무게(A 비율 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
 const WEIGHTS_URL = CATALOG_URL.replace(/[^/]+$/, 'school-weights.json.gz');
@@ -80,6 +81,9 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const [district, setDistrict] = useState('전체');   // 평준화 학군(학군표가 있는 시도만)           // 학교 층 — 뽑는 범위가 다른 학교끼리는 따로 본다
   const [weights, setWeights] = useState(null);         // { [id]: { 국어:{a,pct,mean}, … } }
   const [fitOpen, setFitOpen] = useState(false);
+  const [offers, setOffers] = useState(null);           // 2026 나이스 시간표 개설 과목 { [id]: { g2, g3 } }
+  const [want, setWant] = useState([]);                // 듣고 싶은 2·3학년 과목
+  const [wantAll, setWantAll] = useState(false);       // 고른 과목이 모두 열리는(가능성 포함) 학교만
   const [showCompare, setShowCompare] = useState(false);
   // 입시 해설 보고서 — 생성 중 표시, 열려 있는 편집기, 보관함
   const [explaining, setExplaining] = useState('');
@@ -94,6 +98,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
     let dead = false;
     loadCatalog().then((c) => { if (!dead) setCat(c); }).catch((e) => { if (!dead) setErr(e.message || '데이터 로드 실패'); });
     loadWeights().then((w) => { if (!dead && w) setWeights(w.schools); });
+    loadOfferings().then((o) => { if (!dead && o) setOffers(o.schools); });
     return () => { dead = true; };
   }, []);
 
@@ -120,6 +125,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       (fond === '전체' || s.fond === fond) &&
       (gender === '전체' || (gender === '남학생' || gender === '여학생' ? genderOk(s, gender) : s.gender === gender)) &&
       (level !== '고등학교' || layer === '전체' || layerOf(s) === layer) &&
+      (!wantAll || !want.length || want.every((w) => ['yes', 'maybe'].includes(offerStatus(offers?.[s.id], w).mark))) &&
       (!kw || s.schoolName.replace(/\s+/g, '').includes(kw)),
     );
     const key = (s) => pickBand(s, subject, grade);
@@ -141,7 +147,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
     };
     list = [...list].sort(sorters[sort] || sorters.name);
     return list;
-  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights, district]);
+  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights, district, want, wantAll, offers]);
 
   const detail = detailId ? schools.find((s) => s.id === detailId) || (cat?.schools || []).find((s) => s.id === detailId) : null;
   const compareSchools = compare.map((id) => (cat?.schools || []).find((s) => s.id === id)).filter(Boolean);
@@ -254,6 +260,17 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <span style={{ ...S.dim, marginLeft: 6 }}>뽑는 범위가 다른 학교끼리는 학생 집단이 달라 따로 보세요.</span>
         </div>
       )}
+      {isHigh && offers && (
+        <div style={S.filters}>
+          <span style={S.filterLabel}>듣고 싶은 2·3학년 과목</span>
+          {PICKABLE.map((w) => <button key={w} style={{ ...S.chip, ...(want.includes(w) ? S.chipOn : {}) }} onClick={() => setWant((cur) => (cur.includes(w) ? cur.filter((x) => x !== w) : [...cur, w]))}>{w}</button>)}
+          {want.length > 0 && <>
+            <label style={{ ...S.dim, display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6 }}><input type="checkbox" checked={wantAll} onChange={(e) => setWantAll(e.target.checked)} /> 모두 열리는(가능성 포함) 학교만</label>
+            <button style={S.linkBtn} onClick={() => { setWant([]); setWantAll(false); }}>지우기</button>
+          </>}
+          <span style={{ ...S.dim, flexBasis: '100%' }}>2026 나이스 시간표로 확인: ✓ 실제 수업 중 · △ 3학년 가능성(2026 3학년은 아직 2015 교육과정이라 같은 계열 옛 과목이 있으면) · ✗ 2026 시간표엔 없음. 수강 신청에 따라 달라질 수 있어요.</span>
+        </div>
+      )}
       <div style={S.filters}>
         <span style={S.filterLabel}>성취도 과목</span>
         {SUBJECTS.map((s) => <button key={s} style={{ ...S.chip, ...(subject === s ? S.chipOn : {}) }} onClick={() => setSubject(s)}>{s}</button>)}
@@ -303,6 +320,11 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
                   <span style={S.dim}> {weights[s.id][subject].pct <= 25 ? '(A가 귀한 편)' : weights[s.id][subject].pct >= 75 ? '(A가 흔한 편)' : ''}</span>
                 </div>
               )}
+              {want.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {want.map((w) => { const st = offerStatus(offers?.[s.id], w); return <span key={w} title={st.text} style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: MARK_COLOR[st.mark], borderRadius: 999, padding: '1px 8px' }}>{st.mark === 'yes' ? '✓' : st.mark === 'maybe' ? '△' : st.mark === 'no' ? '✗' : '?'} {w}</span>; })}
+                </div>
+              )}
               <div style={S.cardFoot}>
                 <button style={S.linkBtn} onClick={() => setDetailId(s.id)}>상세 보기 →</button>
               </div>
@@ -333,7 +355,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       )}
 
       {fitOpen && <StudentFit schools={filtered} weights={weights} onClose={() => setFitOpen(false)} />}
-      {detail && <DetailModal school={detail} weights={weights?.[detail.id]} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
+      {detail && <DetailModal school={detail} weights={weights?.[detail.id]} offer={offers ? offers[detail.id] || 'none' : null} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('school', [detail], focus) }} />}
       {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('compare', compareSchools, focus) }} />}
@@ -370,7 +392,7 @@ function Stat({ label, value, hint }) {
   );
 }
 
-function DetailModal({ school: s, weights: w, onClose, inCompare, onToggleCompare, explain }) {
+function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onToggleCompare, explain }) {
   const isHigh = s.schoolLevel === '고등학교';
   const seats = seatsOf(s);
   // 전 과목 표(기타 과목)는 열릴 때 따로 받는다 — 받기 전엔 catalog 에 실린 국·영·수만 보인다.
@@ -430,6 +452,17 @@ function DetailModal({ school: s, weights: w, onClose, inCompare, onToggleCompar
               ))}
             </div>
             <div style={S.dim}>전국 위치가 낮을수록 A가 드문 학교입니다 — 받기는 어렵지만 받으면 무겁게 읽힙니다. 평균과 A 비율은 따로 움직일 때가 많아 함께 봅니다.</div>
+          </section>
+        )}
+
+        {isHigh && of && (
+          <section style={{ marginTop: 16 }}>
+            <h4 style={S.h4}>2026 실제 수업 과목 <span style={S.dim}>· 나이스 시간표(1·2학기 각 2주) — 2학년은 2022 개정, 3학년은 2015 개정 과목명</span></h4>
+            {of === 'none' ? <div style={S.dim}>나이스 시간표에서 이 학교를 찾지 못했습니다.</div> : <>
+              <div style={{ fontSize: 12.5, color: 'var(--text)', margin: '4px 0' }}><b>2학년</b> ({of.g2.length}) {of.g2.join(' · ') || '—'}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text)', margin: '4px 0' }}><b>3학년</b> ({of.g3.length}) {of.g3.join(' · ') || '—'}</div>
+              <div style={S.dim}>시간표에 잡힌 과목만 모았습니다. 학교 편제표에 있어도 수강 신청이 적어 열리지 않은 과목은 빠질 수 있어요.</div>
+            </>}
           </section>
         )}
 
