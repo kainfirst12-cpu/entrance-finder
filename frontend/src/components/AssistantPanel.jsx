@@ -215,8 +215,8 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
 
   if (!open) {
     return (
-      <button className="ef-as-fab" onClick={() => setOpen(true)} title="AI 선생님에게 시키기">
-        🎓 AI 선생님
+      <button className="ef-as-fab" onClick={() => setOpen(true)} title="너만의 패파에게 시키기">
+        🎓 너만의 패파
       </button>
     );
   }
@@ -237,7 +237,7 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
       )}
 
       <header className="ef-as-head" onPointerDown={startDrag}>
-        <span className="ef-as-title">🎓 AI 선생님</span>
+        <span className="ef-as-title">🎓 너만의 패파</span>
         <span className="ef-as-sub" title={`도구 ${tools.length}개 · ${agentKeys}`}>도구 {tools.length}</span>
         <span className="ef-as-spacer" />
         {!compact && (
