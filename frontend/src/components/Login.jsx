@@ -50,7 +50,7 @@ export default function Login({ onLogin }) {
         backdropFilter: 'blur(12px)', boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ fontSize: '36px', marginBottom: '8px' }}>🎯</div>
+          <img src="/icons/pathfinder-logo-white.png" alt="PATHFINDER" style={{ width: '150px', height: 'auto', display: 'block', margin: '0 auto 14px' }} />
           <h1 style={{ color: '#fff', fontSize: '22px', fontWeight: '700', margin: '0 0 6px' }}>
             입시-Finder
           </h1>

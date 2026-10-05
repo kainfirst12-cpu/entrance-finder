@@ -368,7 +368,7 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="logo" style={{ cursor: 'pointer' }} onClick={() => setView('dashboard')} title="대시보드로">
-          <span className="logo-icon">🎯</span>
+          <img className="logo-mark" src="/icons/pathfinder-logo-white.png" alt="PATHFINDER" />
           <div>
             <div className="logo-title">입시-Finder</div>
             <div className="logo-sub">패스파인더 에듀</div>
