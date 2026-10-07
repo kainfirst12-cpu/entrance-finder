@@ -21,6 +21,7 @@ import CourseHelper from './components/CourseHelper';
 import Dashboard from './components/Dashboard';
 import AdminDashboard from './components/AdminDashboard';
 import AssistantPanel from './components/AssistantPanel';
+import ErrorBoundary from './components/ErrorBoundary';
 import { useAppAgent } from './assistant/useAppAgent';
 import { API_BASE } from './apiBase';
 import './App.css';
@@ -548,13 +549,16 @@ export default function App() {
         )}
       </main>
 
-      <AssistantPanel
-        getActiveKey={getActiveKey}
-        getKeyFor={getKeyFor}
-        selectedModel={selectedModel}
-        aiGroup={modelConfig[selectedModel]?.group || selectedModel}
-        onAuthError={handleLogout}
-      />
+      {/* 떠 있는 창이 터져도 본 화면은 살아 있게 — 이 창만 사라진다 */}
+      <ErrorBoundary name="assistant" fallback={null}>
+        <AssistantPanel
+          getActiveKey={getActiveKey}
+          getKeyFor={getKeyFor}
+          selectedModel={selectedModel}
+          aiGroup={modelConfig[selectedModel]?.group || selectedModel}
+          onAuthError={handleLogout}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

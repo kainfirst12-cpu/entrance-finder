@@ -48,7 +48,13 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
   const turnsRef = useRef([]);                     // 모델에게 보내는 진짜 대화(도구 호출 포함)
   // 🐞 신고에 붙일 최근 오류·대화 — 패널이 뜰 때부터 모은다
   useEffect(() => { installErrorCapture(); registerTurns(() => turnsRef.current); }, []);
+  const scrollRef = useRef(null);
+  const recogRef = useRef(null);
+  const win = useFloatingWindow();
+  const { winRef, box, orient, compact, startDrag, startResize, toggleOrient } = win;
   // 입력칸 — 기본 3~4줄, 쓰는 만큼 늘어나다 220px 부터 스크롤(원장 요청 2026-10-07: 글쓰는 칸 넓게)
+  // ⚠ orient·compact 를 꺼낸 줄보다 아래에 둘 것 — 의존성 배열은 렌더 중에 바로 읽혀서, 위에 두면
+  //   TDZ(ReferenceError)로 앱 전체가 검은 화면이 된다(2026-10-08 사고).
   const inputRef = useRef(null);
   useEffect(() => {
     const el = inputRef.current;
@@ -56,10 +62,6 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
   }, [input, orient, compact, open]);
-  const scrollRef = useRef(null);
-  const recogRef = useRef(null);
-  const win = useFloatingWindow();
-  const { winRef, box, orient, compact, startDrag, startResize, toggleOrient } = win;
 
   // 화면이 갈리면 도구 목록도 갈린다 — 등록 상태를 구독해 다시 그린다.
   const agentKeys = useSyncExternalStore(subscribeKeys, keysSnapshot, () => '-|-');
