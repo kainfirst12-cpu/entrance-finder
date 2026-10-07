@@ -5,6 +5,7 @@ import { flush } from '../assistant/flush';
 import { useFloatingWindow } from '../assistant/useFloatingWindow';
 import StudentPicker from './StudentPicker';
 import './assistant.css';
+import { installErrorCapture, registerTurns } from '../assistant/bugReport';
 
 // 떠 있는 AI 선생님. 말(또는 타자)로 시키면 화면을 대신 조작하고, 입결·전형 자료는 서버 도구로 조회한다.
 //
@@ -45,6 +46,8 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
   const [listening, setListening] = useState(false);
 
   const turnsRef = useRef([]);                     // 모델에게 보내는 진짜 대화(도구 호출 포함)
+  // 🐞 신고에 붙일 최근 오류·대화 — 패널이 뜰 때부터 모은다
+  useEffect(() => { installErrorCapture(); registerTurns(() => turnsRef.current); }, []);
   const scrollRef = useRef(null);
   const recogRef = useRef(null);
   const win = useFloatingWindow();

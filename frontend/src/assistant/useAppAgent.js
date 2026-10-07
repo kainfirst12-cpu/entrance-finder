@@ -1,5 +1,6 @@
 import { menuAllowed } from '../menus';
 import { useAssistantAgent } from './useAssistantAgent';
+import { BUG_RULE, bugReportTool } from './bugReport';
 
 // 어느 화면에서나 되는 도구 — 화면 이동과 모델 선택.
 // 이 앱은 라우터가 없고 App.jsx 의 view 상태 하나로 화면이 갈린다. 그래서 '주소 이동'이 아니라
@@ -41,6 +42,7 @@ export function useAppAgent({ view, setView, selectedModel, setModel, modelConfi
       here ? `[현재 view] ${here.key} — ${here.label}` : `[현재 view] ${view}`,
       hasResult ? '' : '[참고] 아직 분석 결과가 없어 result 화면은 열 수 없다.',
       '[할 수 없는 일] PDF·이미지 첨부는 파일 선택창이 필요해 조교가 대신 하지 못한다. 원장에게 직접 올려 달라고 말할 것.',
+      BUG_RULE,
     ].filter(Boolean).join('\n'),
     tools: [
       {
@@ -78,6 +80,8 @@ export function useAppAgent({ view, setView, selectedModel, setModel, modelConfi
           return `모델을 ${modelConfig[model].label} 로 바꿨습니다. (이 대화는 다음 요청부터 새 모델로 갑니다)`;
         },
       },
+      // 🐞 버그 신고 — 어느 화면에서나
+      bugReportTool(() => (here ? `${here.label} (${here.key})` : String(view))),
     ],
   });
 }
