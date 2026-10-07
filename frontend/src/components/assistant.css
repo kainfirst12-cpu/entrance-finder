@@ -151,6 +151,8 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 9px;
+  max-height: 220px;
+  overflow-y: auto;
 }
 .ef-as-input textarea:focus { outline: none; border-color: var(--accent-2); }
 .ef-as-mic, .ef-as-send {

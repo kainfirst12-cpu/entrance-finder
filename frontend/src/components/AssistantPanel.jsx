@@ -48,6 +48,14 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
   const turnsRef = useRef([]);                     // 모델에게 보내는 진짜 대화(도구 호출 포함)
   // 🐞 신고에 붙일 최근 오류·대화 — 패널이 뜰 때부터 모은다
   useEffect(() => { installErrorCapture(); registerTurns(() => turnsRef.current); }, []);
+  // 입력칸 — 기본 3~4줄, 쓰는 만큼 늘어나다 220px 부터 스크롤(원장 요청 2026-10-07: 글쓰는 칸 넓게)
+  const inputRef = useRef(null);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [input, orient, compact, open]);
   const scrollRef = useRef(null);
   const recogRef = useRef(null);
   const win = useFloatingWindow();
@@ -279,9 +287,10 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
 
       <div className="ef-as-input">
         <textarea
+          ref={inputRef}
           value={input}
           placeholder="무엇을 할까요?"
-          rows={compact || orient === 'landscape' ? 2 : 3}
+          rows={compact || orient === 'landscape' ? 3 : 4}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(input); }
