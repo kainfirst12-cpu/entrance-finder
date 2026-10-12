@@ -5,6 +5,12 @@ import { analysisDataFromRecord, isRestorableRecord } from '../analysisRecord';
 import RoadmapView from './RoadmapView';
 import VerifyPanel from './VerifyPanel';
 import InterviewPracticeBoard from './InterviewPracticeBoard';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
+import { flush } from '../assistant/flush';
+
+// 🎓 너만의 패파 ↔ 열린 학생의 로드맵 칸 — 로드맵 칸은 학생 상세 안쪽에 있어 화면 도구(한 칸)를 따로 못 달아서,
+//    열려 있는 동안 자기 함수·상태를 여기 걸어 두고 보드 도구가 이걸로 부른다(2026-10-12).
+const roadmapBridge = { current: null };
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -257,6 +263,102 @@ export default function Board({ onAuthError, onAnalyzeFile, onOpenAnalysis }) {
   const canEdit = isAdmin || true; // 선생님은 본인 보드라 항상 편집 가능
 
   const S = STYLES;
+
+  // 🎓 너만의 패파 — "○○ 학생 열어줘", "○○ 로드맵 첨부 자료로 만들어줘", "로드맵 저장해줘", "쉬운 말로 다시 써줘"(2026-10-12)
+  const findBoardStudents = (name, school) => {
+    const nf = (x) => String(x || '').normalize('NFC').replace(/\s+/g, '');
+    let hit = students.filter((s) => nf(s.name) === nf(name));
+    if (!hit.length) hit = students.filter((s) => nf(s.name).includes(nf(name)));
+    if (hit.length > 1 && school) hit = hit.filter((s) => nf(s.school).includes(nf(school).replace(/등학교$/, '')));
+    return hit;
+  };
+  const rb = () => roadmapBridge.current;
+  useAssistantAgent('screen', {
+    key: 'board',
+    title: '학생 보드',
+    describe: () => {
+      const b = rb();
+      return [
+        `[화면] 학생 보드(칸반) — 학생 ${students.length}명${detail ? ` · 열린 학생 ${detail.name}(${detail.school || ''})` : ''}`,
+        `[학생] ${students.slice(0, 80).map((s) => `${s.name}(${[s.school, s.grade].filter(Boolean).join(' ')})`).join(', ') || '없음'}`,
+        b ? `[로드맵 — ${b.studentName}] 저장된 로드맵 ${b.roadmaps.length}개${b.roadmaps.length ? `: ${b.roadmaps.map((r) => `${r.title}(항목 ${(r.items || []).length})`).join(', ')}` : ''}${b.draft ? ` · 저장 안 한 초안 «${b.draft.title}» 항목 ${b.draft.items?.length || 0}개` : ''}${b.busy ? ` · 작업 중(${b.busy})` : ''}${b.msg ? ` · ${b.msg}` : ''}` : '[로드맵] 학생을 열면 로드맵 도구를 쓸 수 있다',
+        b ? `[첨부 자료(로드맵 재료로 쓸 수 있음)] ${b.attachables.map((f) => f.name).join(', ') || '없음'}` : '',
+        '[도구] 학생 열기 open_board_student → 로드맵 만들기 make_roadmap(첨부 자료나 붙여넣은 글로, 지금 고른 AI 모델 — 모델을 안 정했으면 먼저 물을 것) → 저장 save_roadmap, 쉬운 문장으로 다시 쓰기 simplify_roadmap.',
+      ].filter(Boolean).join('\n');
+    },
+    examples: ['박예서 학생 열어줘', '박예서 첨부 자료로 로드맵 만들어줘', '로드맵 저장하고 쉬운 말로 다시 써줘'],
+    tools: [
+      {
+        name: 'open_board_student',
+        description: '학생 이름으로 그 학생 상세(성적·기록·로드맵·첨부)를 연다. 동명이인이면 school 로 가린다.',
+        schema: { type: 'object', properties: { name: { type: 'string' }, school: { type: 'string' } }, required: ['name'] },
+        run: ({ name, school }) => {
+          const hit = findBoardStudents(name, school);
+          if (!hit.length) return `«${name}» 학생이 보드에 없습니다.`;
+          if (hit.length > 1) return `같은 이름이 여럿입니다: ${hit.map((s) => `${s.name}(${s.school || ''})`).join(', ')} — 학교를 알려 주세요.`;
+          setDetail(hit[0]);
+          return `${hit[0].name} 학생 상세를 열었습니다. 로드맵 칸이 준비되면 get_screen 으로 확인하세요.`;
+        },
+      },
+      {
+        name: 'make_roadmap',
+        description: '열린 학생의 생기부 로드맵을 AI 로 만든다(초안 — save_roadmap 으로 저장). source: attachments(학생 첨부 자료 전부 또는 files 로 고른 이름) | text(붙여넣은 글). mode: generate(자료로 로드맵 작성) | analyze(이미 있는 로드맵 문서를 항목으로만 정리). nextSubjects: 다음 학기 과목(선택). 자료가 많으면 5분 넘게 걸린다.',
+        schema: { type: 'object', properties: {
+          source: { type: 'string', enum: ['attachments', 'text'] }, files: { type: 'array', items: { type: 'string' } }, text: { type: 'string' },
+          mode: { type: 'string', enum: ['generate', 'analyze'] }, nextSubjects: { type: 'string' },
+        }, required: ['source'] },
+        confirm: () => `${rb()?.studentName || '이 학생'} 로드맵을 AI 로 만들까요? (API 크레딧 사용)`,
+        run: async ({ source, files, text, mode, nextSubjects }) => {
+          const b = rb();
+          if (!b) return '먼저 open_board_student 로 학생을 열어 주세요.';
+          if (b.busy) return `이미 작업 중입니다(${b.busy}).`;
+          let material = '';
+          if (source === 'attachments') {
+            const want = (files || []).map((x) => String(x));
+            const ids = b.attachables.filter((f) => !want.length || want.some((w) => f.name.includes(w))).map((f) => f.id);
+            if (!ids.length) return `쓸 첨부 자료가 없습니다(있는 것: ${b.attachables.map((f) => f.name).join(', ') || '없음'}). 원장이 파일을 올리거나 글을 붙여넣어야 합니다.`;
+            material = await b.loadFromAttachments(ids);
+            if (!material.trim()) return '첨부 자료에서 글자를 읽지 못했습니다(화면 안내를 확인하세요).';
+          } else {
+            material = String(text || '').trim();
+            if (!material) return '로드맵 재료 글이 없습니다 — 원장에게 자료를 붙여넣어 달라고 하세요.';
+          }
+          await flush();
+          await rb().run({ text: material, mode: mode === 'analyze' ? 'analyze' : 'generate', ...(nextSubjects ? { nextSubjects } : {}) });
+          await flush();
+          const after = rb();
+          return after?.draft ? `초안 «${after.draft.title}» 항목 ${after.draft.items?.length || 0}개를 만들었습니다. 원장에게 확인받고 save_roadmap 으로 저장하세요.` : `만들지 못했습니다: ${after?.msg || '화면 안내를 확인하세요'}`;
+        },
+      },
+      {
+        name: 'save_roadmap',
+        description: '방금 만든 로드맵 초안을 학생 로드맵으로 저장한다(같은 제목이 있으면 화면이 교체할지 묻는다).',
+        schema: { type: 'object', properties: {} },
+        run: async () => {
+          const b = rb();
+          if (!b?.draft) return '저장할 초안이 없습니다 — make_roadmap 을 먼저 하세요.';
+          await b.saveDraft();
+          await flush();
+          return rb()?.msg || '저장했습니다.';
+        },
+      },
+      {
+        name: 'simplify_roadmap',
+        description: '저장된 로드맵의 문장을 학생 눈높이의 쉬운 문장으로 다시 쓴다(할 일·체크 기록은 그대로). title 로 고른다(없으면 가장 최근 것).',
+        schema: { type: 'object', properties: { title: { type: 'string' } } },
+        run: async ({ title }) => {
+          const b = rb();
+          if (!b) return '먼저 학생을 열어 주세요.';
+          const rm = b.roadmaps.find((r) => title && r.title.includes(title)) || b.roadmaps[0];
+          if (!rm) return '저장된 로드맵이 없습니다.';
+          await b.simplify(rm);
+          await flush();
+          return rb()?.msg || '다시 썼습니다.';
+        },
+      },
+    ],
+  });
+
   return (
     <div style={S.page}>
       <div style={S.headerRow}>
@@ -897,10 +999,11 @@ function RoadmapSection({ student, onError, onChanged }) {
   };
 
   // 이미 올려둔 첨부 파일을 내려받아 로드맵 재료로 다시 사용
-  const loadFromAttachments = async () => {
-    const picked = attachables.filter(f => sel.has(f.id));
-    if (!picked.length) { setMsg('⚠ 불러올 첨부 파일을 먼저 선택해 주세요.'); return; }
+  const loadFromAttachments = async (pickedIds) => {
+    const picked = attachables.filter(f => (Array.isArray(pickedIds) ? pickedIds.includes(f.id) : sel.has(f.id)));
+    if (!picked.length) { setMsg('⚠ 불러올 첨부 파일을 먼저 선택해 주세요.'); return ''; }
     setBusy('extract'); setMsg(`첨부 파일 ${picked.length}개에서 글자를 읽는 중… (스캔본이면 AI 판독이라 몇 분 걸립니다)`);
+    let loaded = '';
     try {
       const fileObjs = [];
       for (const f of picked) {
@@ -914,15 +1017,23 @@ function RoadmapSection({ student, onError, onChanged }) {
       setText(prev => (prev ? prev + '\n\n' : '') + got);
       setFiles(prev => [...prev, ...picked.map(f => f.name)]);
       setSel(new Set());
+      loaded = got;
       setMsg(notices.length
         ? '⚠ ' + notices.join(' / ')
         : `✓ 첨부 파일 ${picked.length}개를 불러왔습니다. 이제 [🤖 로드맵 만들기]를 누르면 이 자료로 새 로드맵을 만듭니다.`);
     } catch (e) { setMsg('⚠ ' + e.message); }
     finally { setBusy(''); }
+    return loaded;
   };
 
   // AI 실행 (생성 또는 항목화)
-  const run = async () => {
+  const textState = text, modeState = mode, nextSubjectsState = nextSubjects;
+  // over: 너만의 패파가 글·모드를 바로 넘길 때만 객체(버튼 클릭이면 이벤트가 와서 무시)
+  const run = async (overArg) => {
+    const over = overArg && !overArg.nativeEvent && typeof overArg === 'object' ? overArg : {};
+    const text = over.text ?? textState;
+    const mode = over.mode ?? modeState;
+    const nextSubjects = over.nextSubjects ?? nextSubjectsState;
     if (!text.trim()) { setMsg('⚠ 먼저 자료 파일을 올리거나 내용을 붙여넣어 주세요.'); return; }
     const { model, group, apiKey } = aiCreds();
     if (!apiKey) { setMsg('⚠ 설정에서 API 키를 먼저 입력해 주세요.'); return; }
@@ -967,6 +1078,17 @@ function RoadmapSection({ student, onError, onChanged }) {
       });
     } finally { setBusy(''); }
   };
+
+
+  // 🎓 너만의 패파 다리 — 열려 있는 동안 보드 도구가 이 칸을 부른다
+  useEffect(() => {
+    roadmapBridge.current = {
+      studentId: student.id, studentName: student.name, roadmaps, draft, busy, msg,
+      attachables: attachables.map((f) => ({ id: f.id, name: f.name })),
+      run, saveDraft, simplify, loadFromAttachments, setMode, setNextSubjects,
+    };
+  });
+  useEffect(() => () => { if (roadmapBridge.current?.studentId === student.id) roadmapBridge.current = null; }, [student.id]);
 
   return (
     <>

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import { univLabel, campusBadge, campusOf, sortByCampus } from '../univName';
 import VerifyPanel from './VerifyPanel';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
 
 const token = () => localStorage.getItem('ef_token');
 async function api(path, opts = {}) {
@@ -1858,6 +1859,69 @@ function toggleEdit(){
   const isSaved = (c) => placements.some((p) => p.unv_cd === c.univ.unvCd && p.dept === c.entry.dept
     && p.track === c.entry.track && p.type_name === c.entry.typeName
     && Number(p.grade) === grade && p.base_year === baseYear);
+
+
+  // 🎓 너만의 패파 — "박예서 내신으로 갈 만한 곳 추천해줘", "수도권 간호학과 2등급 학종 찾아줘"(2026-10-12)
+  useAssistantAgent('screen', {
+    key: 'ipgyeol',
+    title: '입결 조회',
+    describe: () => [
+      `[화면] 입결 조회 — 학생 ${student ? `${student.name}(${student.school || ''})` : '안 고름'} · 내신 ${Number(grade).toFixed(2)}${gradeSource ? ` (${gradeSource})` : ''} · ${baseYear} 기준`,
+      `[학생 목록] ${students.slice(0, 80).map((s) => s.name).join(', ') || '없음'}`,
+      reco ? `[추천 결과] 내신 ${Number(reco.grade).toFixed(2)} · 후보 ${reco.groups?.reduce((a, g) => a + g.total, 0) || 0}건 중 ${reco.shown || 0}건 표시` : recoBusy ? '[추천] 찾는 중' : '',
+      aiSearch ? `[AI 검색] «${aiSearch.query}» — ${aiSearch.results?.length || 0}건` : aiSearching ? '[AI 검색] 찾는 중' : '',
+      `[배치 저장] ${placements.length}건`,
+      '[도구] 학생 고르기 pick_ipgyeol_student(내신 자동 반영), 내신 직접 set_ipgyeol_grade, 성적 기반 추천 run_recommend(숫자는 공식 입결, AI 는 설명만), 말로 찾기 ai_search(예: "수도권 간호학과 학종").',
+    ].filter(Boolean).join('\n'),
+    examples: ['박예서로 골라서 갈 만한 곳 추천해줘', '수도권 간호학과 학종 2등급대 찾아줘'],
+    tools: [
+      {
+        name: 'pick_ipgyeol_student',
+        description: '학생 보드에서 이름으로 학생을 고른다 — 대표 내신·기록·배치를 불러온다.',
+        schema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        run: ({ name }) => {
+          const nf = (x) => String(x || '').normalize('NFC').replace(/\s+/g, '');
+          let hit = students.filter((s) => nf(s.name) === nf(name));
+          if (!hit.length) hit = students.filter((s) => nf(s.name).includes(nf(name)));
+          if (!hit.length) return `«${name}» 학생이 없습니다.`;
+          if (hit.length > 1) return `같은 이름이 여럿입니다: ${hit.map((s) => `${s.name}(${s.school || ''})`).join(', ')}`;
+          selectStudent(hit[0].id);
+          return `${hit[0].name} 학생을 골랐습니다. 내신 반영 결과는 get_screen 으로 확인하세요.`;
+        },
+      },
+      {
+        name: 'set_ipgyeol_grade',
+        description: '기준 내신(1~9 등급, 소수)을 직접 정한다.',
+        schema: { type: 'object', properties: { grade: { type: 'number' } }, required: ['grade'] },
+        run: ({ grade: g }) => {
+          const n = Number(g);
+          if (!Number.isFinite(n) || n < 1 || n > 9) return '내신은 1~9 사이 숫자로 주세요.';
+          setGrade(n); setGradeSource('너만의 패파로 직접 입력');
+          return `기준 내신 ${n.toFixed(2)}`;
+        },
+      },
+      {
+        name: 'run_recommend',
+        description: '지금 내신으로 갈 만한 곳을 교과·종합 한 번에 추천한다(후보·숫자는 공식 입결에서 코드가 뽑고, AI 키가 있으면 설명만 덧붙음).',
+        schema: { type: 'object', properties: {} },
+        run: async () => {
+          if (recoBusy) return '이미 찾는 중입니다.';
+          await runReco();
+          return '추천을 마쳤습니다. 결과는 화면에 있습니다(get_screen).';
+        },
+      },
+      {
+        name: 'ai_search',
+        description: '말로 입결을 찾는다(예: "수도권 간호학과 학종", "2등급대 경영 교과"). 숫자는 공식 입결 그대로. 학생을 골라 두면 그 학생 정보를 함께 쓴다.',
+        schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+        run: async ({ query }) => {
+          if (aiSearching) return '이미 찾는 중입니다.';
+          await runAiSearch(String(query || ''));
+          return 'AI 검색을 마쳤습니다. 결과는 화면에 있습니다.';
+        },
+      },
+    ],
+  });
 
   return (
     <div style={S.page}>

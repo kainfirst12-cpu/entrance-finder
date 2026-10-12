@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { API_BASE } from '../apiBase';
 import SendToPapa from './SendToPapa';
 import StudentPicker from './StudentPicker';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
 
 // SSE(keepalive) 또는 JSON 응답 처리
 async function postForResult(url, opts) {
@@ -312,6 +313,64 @@ export default function Assessment({ getActiveKey, selectedModel, aiGroup }) {
   };
 
   const S = STYLES;
+
+  // 🎓 너만의 패파 — "고2 생명과학 탐구보고서 수행평가 만들어줘, 주제는 유전자 가위"(2026-10-12)
+  useAssistantAgent('screen', {
+    key: 'assessment',
+    title: '수행평가',
+    describe: () => [
+      `[화면] 수행평가 — 모드 ${mode === 'create' ? '만들기(과제 결과물 작성)' : '첨삭(학생 제출물 평가)'} · 과목 ${subject || '없음'} · ${grade} · 종류 ${kind || '없음'}`,
+      `[입력] 주제 ${topic ? `${topic.slice(0, 60)}` : '없음'} · 요구사항 ${requirements ? `${requirements.length}자` : '없음'} · 채점기준 ${rubric ? `${rubric.length}자` : '없음'} · 제출물 ${submissionText ? `${submissionText.length}자` : '없음'} · 학생 ${boardStudent?.name || studentName || '없음'}`,
+      loading ? '[진행 중] 만드는 중' : result ? `[결과] ${resultMode === 'create' ? '결과물' : '첨삭 리포트'} ${result.length}자${finalDoc ? ` · 완성본 ${finalDoc.length}자` : ''}${verifyResult ? ' · 검증 결과 있음' : ''}` : '',
+      '[도구] 입력 채우기 set_assessment → 만들기 run_assessment(지금 고른 AI 모델 — 안 정했으면 먼저 물을 것) → 다른 AI 검증 verify_assessment. 양식 캡처·파일은 원장이 직접 올린다.',
+    ].filter(Boolean).join('\n'),
+    examples: ['고2 생명과학 탐구보고서, 주제 유전자 가위로 만들어줘', '이 제출물 첨삭해줘(붙여넣기)'],
+    tools: [
+      {
+        name: 'set_assessment',
+        description: '수행평가 입력을 채운다(준 것만 바꿈). mode: create(과제 결과물 작성) | review(학생 제출물 첨삭). subject 과목, grade(고1·고2·고3·중1~중3), kind 종류(탐구보고서·논술·발표 등), topic 주제·과제 설명, requirements 요구사항, rubric 채점기준, submissionText(첨삭할 제출물 — 원장이 준 글 그대로), studentName 학생 이름(기록에 붙임).',
+        schema: { type: 'object', properties: {
+          mode: { type: 'string', enum: ['create', 'review'] }, subject: { type: 'string' }, grade: { type: 'string' }, kind: { type: 'string' },
+          topic: { type: 'string' }, requirements: { type: 'string' }, rubric: { type: 'string' }, submissionText: { type: 'string' }, studentName: { type: 'string' },
+        } },
+        run: (v) => {
+          if (v.mode) setMode(v.mode);
+          if (v.subject != null) setSubject(String(v.subject));
+          if (v.grade) setGrade(String(v.grade));
+          if (v.kind != null) setKind(String(v.kind));
+          if (v.topic != null) setTopic(String(v.topic));
+          if (v.requirements != null) setRequirements(String(v.requirements));
+          if (v.rubric != null) setRubric(String(v.rubric));
+          if (v.submissionText != null) setSubmissionText(String(v.submissionText));
+          if (v.studentName != null) setStudentName(String(v.studentName));
+          return `채웠습니다: ${Object.keys(v).join(', ')}`;
+        },
+      },
+      {
+        name: 'run_assessment',
+        description: '지금 입력으로 수행평가 결과물(또는 첨삭 리포트)을 만든다(몇 분). 학생 이름이 있으면 그 학생 기록에도 붙는다.',
+        schema: { type: 'object', properties: {} },
+        confirm: () => `${subject || '수행평가'} ${mode === 'create' ? '결과물' : '첨삭'}을 AI 로 만들까요? (API 크레딧 사용)`,
+        run: async () => {
+          if (loading) return '이미 만드는 중입니다.';
+          await generate();
+          return '만들기를 마쳤습니다(오류가 있으면 화면에 떠요). get_screen 으로 확인하세요.';
+        },
+      },
+      {
+        name: 'verify_assessment',
+        description: '만든 결과물을 다른 AI 로 검증한다(화면의 검증 기능).',
+        schema: { type: 'object', properties: {} },
+        run: async () => {
+          if (!result) return '검증할 결과물이 없습니다.';
+          if (verifying) return '이미 검증 중입니다.';
+          await verify();
+          return '검증을 마쳤습니다. 결과는 화면에 있습니다.';
+        },
+      },
+    ],
+  });
+
   return (
     <div style={S.page}>
       <h2 style={S.h2}>📝 수행평가 도우미</h2>
