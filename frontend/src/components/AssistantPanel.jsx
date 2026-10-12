@@ -310,7 +310,7 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
         <textarea
           ref={inputRef}
           value={input}
-          placeholder="무엇을 할까요?"
+          placeholder={listening ? '🎤 듣고 있어요… 말씀하세요' : SpeechRecognition ? '무엇을 할까요? (🎤 말하기로 말해도 돼요)' : '무엇을 할까요?'}
           rows={compact || orient === 'landscape' ? 3 : 4}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -318,8 +318,8 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
           }}
         />
         {SpeechRecognition && (
-          <button className={`ef-as-mic ${listening ? 'on' : ''}`} onClick={toggleMic} title="말로 시키기">
-            {listening ? '■' : '🎤'}
+          <button className={`ef-as-mic ${listening ? 'on' : ''}`} onClick={toggleMic} title="말로 시키기 — 누르고 말하면 입력칸에 받아 적어요">
+            {listening ? '■ 그만' : '🎤 말하기'}
           </button>
         )}
         <button className="ef-as-send" onClick={() => send(input)} disabled={busy || !input.trim()}>

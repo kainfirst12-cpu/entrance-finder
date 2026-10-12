@@ -167,6 +167,8 @@
   color: var(--text2);
   cursor: pointer;
 }
-.ef-as-mic.on { border-color: var(--red); color: var(--red); }
+.ef-as-mic { border-color: #34d399; color: #34d399; }
+.ef-as-mic.on { border-color: var(--red); background: var(--red); color: #fff; animation: ef-mic-pulse 1.2s ease-in-out infinite; }
+@keyframes ef-mic-pulse { 50% { opacity: 0.6; } }
 .ef-as-send { background: var(--accent-2); border-color: var(--accent-2); color: #04201d; }
 .ef-as-send:disabled { opacity: 0.45; cursor: default; }
