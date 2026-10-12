@@ -3,6 +3,7 @@ import { API_BASE } from '../apiBase';
 import { describeScreen, findTool, getTools, keysSnapshot, subscribeKeys } from '../assistant/store';
 import { flush } from '../assistant/flush';
 import { matchQuick } from '../assistant/quick';
+import { startVoice } from '../assistant/voice';
 import { useFloatingWindow } from '../assistant/useFloatingWindow';
 import StudentPicker from './StudentPicker';
 import './assistant.css';
@@ -218,32 +219,24 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
   const toggleMic = useCallback(() => {
     if (!SpeechRecognition) return;
     if (recogRef.current) { recogRef.current.stop(); return; }
-    const recog = new SpeechRecognition();
-    recog.lang = 'ko-KR';
-    recog.interimResults = true;
-    recog.continuous = false;
-    let finalText = '';
-    recog.onresult = (ev) => {
-      let interim = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const chunk = ev.results[i][0].transcript;
-        if (ev.results[i].isFinal) finalText += chunk; else interim += chunk;
-      }
-      setInput(finalText + interim);
-    };
-    recog.onerror = () => { setListening(false); recogRef.current = null; };
-    recog.onend = () => {
-      setListening(false);
-      recogRef.current = null;
-      // 말이 끝나면 바로 보낸다 — 마이크를 쓰는 사람은 손이 비어 있다는 뜻이다.
-      if (finalText.trim()) send(finalText);
-    };
-    recogRef.current = recog;
+    // 받아쓰기 규칙은 assistant/voice.js 한 곳(안드로이드 겹쳐 적힘 고침 — 2026-10-12)
+    const session = startVoice({
+      onText: (finalText, interim) => setInput([finalText, interim].filter(Boolean).join(' ')),
+      onEnd: (finalText) => {
+        if (!recogRef.current) return; // 창을 닫으며 멈춘 것 — 보내지 않는다
+        setListening(false);
+        recogRef.current = null;
+        // 말이 끝나면 바로 보낸다 — 마이크를 쓰는 사람은 손이 비어 있다는 뜻이다.
+        if (finalText.trim()) send(finalText);
+      },
+      onError: (msg) => push({ kind: 'error', text: msg }),
+    });
+    if (!session) { push({ kind: 'error', text: '이 브라우저는 음성 입력을 지원하지 않아요. 크롬으로 열어 주세요.' }); return; }
+    recogRef.current = session;
     setListening(true);
-    recog.start();
-  }, [SpeechRecognition, send]);
+  }, [SpeechRecognition, send, push]);
 
-  useEffect(() => () => { try { recogRef.current?.abort(); } catch { /* 이미 끝났다 */ } }, []);
+  useEffect(() => () => { const s = recogRef.current; recogRef.current = null; try { s?.stop(); } catch { /* 이미 끝났다 */ } }, []);
 
   if (!open) {
     return (
