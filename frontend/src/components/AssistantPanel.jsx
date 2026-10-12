@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { API_BASE } from '../apiBase';
 import { describeScreen, findTool, getTools, keysSnapshot, subscribeKeys } from '../assistant/store';
 import { flush } from '../assistant/flush';
+import { matchQuick } from '../assistant/quick';
 import { useFloatingWindow } from '../assistant/useFloatingWindow';
 import StudentPicker from './StudentPicker';
 import './assistant.css';
@@ -152,6 +153,24 @@ export default function AssistantPanel({ getActiveKey, getKeyFor, selectedModel,
   const send = useCallback(async (raw) => {
     const text = String(raw || '').trim();
     if (!text || busy) return;
+    // ⚡ 정해진 모양의 짧은 명령은 AI 없이 바로(assistant/quick.js) — 키가 없어도 된다
+    const hit = matchQuick(text, getTools());
+    if (hit) {
+      setInput('');
+      push({ kind: 'user', text });
+      setBusy(true);
+      try {
+        const result = await runUiTool({ id: `quick-${Date.now()}`, name: hit.tool.name, input: hit.input });
+        const said = typeof result === 'string' ? result : '완료했습니다';
+        push({ kind: 'trace', text: `${hit.tool.name} — ${said}` });
+        const answer = `${said}
+(정해진 명령이라 AI 호출 없이 바로 처리했어요)`;
+        push({ kind: 'ai', text: answer });
+        turnsRef.current = [...turnsRef.current, { role: 'user', content: text }, { role: 'assistant', content: answer }].slice(-40);
+        await flush();
+      } finally { setBusy(false); }
+      return;
+    }
     if (!candidates().length) {
       push({ kind: 'error', text: '먼저 설정에서 Claude·GPT·Gemini 중 하나의 API 키를 넣어 주세요.' });
       return;
