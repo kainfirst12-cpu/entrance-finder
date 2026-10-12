@@ -3,6 +3,8 @@ import { API_BASE } from '../apiBase';
 import SendToPapa from './SendToPapa';
 import { scoreTableHtml, indicatorLineHtml, trackLineHtml, wrapCard } from '../reportHtml';
 import { extractScores, extractHighlights, scoreTone, totalScore, radarSvg } from '../analysisMetrics';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
+import { resolveFromConfig } from '../assistant/modelResolve';
 
 // SSE(keepalive 포함) 또는 일반 JSON 응답을 모두 처리해 최종 결과 객체를 반환.
 // 긴 AI 생성(refine 등)은 서버가 8초마다 keepalive를 보내고 마지막에 data: {결과}를 보낸다.
@@ -1440,6 +1442,51 @@ export default function AnalysisResult({ data, onBack, onNewAnalysis, onReanalyz
   };
 
   const usedCfg = MODEL_CONFIG[usedModel] || MODEL_CONFIG.claude;
+
+
+  // 🎓 너만의 패파 — "검증은 클로드 오퍼스로 해줘", "교차 검증 돌려줘"(2026-10-12)
+  useAssistantAgent('screen', {
+    key: 'analysis-result',
+    title: '생기부 분석 결과',
+    describe: () => [
+      `[화면] 생기부 분석 결과 — 분석 모델 ${MODEL_CONFIG[usedModel]?.label || usedModel || '알 수 없음'}`,
+      `[교차 검증] 검증 모델 ${verifyModel ? MODEL_CONFIG[verifyModel]?.label || verifyModel : '안 고름'}${verifying ? ' · 검증 중' : ''}${verifyItems.length ? ` · 지적 ${verifyItems.length}개(화면에서 골라 반영)` : verifyResult ? ' · 결과 있음' : ''}`,
+      `[고를 수 있는 검증 모델(분석 모델 제외)] ${verifyOptions.map(([k, c]) => `${k}=${c.label}${getKeyForModel(k) ? '' : '(키 없음)'}`).join(', ')}`,
+      '[도구] 검증 모델 고르기 set_verify_model(말한 이름 그대로), 검증 실행 run_verify. 검증을 시키면 먼저 "검증은 어느 AI로 할까요?" 하고 묻고(이미 말했으면 생략), 고른 뒤 실행한다. 지적 반영은 원장이 화면에서 항목을 골라 누른다.',
+    ].join('\n'),
+    examples: ['검증은 클로드 오퍼스로 해줘', '제미나이 프로로 교차 검증 돌려줘'],
+    tools: [
+      {
+        name: 'set_verify_model',
+        description: '교차 검증에 쓸 모델을 고른다(분석에 쓴 모델은 고를 수 없다). 말한 이름 그대로 넘긴다("클로드 오퍼스", "제미나이 프로"). 회사만 말했으면 후보를 돌려주니 다시 물을 것.',
+        schema: { type: 'object', properties: { model: { type: 'string' } }, required: ['model'] },
+        run: ({ model: said }) => {
+          const opts = Object.fromEntries(verifyOptions);
+          let key = opts[said] ? said : null;
+          if (!key) {
+            const r = resolveFromConfig(said, opts);
+            if (!r.ok) return `${r.reason}${r.candidates.length ? ` — 후보: ${r.candidates.map((c) => c.label).join(', ')}` : ''}`;
+            key = r.option.key;
+          }
+          setVerifyModel(key);
+          return `검증 모델: ${MODEL_CONFIG[key]?.label || key}${getKeyForModel(key) ? '' : ' (⚠ 이 회사 API 키가 없어 설정에서 넣어야 합니다)'}`;
+        },
+      },
+      {
+        name: 'run_verify',
+        description: '고른 검증 모델로 분석 결과를 교차 검증한다(1~3분). 끝나면 지적 항목이 화면에 뜬다.',
+        schema: { type: 'object', properties: {} },
+        confirm: () => `${MODEL_CONFIG[verifyModel]?.label || '고른 모델'}로 교차 검증할까요? (API 크레딧 사용)`,
+        run: async () => {
+          if (!verifyModel) return '검증 모델을 먼저 고르세요(set_verify_model).';
+          if (!getKeyForModel(verifyModel)) return `${MODEL_CONFIG[verifyModel]?.label} API 키가 없습니다 — 설정에서 넣어 주세요.`;
+          if (verifying) return '이미 검증 중입니다.';
+          await handleVerify();
+          return '검증을 마쳤습니다. 지적 항목은 get_screen 으로 확인하세요.';
+        },
+      },
+    ],
+  });
 
   return (
     <div className="result-page">

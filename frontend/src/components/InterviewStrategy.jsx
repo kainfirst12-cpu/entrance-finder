@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import SendToPapa from './SendToPapa';
 import StudentPicker from './StudentPicker';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
 import InterviewBankPanel from './InterviewBankPanel';
 import { univLabel } from '../univName';
 import { buildInterviewHtml } from '../interviewReport';
@@ -266,6 +267,72 @@ export default function InterviewStrategy({ getActiveKey, selectedModel, aiGroup
   };
 
   const ivCount = result?.data?.interviews?.length || 0;
+
+
+  // 🎓 너만의 패파 — "○○ 면접 리포트 만들어줘 — 연세대 경영 학종, 고려대 경영 학추"(2026-10-12)
+  useAssistantAgent('screen', {
+    key: 'interview',
+    title: '대학별 면접 전략',
+    describe: () => [
+      `[화면] 대학별 면접 전략 리포트 — 학생 ${student ? `${student.name}(${student.school || ''})` : '안 고름'} · 생기부 ${recordText.trim() ? `${recordText.trim().length}자` : '없음'}${recordSource ? ` (${recordSource})` : ''}`,
+      `[지원 카드] ${cards.filter((c) => c.univ.trim()).map((c) => `${c.univ} ${c.dept} ${c.track}`.trim()).join(' / ') || '없음'} · 질문 ${questionCount}개 · ${year}학년도`,
+      running ? `[진행 중] ${progress || '만드는 중'} — 서버가 만들고 있어 화면을 옮겨도 이어서 받는다` : '',
+      result ? `[결과] ${reportTitle(result.data)} — 화면에 열려 있음` : '',
+      '[도구] 학생 고르기 pick_student(생기부 분석·배치 자동 반영), 지원 카드 set_cards, 질문 수·학년도 set_interview_options, 만들기 start_interview_report(지금 고른 AI 모델 — 안 정했으면 먼저 물을 것). 생기부 PDF 는 원장이 직접 올려야 한다.',
+    ].filter(Boolean).join('\n'),
+    examples: ['박예서 면접 리포트 만들어줘', '연세대 경영 학종, 고려대 경영 학교추천으로 카드 넣어줘'],
+    tools: [
+      {
+        name: 'pick_student',
+        description: '학생 보드에서 이름으로 학생을 고른다 — 저장된 생기부 분석과 배치(지원 대학)를 자동으로 채운다. 동명이인이면 school 로 가린다.',
+        schema: { type: 'object', properties: { name: { type: 'string' }, school: { type: 'string' } }, required: ['name'] },
+        run: async ({ name, school }) => {
+          const j = await api('/api/board/students');
+          if (!j.success) return j.message || '학생 목록을 못 읽었습니다';
+          const n = String(name || '').normalize('NFC').replace(/\s+/g, '');
+          let hit = (j.students || []).filter((s) => (s.name || '').normalize('NFC').replace(/\s+/g, '') === n);
+          if (hit.length > 1 && school) hit = hit.filter((s) => (s.school || '').includes(String(school).replace(/등학교$/, '')));
+          if (!hit.length) return `«${name}» 학생이 학생 보드에 없습니다.`;
+          if (hit.length > 1) return `같은 이름이 여럿입니다: ${hit.map((s) => `${s.name}(${s.school || ''})`).join(', ')} — 학교를 알려 주세요.`;
+          await pickStudent(hit[0]);
+          return `${hit[0].name} 학생을 골랐습니다. 생기부·지원 카드가 채워졌는지 get_screen 으로 확인하세요.`;
+        },
+      },
+      {
+        name: 'set_cards',
+        description: '지원 카드를 통째로 바꾼다(최대 6장). 각 카드: univ(대학, 필수), dept(학과), track(전형), memo, interview(yes/no/auto — 모르면 auto).',
+        schema: { type: 'object', properties: { cards: { type: 'array', items: { type: 'object', properties: { univ: { type: 'string' }, dept: { type: 'string' }, track: { type: 'string' }, memo: { type: 'string' }, interview: { type: 'string', enum: ['yes', 'no', 'auto'] } }, required: ['univ'] } } }, required: ['cards'] },
+        run: ({ cards: list }) => {
+          const next = (list || []).filter((c) => c && String(c.univ || '').trim()).slice(0, 6).map((c) => ({ ...emptyCard(), univ: String(c.univ).trim(), dept: String(c.dept || '').trim(), track: String(c.track || '').trim(), memo: String(c.memo || '').trim(), interview: ['yes', 'no'].includes(c.interview) ? c.interview : 'auto' }));
+          if (!next.length) return '대학이 있는 카드가 없습니다.';
+          setCards(next);
+          return `지원 카드 ${next.length}장: ${next.map((c) => `${c.univ} ${c.dept} ${c.track}`.trim()).join(' / ')}`;
+        },
+      },
+      {
+        name: 'set_interview_options',
+        description: '대학별 예상 질문 수(questionCount)와 학년도(year, 예 2027)를 정한다.',
+        schema: { type: 'object', properties: { questionCount: { type: 'number' }, year: { type: 'string' } } },
+        run: ({ questionCount: qc, year: y }) => {
+          if (qc) setQuestionCount(Math.max(3, Math.min(30, Math.round(Number(qc)))));
+          if (y) setYear(String(y));
+          return `질문 ${qc || questionCount}개 · ${y || year}학년도`;
+        },
+      },
+      {
+        name: 'start_interview_report',
+        description: '면접 전략 리포트를 만든다(서버가 만들어 화면을 옮겨도 이어 받음, 카드 수에 따라 몇~10분). 끝나면 화면에 열리고 저장할 수 있다.',
+        schema: { type: 'object', properties: {} },
+        confirm: () => `지원 카드 ${cards.filter((c) => c.univ.trim()).length}장으로 면접 전략 리포트를 만들까요? (API 크레딧 사용)`,
+        run: async () => {
+          if (running) return '이미 만드는 중입니다.';
+          if (!cards.some((c) => c.univ.trim())) return '지원 카드에 대학이 없습니다 — set_cards 로 넣거나 pick_student 로 배치를 불러오세요.';
+          await generate();
+          return '리포트 만들기를 마쳤습니다(오류가 있었다면 화면에 떠요). get_screen 으로 확인하세요.';
+        },
+      },
+    ],
+  });
 
   return (
     <div style={S.page}>

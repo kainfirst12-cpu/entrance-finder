@@ -1,6 +1,7 @@
 import { menuAllowed } from '../menus';
 import { useAssistantAgent } from './useAssistantAgent';
 import { BUG_RULE, bugReportTool } from './bugReport';
+import { resolveFromConfig } from './modelResolve';
 
 // 어느 화면에서나 되는 도구 — 화면 이동과 모델 선택.
 // 이 앱은 라우터가 없고 App.jsx 의 view 상태 하나로 화면이 갈린다. 그래서 '주소 이동'이 아니라
@@ -42,6 +43,7 @@ export function useAppAgent({ view, setView, selectedModel, setModel, modelConfi
       here ? `[현재 view] ${here.key} — ${here.label}` : `[현재 view] ${view}`,
       hasResult ? '' : '[참고] 아직 분석 결과가 없어 result 화면은 열 수 없다.',
       '[할 수 없는 일] PDF·이미지 첨부는 파일 선택창이 필요해 조교가 대신 하지 못한다. 원장에게 직접 올려 달라고 말할 것.',
+      '[모델 정하기 — 원장 요청] 분석·리포트·브리핑처럼 AI 로 만드는 일을 시작하기 전에, 원장이 모델을 말하지 않았으면 "어느 모델로 할까요?"라고 짧게 묻는다(지금 모델과 대표 두세 개). 회사만 답하면("클로드") 그 회사 모델을 보여 주고 다시 묻는다. 말한 이름은 그대로 set_model 에 넘긴다("챗지피티 루나", "클로드 오퍼스", "제미나이 프로"). 검증·교차검증을 시키면 같은 방식으로 "검증은 어느 AI로 할까요?"를 묻는다. "지금 걸로·아무거나"면 묻지 않는다.',
       BUG_RULE,
     ].filter(Boolean).join('\n'),
     tools: [
@@ -68,14 +70,19 @@ export function useAppAgent({ view, setView, selectedModel, setModel, modelConfi
       },
       {
         name: 'set_model',
-        description: `분석·상담에 쓸 AI 모델을 바꾼다. 고를 수 있는 값: ${Object.keys(modelConfig).join(', ')}`,
+        description: `분석·상담에 쓸 AI 모델을 바꾼다. 원장이 말한 이름 그대로 넘겨도 된다("챗지피티 루나", "클로드 오퍼스" — 회사만 말했으면 후보를 돌려주니 다시 물을 것). 모델: ${Object.entries(modelConfig).map(([k, v]) => `${k}=${v.label}`).join(', ')}`,
         schema: {
           type: 'object',
-          properties: { model: { type: 'string', enum: Object.keys(modelConfig) } },
+          properties: { model: { type: 'string', description: '모델 키 또는 말한 이름' } },
           required: ['model'],
         },
-        run: ({ model }) => {
-          if (!modelConfig[model]) return `그런 모델은 없습니다: ${model}`;
+        run: ({ model: said }) => {
+          let model = said;
+          if (!modelConfig[model]) {
+            const r = resolveFromConfig(said, modelConfig);
+            if (!r.ok) return `${r.reason}${r.candidates.length ? ` — 후보: ${r.candidates.map((c) => c.label).join(', ')}` : ''}`;
+            model = r.option.key;
+          }
           setModel(model);
           return `모델을 ${modelConfig[model].label} 로 바꿨습니다. (이 대화는 다음 요청부터 새 모델로 갑니다)`;
         },

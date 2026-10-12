@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import { analysisDataFromRecord, isRestorableRecord } from '../analysisRecord';
+import { useAssistantAgent } from '../assistant/useAssistantAgent';
 
 const token = () => localStorage.getItem('ef_token');
 
@@ -160,6 +161,57 @@ export default function StudentList({ onNewAnalysis, onAuthError, onOpenAnalysis
     return g.length ? Number(g[g.length - 1].gpa) : null;
   };
   const latestBrief = (s) => (s.records || []).find((r) => r.type === '컨설턴트 브리핑');
+
+  // 🎓 너만의 패파 — "○○ 학생 열어줘", "○○ 컨설턴트 브리핑 만들어줘"(2026-10-12)
+  const findStudents = (name, school) => {
+    const n = nfc(name).replace(/\s+/g, '');
+    let hit = students.filter((s) => nfc(s.name).replace(/\s+/g, '') === n);
+    if (!hit.length) hit = students.filter((s) => nfc(s.name).includes(nfc(name)));
+    if (hit.length > 1 && school) hit = hit.filter((s) => nfc(s.school).includes(nfc(school).replace(/등학교$/, '')));
+    return hit;
+  };
+  const whoText = (s) => `${s.name}(${[s.school, s.grade].filter(Boolean).join(' ') || '정보 없음'})`;
+  useAssistantAgent('screen', {
+    key: 'student-list',
+    title: '학생 관리',
+    describe: () => [
+      `[화면] 학생 관리 — 학생 ${students.length}명${loading ? ' (불러오는 중)' : ''}`,
+      `[학생] ${students.slice(0, 80).map((s) => `${whoText(s)}${latestBrief(s) ? ' · 브리핑 있음' : ''}`).join(', ') || '없음'}`,
+      briefingId ? `[진행 중] ${students.find((s) => s.id === briefingId)?.name || ''} 브리핑 만드는 중` : '',
+      '[도구] 학생 펼치기 open_student, 컨설턴트 브리핑 만들기 make_briefing(지금 고른 AI 모델로 — 모델을 안 정했으면 먼저 물어볼 것)',
+    ].filter(Boolean).join('\n'),
+    examples: ['김하준 학생 열어줘', '박예서 컨설턴트 브리핑 만들어줘'],
+    tools: [
+      {
+        name: 'open_student',
+        description: '학생 이름으로 그 학생 카드를 펼친다(기록·브리핑·성적). 동명이인이면 school 로 가린다.',
+        schema: { type: 'object', properties: { name: { type: 'string' }, school: { type: 'string' } }, required: ['name'] },
+        run: ({ name, school }) => {
+          const hit = findStudents(name, school);
+          if (!hit.length) return `«${name}» 학생이 없습니다. 학생 목록을 확인해 주세요.`;
+          if (hit.length > 1) return `같은 이름이 여럿입니다: ${hit.map(whoText).join(', ')} — 학교를 알려 주세요.`;
+          setSearch(''); setOpenId(hit[0].id);
+          const b = latestBrief(hit[0]);
+          if (b) setOpenRec(b.id);
+          return `${whoText(hit[0])} 카드를 펼쳤습니다.`;
+        },
+      },
+      {
+        name: 'make_briefing',
+        description: '학생의 기록·성적으로 컨설턴트 브리핑을 AI 로 만들어 그 학생 기록에 저장한다(지금 고른 모델·키 사용, 1~2분).',
+        schema: { type: 'object', properties: { name: { type: 'string' }, school: { type: 'string' } }, required: ['name'] },
+        confirm: ({ name }) => `${name} 학생 컨설턴트 브리핑을 AI 로 만들까요? (API 크레딧 사용)`,
+        run: async ({ name, school }) => {
+          if (briefingId) return '이미 다른 브리핑을 만드는 중입니다. 끝난 뒤 다시 시켜 주세요.';
+          const hit = findStudents(name, school);
+          if (!hit.length) return `«${name}» 학생이 없습니다.`;
+          if (hit.length > 1) return `같은 이름이 여럿입니다: ${hit.map(whoText).join(', ')} — 학교를 알려 주세요.`;
+          await runBrief(hit[0]);
+          return `${whoText(hit[0])} 브리핑을 만들어 카드에 열었습니다(오류가 있었다면 화면 알림에 떠요).`;
+        },
+      },
+    ],
+  });
 
   return (
     <div className="list-page">
