@@ -3,9 +3,9 @@ import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
-import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf, aDifficulty } from '../schoolTerms';
+import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf, aDifficulty, aGradeSpan, grade1Type, enrollmentTrend } from '../schoolTerms';
 import StudentFit from './StudentFit';
-import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE } from '../course/offerings';
+import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE, TRACK_PRESETS } from '../course/offerings';
 
 // A 난이도(A 비율의 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
 const WEIGHTS_URL = CATALOG_URL.replace(/[^/]+$/, 'school-weights.json.gz');
@@ -221,7 +221,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <select style={S.select} value={district} onChange={(e) => { setDistrict(e.target.value); setSigungu('전체'); }} title={DISTRICTS[sido].source}>
             <option value="전체">평준화 학군 전체</option>
             {DISTRICTS[sido].list.map((d) => <option key={d.name} value={d.name}>{d.name} 학군 ({d.sigungu.join('·')})</option>)}
-            <option value="비평준화">비평준화 지역</option>
+            {!DISTRICTS[sido].allLevelled && <option value="비평준화">비평준화 지역</option>}
           </select>
         )}
         {isHigh && (
@@ -252,6 +252,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           {isHigh && weights && <option value="weight-asc">A 난이도 높은 순 (A 받기 어려운 학교부터)</option>}
         </select>
       </div>
+      {isHigh && DISTRICTS[sido]?.note && <div style={{ ...S.dim, margin: '-4px 0 8px' }}>🧭 {DISTRICTS[sido].note}</div>}
       {isHigh && (
         <div style={S.filters}>
           <span style={S.filterLabel}><Term k="학교 층" /></span>
@@ -265,6 +266,8 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       {isHigh && offers && (
         <div style={S.filters}>
           <span style={S.filterLabel}>듣고 싶은 2·3학년 과목</span>
+          {TRACK_PRESETS.map((t) => <button key={t.label} title={`${t.label} 계열에서 자주 보는 과목: ${t.courses.join(', ')}`} style={S.linkBtn} onClick={() => setWant(t.courses)}>{t.label}</button>)}
+          <span style={{ flexBasis: '100%', height: 0 }} />
           {PICKABLE.map((w) => <button key={w} style={{ ...S.chip, ...(want.includes(w) ? S.chipOn : {}) }} onClick={() => setWant((cur) => (cur.includes(w) ? cur.filter((x) => x !== w) : [...cur, w]))}>{w}</button>)}
           {want.length > 0 && <>
             <label style={{ ...S.dim, display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6 }}><input type="checkbox" checked={wantAll} onChange={(e) => setWantAll(e.target.checked)} /> 모두 열리는(가능성 포함) 학교만</label>
@@ -304,6 +307,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
                 {s.gender && <span style={S.badge}>{s.gender}</span>}
                 {s.fond && <span style={S.badge}>{s.fond}</span>}
                 {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년, 2025 공시)</span>}
+                {isHigh && (() => { const t = enrollmentTrend(s.enrollment); return t && t.label !== '신입생 유지' ? <span style={{ ...S.badgeDim, color: t.color }} title="1학년 재적 vs 3학년 재적">{t.label} {t.pct}</span> : null; })()}
                 {s.enrollment?.grade1 == null && s.current?.students != null && <span style={S.badgeDim}>학생 {s.current.students}명 · 교원 {s.current.teachers ?? '—'}명 (2026 학교정보)</span>}
               </div>
               {isHigh && seats !== null && (
@@ -318,7 +322,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
               {b && <BandBar band={b} />}
               {isHigh && grade === 1 && weights?.[s.id]?.[subject] && (
                 <div style={S.weight}>
-                  {(() => { const d = aDifficulty(weights[s.id][subject].pct); return <><Term k="A 난이도" /> · 1학년 {subject} A {weights[s.id][subject].a}% → <b style={{ color: d.color }}>{d.label}</b> <span style={S.dim}>({d.text})</span></>; })()}
+                  {(() => { const d = aDifficulty(weights[s.id][subject].pct); return <><Term k="A 난이도" /> · 1학년 {subject} A {weights[s.id][subject].a}% → <b style={{ color: d.color }}>{d.label}</b> <span style={S.dim}>({d.text})</span>{aGradeSpan(weights[s.id][subject].a) && <> · <Term k="A면 몇 등급">A면 {aGradeSpan(weights[s.id][subject].a).span}</Term></>}</>; })()}
                 </div>
               )}
               {want.length > 0 && (
@@ -432,6 +436,7 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
         <div style={S.statGrid}>
           {/* 학년별 재적은 학교알리미 공개용데이터(2025년 공시) — 학교정보 팝업(2026)의 현재 학생수와 한 해 차이가 난다. 어느 해 숫자인지 적는다. */}
           <Stat label="학년별 재적 (2025 공시)" value={s.enrollment?.grade1 != null ? `${num(s.enrollment.total)}명` : '—'} hint={s.enrollment?.grade1 != null ? `${s.enrollment.grade1 ?? '—'}·${s.enrollment.grade2 ?? '—'}·${s.enrollment.grade3 ?? '—'} (1·2·3학년)${s.current?.students != null && s.current.students !== s.enrollment.total ? ` · 2026 현재 ${num(s.current.students)}명` : ''}` : '학년별 재적 공시 없음'} />
+          {isHigh && enrollmentTrend(s.enrollment) && <Stat label="신입생 추세" value={`${enrollmentTrend(s.enrollment).label.replace('신입생 ', '')} ${enrollmentTrend(s.enrollment).pct}`} hint="1학년 재적 vs 3학년 재적 (±5% 기준) — 줄면 1등급 자리도 줄어요" />}
           {isHigh && <Stat label="1등급권 자리" value={seats === null ? '—' : `${seats}개`} hint="2025 공시 1학년 인원 × 10% (2022 교육과정 5등급제, 반올림)" />}
           <Stat label="학급 수" value={s.edss?.classes != null ? `${s.edss.classes}학급` : '—'} hint={s.edss ? `${s.edss.classGrade1 ?? '—'}·${s.edss.classGrade2 ?? '—'}·${s.edss.classGrade3 ?? '—'} (1·2·3학년) · EDSS 2025` : 'EDSS 미매칭'} />
           {/* 교원 수: 학교알리미 학교정보(2026)가 최신. EDSS(2025 조사)는 한 해 전 값이라 힌트로만 — 가곡고 7명(EDSS) vs 8명(학교알리미) 같은 차이가 그것이다. */}
@@ -451,9 +456,15 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
                   <div style={S.statValue}>A {w[k].a}%</div>
                   <div style={{ ...S.statHint, color: aDifficulty(w[k].pct).color, fontWeight: 700 }}>{aDifficulty(w[k].pct).label}</div>
                   <div style={S.statHint}>{aDifficulty(w[k].pct).text} · 평균 {w[k].mean}</div>
+                  {aGradeSpan(w[k].a) && <div style={{ ...S.statHint, color: 'var(--text)' }}>{aGradeSpan(w[k].a).text}</div>}
                 </div>
               ))}
             </div>
+            {(() => {
+              const as = ['국어', '수학', '영어'].map((k) => w[k]?.a).filter((v) => typeof v === 'number');
+              const t = as.length ? grade1Type(as.reduce((x, y) => x + y, 0) / as.length) : null;
+              return t ? <div style={{ fontSize: 12.5, color: 'var(--text)', margin: '6px 0' }}><Term k="1등급 문턱" /> · 국·수·영 A 평균 {(as.reduce((x, y) => x + y, 0) / as.length).toFixed(1)}% → <b style={{ color: t.color }}>{t.label}</b> <span style={S.dim}>· <Term k="A면 몇 등급" /></span></div> : null;
+            })()}
             <div style={S.dim}>A 난이도가 높을수록 A가 드문 학교입니다 — 받기는 어렵지만 받으면 대학이 무겁게 읽습니다. 평균과 A 비율은 따로 움직일 때가 많아 함께 봅니다.</div>
           </section>
         )}

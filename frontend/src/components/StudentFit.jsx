@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Term, aDifficulty } from '../schoolTerms';
+import { Term, aDifficulty, aGradeSpan } from '../schoolTerms';
 
 // 🎯 지망 판단 보조 — 학생의 지역(학군) 내 석차 백분위를 넣으면, 지금 목록의 학교마다 1학년 핵심 과목에서
 // A 를 기대할 수 있는지(A 가능 · 경계 · B 이하)를 어림한다. 순위를 매기지 않고, 무엇을 앞세울지는 상담에서 정한다.
@@ -8,6 +8,7 @@ import { Term, aDifficulty } from '../schoolTerms';
 //   · 평준화 추첨이면 학교 학생 구성은 학군과 비슷하다고 보고, 학생의 교내 백분위 ≈ 학군 백분위.
 //   · 다만 학교 평균이 함께 본 학교들보다 높으면(쏠림 +) 교내 백분위를 조금 낮춰 잡는다: 표준편차 1 당 ×(1+0.15).
 //   · 과목별 A 비율 a 에 대해 교내 백분위 ≤ 0.85a → A 가능, ≤ 1.15a → 경계, 그 밖 → B 이하.
+//   · 강한 과목은 교내 백분위 ×0.6, 약한 과목은 ×1.6 으로 과목마다 따로 본다(학생이 고른 경우만).
 //   · 5등급제 1등급은 상위 10% — 교내 백분위 ≤ 10 이면 1등급권, ≤ 13 이면 경계.
 const KEYS = ['국어', '수학', '영어', '통합사회', '통합과학'];
 const LABEL = { 국어: '국어', 수학: '수학', 영어: '영어', 통합사회: '통합사회', 통합과학: '통합과학' };
@@ -18,6 +19,10 @@ const sd = (xs) => { const m = avg(xs); return xs.length > 1 ? Math.sqrt(avg(xs.
 export default function StudentFit({ schools, weights, onClose }) {
   const [p, setP] = useState(15);
   const [sort, setSort] = useState('name');
+  const [strong, setStrong] = useState([]);
+  const [weak, setWeak] = useState([]);
+  const toggle = (set, k) => set((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
+  const subjP = (pin, k) => Math.min(99, Math.max(0.5, strong.includes(k) ? pin * 0.6 : weak.includes(k) ? pin * 1.6 : pin));
 
   const rows = useMemo(() => {
     const list = schools.filter((s) => weights?.[s.id]).slice(0, 80);
@@ -33,14 +38,15 @@ export default function StudentFit({ schools, weights, onClose }) {
       for (const k of KEYS) {
         const a = w[k]?.a;
         if (typeof a !== 'number') continue;
-        const tone = pin <= a * 0.85 ? 'A' : pin <= a * 1.15 ? 'edge' : 'B';
+        const sp = subjP(pin, k);
+        const tone = sp <= a * 0.85 ? 'A' : sp <= a * 1.15 ? 'edge' : 'B';
         if (tone === 'A') nA++;
-        subj[k] = { a, pct: w[k].pct, tone };
+        subj[k] = { a, pct: w[k].pct, tone, sp };
       }
       const g1 = s.enrollment?.grade1;
       return { s, tilt, pin, subj, nA, seats: g1 ? Math.round(g1 * 0.1) : null, rank1: pin <= 10 ? '1등급권' : pin <= 13 ? '경계' : '2등급 이하', year: w.year };
     });
-  }, [schools, weights, p]);
+  }, [schools, weights, p, strong, weak]);
   const sorted = useMemo(() => [...rows].sort(sort === 'fit' ? (x, y) => y.nA - x.nA || x.s.schoolName.localeCompare(y.s.schoolName, 'ko') : (x, y) => x.s.schoolName.localeCompare(y.s.schoolName, 'ko')), [rows, sort]);
   const skipped = schools.length - rows.length;
 
@@ -65,9 +71,15 @@ export default function StudentFit({ schools, weights, onClose }) {
             <option value="fit">A 가능 과목 많은 순</option>
           </select>
         </div>
+        <div style={{ ...S.inputRow, margin: '0 0 8px', gap: 6 }}>
+          <span style={S.lbl}>강한 과목</span>
+          {KEYS.map((k) => <button key={k} style={{ ...S.pick, ...(strong.includes(k) ? S.pickOn : {}) }} onClick={() => { toggle(setStrong, k); setWeak((c) => c.filter((x) => x !== k)); }}>{LABEL[k]}</button>)}
+          <span style={{ ...S.lbl, marginLeft: 10 }}>약한 과목</span>
+          {KEYS.map((k) => <button key={k} style={{ ...S.pick, ...(weak.includes(k) ? S.pickWeak : {}) }} onClick={() => { toggle(setWeak, k); setStrong((c) => c.filter((x) => x !== k)); }}>{LABEL[k]}</button>)}
+        </div>
         <div style={S.note}>
           어림 방법: 평준화 지역은 학교 학생 구성이 학군과 비슷하다고 보고, 학교 평균이 함께 본 학교들보다 높으면(<Term k="쏠림" /> +) 교내 백분위를 조금 낮춰 잡습니다.
-          과목별 <Term k="A 비율" />과 비교해 A 가능 · 경계 · B 이하로 나눕니다. 중학교 성적과 고교 성취는 다를 수 있어 <b>참고용</b>이며, 순위를 매기지 않습니다.
+          과목별 <Term k="A 비율" />과 비교해 A 가능 · 경계 · B 이하로 나눕니다. 강한 과목은 교내 백분위를 ×0.6, 약한 과목은 ×1.6으로 따로 잡습니다. 중학교 성적과 고교 성취는 다를 수 있어 <b>참고용</b>이며, 순위를 매기지 않습니다.
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -95,6 +107,7 @@ export default function StudentFit({ schools, weights, onClose }) {
                       <td key={k} style={S.td}>
                         <span style={{ ...S.chip, background: color }}>{label}</span>
                         <div style={S.dim}>A {c.a}%{c.pct != null ? ` · 난이도 ${aDifficulty(c.pct).label}` : ''}</div>
+                        <div style={S.dim}>{aGradeSpan(c.a)?.span ? `A면 ${aGradeSpan(c.a).span}` : ''}{(strong.includes(k) || weak.includes(k)) ? ` · 이 과목 상위 ${c.sp.toFixed(1)}%` : ''}</div>
                       </td>
                     );
                   })}
@@ -126,5 +139,8 @@ const S = {
   th: { textAlign: 'left', padding: '7px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text2)', whiteSpace: 'nowrap', fontWeight: 700 },
   td: { padding: '7px 8px', borderBottom: '1px solid var(--border)', color: 'var(--text)', verticalAlign: 'top', whiteSpace: 'nowrap' },
   chip: { display: 'inline-block', color: '#fff', fontSize: 11, fontWeight: 800, borderRadius: 999, padding: '2px 8px' },
+  pick: { background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)', borderRadius: 999, padding: '3px 10px', fontSize: 12, cursor: 'pointer' },
+  pickOn: { background: '#16a34a', color: '#fff', borderColor: '#16a34a' },
+  pickWeak: { background: '#ea580c', color: '#fff', borderColor: '#ea580c' },
   dim: { fontSize: 11, color: 'var(--text3)', marginTop: 2 },
 };
