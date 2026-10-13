@@ -26,11 +26,18 @@ jobs:
       - name: 학교정보 (학생수·교원수·설립·주소)
         working-directory: scripts/schoolinfo
         run: node fetch-school-info.mjs --refresh
+      - name: 졸업생 진로·교육 여건 (학교별 공시 팝업 5종)
+        working-directory: scripts/schoolinfo
+        run: |
+          node fetch-public-items.mjs --refresh
+          node build-extra.mjs
       - name: 바뀐 게 있는지
         id: changed
         working-directory: scripts/schoolinfo
         run: |
-          if node ci-changed.mjs; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+          if node ci-changed.mjs; then echo "changed=true" >> "$GITHUB_OUTPUT";
+          elif ! git diff --quiet -- ../../frontend/public/data/school-extra.json.gz; then echo "진로·교육 여건 갱신" > out/ci-summary.txt; echo "changed=true" >> "$GITHUB_OUTPUT";
+          else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
       - name: catalog 조립
         if: steps.changed.outputs.changed == 'true'
         working-directory: scripts/schoolinfo
