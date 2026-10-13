@@ -1211,6 +1211,25 @@ function schoolFacts(s) {
   lines.push(`- 학년별 재적(1·2·3학년/전체): ${n(e.grade1)} · ${n(e.grade2)} · ${n(e.grade3)} / ${n(e.total)}${isHigh && e.grade1 ? ` → 1학년 10%(5등급제 1등급 자리) ≈ ${Math.round(e.grade1 * 0.1)}명` : ''}`);
   if (s.edss) lines.push(`- 학급 ${n(s.edss.classes)}개(1·2·3학년 ${n(s.edss.classGrade1)}·${n(s.edss.classGrade2)}·${n(s.edss.classGrade3)}) · 교원 ${n(s.edss.teachers)}명 · 입학 ${n(s.edss.entrants)} / 졸업 ${n(s.edss.graduates)} (EDSS)`);
   if (s.current) lines.push(`- 현재 학생 ${n(s.current.students)}명(남 ${n(s.current.male)} · 여 ${n(s.current.female)}) · 교원 ${n(s.current.teachers)}명${s.current.founded ? ` · 개교 ${s.current.founded}` : ''} (학교알리미 학교정보)`);
+  // 학교알리미 학교별 공시 추가 항목(scripts/schoolinfo/build-extra.mjs) — 화면이 s.extra 로 실어 보낸다
+  const x = s.extra && typeof s.extra === 'object' ? s.extra : null;
+  if (x) {
+    const p = (v) => (v === null || v === undefined ? '—' : `${v}%`);
+    (Array.isArray(x.career) ? x.career.slice(0, 3) : []).forEach((c) => {
+      const when = `${String(c.y || '').slice(0, 4)}년 2월 졸업 ${n(c.grad)}명`;
+      if (isHigh) lines.push(`- 졸업생 진로(${when}): 4년제 ${p(c.univ)} · 전문대 ${p(c.college)} · 국외 ${p(c.abroad)} · 취업 ${p(c.job)}${c.voc ? ` (취업률 ${p(c.jobRate)})` : ''} · 기타(재수·군입대·미상 등) ${p(c.etc)}`);
+      else lines.push(`- 졸업생 진학 고교(${when}): 일반고 ${p(c.general)} · 특성화고 ${p(c.vocational)} · 과학고 ${p(c.science)} · 외고·국제고 ${p(c.foreign)} · 예고·체고 ${p(c.arts)} · 마이스터고 ${p(c.meister)} · 자사고 ${p(c.jasa)} · 자공고 ${p(c.jagong)}`);
+    });
+    const st = x.status, mv = x.moves, sf = x.staff, cl = x.clubs;
+    const env = [
+      st?.perClass != null ? `학급당 학생 ${st.perClass}명` : '',
+      st?.perTeacher != null ? `수업교원 1인당 학생 ${st.perTeacher}명` : '',
+      sf?.tempRatio != null ? `기간제 교사 ${sf.tempRatio}%(${n(sf.temp)}/${n(sf.total)}명)` : '',
+      mv ? `${n(mv.y)}학년도 전입 ${n(mv.in)} · 전출 ${n(mv.out)} · 학업중단 ${n(mv.dropout)}명(${p(mv.dropoutRate)})` : '',
+      cl ? `동아리 ${n(cl.clubs)}개${cl.self ? ` + 자율 ${cl.self}개` : ''}` : '',
+    ].filter(Boolean);
+    if (env.length) lines.push(`- 교육 여건(2026 공시): ${env.join(' · ')}`);
+  }
   const year = [...new Set(bands.map((b) => b.year).filter(Boolean))].join(', ') || '—';
   lines.push(`- 성취도 학년도: ${year}${s.achievementChasu ? ` (공시 ${s.achievementChasu.slice(0, 4)}년)` : ''}`);
   // 학년도가 섞여 온다(1차 공시 = 전년도 1·2학기, 3차 = 올해 1학기) — 줄마다 학년도를 붙이고 최근 학년도부터
@@ -1275,6 +1294,8 @@ const SCHOOL_EXPLAIN_SYSTEM = `당신은 한국 고입·대입 컨설팅 전문�
 7. 중학교는 절대평가 성취도만 있으므로 고입 관점(자사고·특목고·비평준화 지역 내신, 학력 수준·분위기, 고교 선택의 기준)으로 해석합니다.
 8. 판단은 반드시 수치를 인용해 근거를 답니다(예: "고1 공통수학1 A 비율 8.7%, 평균 55.2점"). 자료에 없는 것은 지어내지 않고 "공시 없음"으로 씁니다.
 9. 성취도는 시험 난이도와 학교 재량에 크게 좌우되는 지표이므로 한계를 명시하고, 실제 등급컷·수업·프로그램은 학교 설명회·재학생 확인을 권합니다.
+10. 졸업생 진로가 있으면 함께 읽습니다. 4년제 진학률은 '등록' 기준이라 재수를 택한 학생은 빠지고, '기타'의 대부분이 재수·반수입니다 — 기타가 높으면 정시 재도전 성향이 강한 학교일 수 있습니다(단정은 피함). 3개년 흐름을 보고, 중학교는 진학 고교 유형(특목·자사고 비율)으로 학업 분위기를 가늠합니다.
+11. 교육 여건(학급당·수업교원 1인당 학생 수, 기간제 교사 비율, 전입·전출·학업중단)은 보조 근거로만 씁니다. 전입이 전출보다 많으면 선호 학교, 학업중단이 높으면 검정고시·정시 전환 자퇴 가능성을 짚되 원인을 단정하지 않습니다.
 
 [형식 — 중요]
 - 재적·1등급 자리·학급·교원 카드와 국·영·수 학년별 A~E 분포 차트는 시스템이 본문 앞에 자동으로 붙입니다. 본문에서 그 숫자 표를 다시 만들지 마세요.

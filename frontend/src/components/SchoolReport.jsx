@@ -47,8 +47,8 @@ async function postForResult(url, opts) {
 
 // catalog 항목에서 AI 에게 보낼 필드만 추린다(전 과목 bands 는 호출 쪽이 미리 채워 넣는다)
 function pickSchool(s) {
-  const { id, schoolName, schoolLevel, sido, sigungu, schoolType, gender, fond, address, enrollment, edss, current, achievementChasu, bands } = s;
-  return { id, schoolName, schoolLevel, sido, sigungu, schoolType, gender, fond, address, enrollment, edss, current, achievementChasu, bands };
+  const { id, schoolName, schoolLevel, sido, sigungu, schoolType, gender, fond, address, enrollment, edss, current, achievementChasu, bands, extra } = s;
+  return { id, schoolName, schoolLevel, sido, sigungu, schoolType, gender, fond, address, enrollment, edss, current, achievementChasu, bands, extra: extra || null };
 }
 
 // ── 수치 블록(서버 buildReportData) 그리기 — PDF·Word·나만의 패파와 같은 순서·색: 학교 카드 → 국·영·수 학년별 A~E 분포 막대 ──
@@ -327,6 +327,21 @@ async function download(report, format) {
 }
 
 // ── 편집기 ──
+// AI 본문의 % · 점 수치 가운데 공시 수치(snapshot.facts)에 없는 것 — 5등급제 기준값(10·34·66·90·100 등)은 뺀다.
+// 계산한 값(평균·차이)도 걸리므로 '틀렸다'가 아니라 '확인 필요' 로만 알린다. facts 가 없는 옛 보고서는 점검하지 않는다.
+const STD_NUMS = new Set(['0', '5', '10', '15', '20', '25', '30', '34', '40', '50', '60', '66', '70', '80', '90', '100']);
+export function uncheckedNumbers(content, facts) {
+  if (!content || !facts) return [];
+  const known = new Set((String(facts).match(/\d+(?:\.\d+)?/g) || []).map((v) => String(Number(v))));
+  const out = new Set();
+  for (const m of String(content).matchAll(/(\d+(?:\.\d+)?)\s*(%(?!p)|점)/g)) {
+    const v = String(Number(m[1]));
+    if (STD_NUMS.has(v) || known.has(v)) continue;
+    out.add(`${m[1]}${m[2]}`);
+  }
+  return [...out];
+}
+
 export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onAuthError }) {
   const [r, setR] = useState(initial);
   const [dirty, setDirty] = useState(!initial.id); // 새로 만든 건 아직 저장 전
@@ -413,6 +428,14 @@ export function ReportEditor({ report: initial, onClose, onSaved, onDeleted, onA
           <button style={{ ...S.btn, ...S.danger }} disabled={!!busy} onClick={remove}>{r.id ? '삭제' : '버리기'}</button>
         </div>
         {msg && <div style={S.msg}>{msg}</div>}
+        {(() => {
+          const odd = uncheckedNumbers(r.content, r.snapshot?.facts);
+          return odd.length ? (
+            <div style={{ ...S.msg, borderColor: '#d6a24a', color: '#d6a24a' }}>
+              ⚠ 공시 자료에서 바로 찾지 못한 수치 {odd.length}개: {odd.slice(0, 8).join(', ')}{odd.length > 8 ? ' …' : ''} — AI 가 계산했거나 잘못 옮겼을 수 있어요. 보내기 전에 확인해 주세요.
+            </div>
+          ) : null;
+        })()}
 
         {mode === 'edit' ? (
           <textarea style={S.textarea} value={r.content} onChange={(e) => edit({ content: e.target.value })} spellCheck={false} />

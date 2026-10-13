@@ -11,6 +11,16 @@
 | **교과별 학업성취(A~E·평균)** | 학교알리미 공시항목 44 | ⚠️ **학교 1곳 = 보안문자 1회(1회용)** | `captcha-runner.js` + `parse-achievement.mjs` |
 | 학년별 재적(1등급 자리 계산용) | 학교알리미 공개용데이터 '학년별·학급별 학생수' xlsx | 수동 다운로드 → 스크립트가 읽음 | `build-catalog.mjs --enrollment` |
 | 학급·교원(EDSS) | EDSS 개방데이터 | 예전 catalog 값 유지(갱신 스크립트 없음) | — |
+| **졸업생 진로(3개년)·학교 현황(학급당·수업교원 1인당)·전출입·학업중단·기간제 교사 비율·동아리** | 학교알리미 학교별 공시 팝업 13-다(특성화·마이스터는 13-라)·3-가-1·3-나·6-가·15-나 (`/ei/pp/Pneipp_bXX_s0p.do` POST) | ✅ 인증·보안문자 없음 (파라미터를 전부 보내야 함, 빠지면 ERROR 페이지) | `fetch-public-items.mjs` → `build-extra.mjs` |
+
+### 졸업생 진로·교육 여건 (2026-10-13 추가)
+```bash
+node fetch-public-items.mjs            # 전국 5,932곳 × 요청 7~10개, 동시 4개 ≈ 30분 → out/public-items.json (이어받기)
+node fetch-public-items.mjs --voc      # (옛 수집분 보충용) 13-다가 빈 고교만 13-라 로 다시
+node build-extra.mjs                   # → frontend/public/data/school-extra.json.gz (키 = shlIdfCd, 지역 평균 areas 따로)
+```
+화면은 `frontend/src/schoolExtra.js` 가 읽고 학교 객체에 `s.extra` 로 붙인다(목록 한 줄 · 상세 🎓 진로·🏫 교육 여건 · 정렬 · 비교 · AI 해설 schoolFacts).
+진로 공시는 매년 11월(4차, 그 해 2월 졸업생), 나머지는 5월(2차). 정기 갱신 워크플로가 함께 돌린다. 연도가 바뀌면 `CAREER_YEARS`·`NOW` 를 올릴 것.
 
 교과별 학업성취는 OpenAPI(12개 항목뿐)·공개용데이터·data.go.kr 어디에도 없고, 웹 페이지는 보안문자로 막혀 있으며
 통과가 1회용이라(같은 학교를 다시 봐도 또 요구) 세션 재사용도 안 된다. 엑셀다운로드 버튼도 화면에 뜬 표를 그대로

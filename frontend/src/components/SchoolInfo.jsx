@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
 import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf, aDifficulty, aGradeSpan, grade1Type, enrollmentTrend } from '../schoolTerms';
 import StudentFit from './StudentFit';
+import { loadExtra, loadLocations, distanceKm, careerSummary, gradLabel, SORT_GETTERS } from '../schoolExtra';
+const SchoolMap = lazy(() => import('./SchoolMap')); // leaflet 은 지도를 열 때만
 import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE, TRACK_PRESETS } from '../course/offerings';
 
 // A 난이도(A 비율의 전국 위치) — scripts/schoolinfo/build-weights.mjs 가 미리 계산한 파일. 없으면(옛 배포) 조용히 숨긴다.
@@ -93,6 +95,11 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const [savedOpen, setSavedOpen] = useState(false);
   const [savedKey, setSavedKey] = useState(0);
   const [explainErr, setExplainErr] = useState('');
+  const [extraAreas, setExtraAreas] = useState(null); // 학교알리미 추가 항목의 지역 평균 — 학교에는 s.extra 로 붙인다
+  const [locReady, setLocReady] = useState(false);     // 학교 위치 — 학교에는 s.loc = [위도, 경도]
+  const [originQ, setOriginQ] = useState('');          // 출발 중학교(통학 거리 기준)
+  const [radius, setRadius] = useState('all');
+  const [mapOpen, setMapOpen] = useState(false);
   const [offer, setOffer] = useState(null); // 검토된 대표본 안내 { item, kind, list, focus }
   const hasKey = !!getActiveKey?.();
 
@@ -103,6 +110,26 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
     loadOfferings().then((o) => { if (!dead && o) setOffers(o.schools); });
     return () => { dead = true; };
   }, []);
+  // 졸업생 진로·교육 여건 — catalog 가 뜬 뒤 학교 객체에 extra 를 붙인다(비교·AI 해설에도 그대로 실린다)
+  useEffect(() => {
+    if (!cat) return undefined;
+    let dead = false;
+    loadExtra().then((ex) => {
+      if (dead || !ex) return;
+      for (const s of cat.schools) s.extra = (s.shlIdfCd && ex.schools[s.shlIdfCd]) || null;
+      setExtraAreas(ex.areas || {});
+    });
+    loadLocations().then((lc) => {
+      if (dead || !lc) return;
+      for (const s of cat.schools) s.loc = (s.shlIdfCd && lc.schools[s.shlIdfCd]) || null;
+      setLocReady(true);
+    });
+    return () => { dead = true; };
+  }, [cat]);
+  // 출발 중학교 — '학교명 (시군구)' 로 고른다. 거리는 직선거리(실제 통학은 더 길다)
+  const middles = useMemo(() => (locReady ? (cat?.schools || []).filter((s) => s.schoolLevel === '중학교' && s.loc && (sido === '전체' || s.sido === sido)) : []), [cat, locReady, sido]);
+  const middleLabel = (s) => `${s.schoolName} (${s.sido} ${s.sigungu})`;
+  const origin = useMemo(() => middles.find((s) => middleLabel(s) === originQ) || null, [middles, originQ]);
 
   const schools = useMemo(() => (cat?.schools || []).filter((s) => s.schoolLevel === level), [cat, level]);
   const sidos = useMemo(() => [...new Set(schools.map((s) => s.sido))].sort(), [schools]);
@@ -119,7 +146,10 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
 
   const filtered = useMemo(() => {
     const kw = q.trim().replace(/\s+/g, '');
+    for (const s of schools) s.dist = origin ? distanceKm(origin.loc, s.loc) : null;
+    const maxKm = origin && radius !== 'all' ? Number(radius) : null;
     let list = schools.filter((s) =>
+      (maxKm === null || (s.dist !== null && s.dist <= maxKm)) &&
       (sido === '전체' || s.sido === sido) &&
       (sigungu === '전체' || s.sigungu === sigungu) &&
       (district === '전체' || (district === '비평준화' ? !districtOf(s) : districtOf(s)?.name === district)) &&
@@ -146,10 +176,12 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       'a-asc': cmpNum((s) => key(s)?.a ?? null, false),
       'mean-desc': cmpNum((s) => key(s)?.mean ?? null, true),
       'weight-asc': cmpNum((s) => weights?.[s.id]?.[subject]?.pct ?? null, false),
+      ...Object.fromEntries(Object.entries(SORT_GETTERS).map(([k, get]) => [k, cmpNum((s) => get(s.extra), k.endsWith('-desc'))])),
+      'near-asc': cmpNum((s) => s.dist, false),
     };
     list = [...list].sort(sorters[sort] || sorters.name);
     return list;
-  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights, district, want, wantAll, offers]);
+  }, [schools, q, sido, sigungu, type, fond, gender, sort, subject, grade, layer, weights, district, want, wantAll, offers, extraAreas, origin, radius]);
 
   const detail = detailId ? schools.find((s) => s.id === detailId) || (cat?.schools || []).find((s) => s.id === detailId) : null;
   const compareSchools = compare.map((id) => (cat?.schools || []).find((s) => s.id === id)).filter(Boolean);
@@ -250,6 +282,13 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <option value="a-asc">A비율 낮은순</option>
           <option value="mean-desc">평균 높은순</option>
           {isHigh && weights && <option value="weight-asc">A 난이도 높은 순 (A 받기 어려운 학교부터)</option>}
+          {extraAreas && isHigh && <option value="univ-desc">4년제 진학률 높은순 (최근 졸업)</option>}
+          {extraAreas && isHigh && <option value="univ3-desc">4년제 진학률 높은순 (3년 평균)</option>}
+          {extraAreas && isHigh && <option value="etc-desc">&apos;기타&apos;(재수 등) 비율 높은순</option>}
+          {extraAreas && !isHigh && <option value="select-desc">과학·외고·국제·예체·자사고 진학 많은순</option>}
+          {extraAreas && <option value="perclass-asc">학급당 학생 수 적은순</option>}
+          {extraAreas && <option value="perteacher-asc">교원 1인당 학생 수 적은순</option>}
+          {origin && <option value="near-asc">출발 중학교에서 가까운순</option>}
         </select>
       </div>
       {isHigh && DISTRICTS[sido]?.note && <div style={{ ...S.dim, margin: '-4px 0 8px' }}>🧭 {DISTRICTS[sido].note}</div>}
@@ -261,6 +300,23 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
             return <button key={k} title={L?.hint || ''} style={{ ...S.chip, ...(layer === k ? S.chipOn : {}) }} onClick={() => setLayer(k)}>{L ? L.label : '전체'}</button>;
           })}
           <span style={{ ...S.dim, marginLeft: 6 }}>뽑는 범위가 다른 학교끼리는 학생 집단이 달라 따로 보세요.</span>
+        </div>
+      )}
+      {isHigh && locReady && (
+        <div style={S.filters}>
+          <span style={S.filterLabel}>📍 출발 중학교</span>
+          <input list="ef-middles" style={{ ...S.input, minWidth: 260 }} placeholder={sido === '전체' ? '시도를 먼저 고르면 찾기 쉬워요 (예: 부천중)' : '중학교 이름 (예: 부천중)'} value={originQ}
+            onChange={(e) => { setOriginQ(e.target.value); if (middles.some((s) => middleLabel(s) === e.target.value)) setSort('near-asc'); }} />
+          <datalist id="ef-middles">{middles.map((s) => <option key={s.id} value={middleLabel(s)} />)}</datalist>
+          {origin && <>
+            <select style={S.select} value={radius} onChange={(e) => setRadius(e.target.value)}>
+              <option value="all">거리 제한 없음</option>
+              {[3, 5, 7, 10, 15, 20].map((k) => <option key={k} value={k}>직선 {k}km 이내</option>)}
+            </select>
+            <button style={S.linkBtn} onClick={() => { setOriginQ(''); setRadius('all'); if (sort === 'near-asc') setSort('name'); }}>지우기</button>
+          </>}
+          <button style={S.smallBtn} onClick={() => setMapOpen(true)}>🗺 지도로 보기</button>
+          <span style={{ ...S.dim, flexBasis: '100%' }}>거리는 학교 사이 직선거리입니다(공공데이터포털 학교 위치). 실제 통학 시간은 길·교통에 따라 더 걸려요. 평준화 지역은 거리보다 배정 방식이 먼저입니다.</span>
         </div>
       )}
       {isHigh && offers && (
@@ -304,6 +360,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
                 </button>
               </div>
               <div style={S.badges}>
+                {s.dist != null && <span style={{ ...S.badge, background: '#fbbf24', color: '#111827' }} title={`${origin?.schoolName || '출발 중학교'}에서 직선거리`}>📍 {s.dist.toFixed(1)}km</span>}
                 {s.gender && <span style={S.badge}>{s.gender}</span>}
                 {s.fond && <span style={S.badge}>{s.fond}</span>}
                 {s.enrollment?.grade1 != null && <span style={S.badgeDim}>재적 {s.enrollment.grade1}·{s.enrollment.grade2 ?? '—'}·{s.enrollment.grade3 ?? '—'} (1·2·3학년, 2025 공시)</span>}
@@ -316,6 +373,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
               {s.edss && (s.edss.classes !== null || s.edss.teachers !== null) && (
                 <div style={S.dim}>{s.edss.classes !== null ? `${s.edss.classes}학급` : ''}{s.edss.classes !== null && (s.current?.teachers ?? s.edss.teachers) !== null ? ' · ' : ''}{(s.current?.teachers ?? s.edss.teachers) != null ? `교원 ${s.current?.teachers ?? s.edss.teachers}명` : ''}</div>
               )}
+              {s.extra && <CareerLine s={s} />}
               <div style={S.bandTitle}>
                 {b ? <>{isHigh ? '고' : '중'}{grade} {b.subject} · {b.year} {b.semester}학기 · A <b>{pct(b.a)}</b> · 평균 <b>{dec1(b.mean)}</b></> : <span style={S.dim}>{grade}학년 {subject} 성취도 공시 없음</span>}
               </div>
@@ -359,8 +417,9 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
         </div>
       )}
 
+      {mapOpen && <Suspense fallback={null}><SchoolMap schools={filtered} origin={origin} onClose={() => setMapOpen(false)} onOpen={(id) => { setMapOpen(false); setDetailId(id); }} /></Suspense>}
       {fitOpen && <StudentFit schools={filtered} weights={weights} onClose={() => setFitOpen(false)} />}
-      {detail && <DetailModal school={detail} weights={weights?.[detail.id]} offer={offers ? offers[detail.id] || 'none' : null} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
+      {detail && <DetailModal areas={extraAreas} school={detail} weights={weights?.[detail.id]} offer={offers ? offers[detail.id] || 'none' : null} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('school', [detail], focus) }} />}
       {showCompare && compareSchools.length >= 2 && <CompareModal schools={compareSchools} subject={subject} grade={grade} onClose={() => setShowCompare(false)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('compare', compareSchools, focus) }} />}
@@ -397,7 +456,7 @@ function Stat({ label, value, hint }) {
   );
 }
 
-function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onToggleCompare, explain }) {
+function DetailModal({ areas, school: s, weights: w, offer: of, onClose, inCompare, onToggleCompare, explain }) {
   const isHigh = s.schoolLevel === '고등학교';
   const seats = seatsOf(s);
   // 전 과목 표(기타 과목)는 열릴 때 따로 받는다 — 받기 전엔 catalog 에 실린 국·영·수만 보인다.
@@ -469,6 +528,8 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
           </section>
         )}
 
+        {s.extra && <ExtraSection s={s} areas={areas} />}
+
         {isHigh && of && (
           <section style={{ marginTop: 16 }}>
             <h4 style={S.h4}>2026 실제 수업 과목 <span style={S.dim}>· 나이스 시간표(1·2학기 각 2주) — 2학년은 2022 개정, 3학년은 2015 개정 과목명</span></h4>
@@ -510,6 +571,78 @@ function DetailModal({ school: s, weights: w, offer: of, onClose, inCompare, onT
   );
 }
 
+// 목록 카드 한 줄 — 고교: 최근 졸업생 4년제·'기타'(재수 등), 특성화고: 취업률, 중학교: 특목·자사고 진학
+function CareerLine({ s }) {
+  const high = s.schoolLevel === '고등학교';
+  const c = careerSummary(s.extra, s.schoolLevel);
+  const st = s.extra?.status;
+  const parts = [];
+  if (c && high && c.voc) parts.push(<span key="v">취업률 <b>{pct(c.last.jobRate)}</b> · 진학 {pct((c.last.univ || 0) + (c.last.college || 0))}</span>);
+  else if (c && high) parts.push(<span key="u"><Term k="4년제 진학률">4년제</Term> <b>{pct(c.last.univ)}</b> · 전문대 {pct(c.last.college)} · <Term k="기타(재수 등)">기타</Term> {pct(c.last.etc)}</span>);
+  else if (c) parts.push(<span key="m"><Term k="특목·자사고 진학">특목·자사고</Term> <b>{pct(c.select)}</b> · 일반고 {pct(c.last.general)}</span>);
+  if (st?.perClass != null) parts.push(<span key="p">학급당 {st.perClass}명</span>);
+  if (!parts.length) return null;
+  return <div style={{ fontSize: 12, color: 'var(--text2)' }}>🎓 {parts.reduce((acc, x, i) => (i ? [...acc, ' · ', x] : [x]), [])}{c ? <span style={S.dim}> ({gradLabel(c.last.y)})</span> : null}</div>;
+}
+
+// 상세 — 졸업생 진로(3개년) + 교육 여건(지역 평균과 나란히)
+function ExtraSection({ s, areas }) {
+  const x = s.extra;
+  const high = s.schoolLevel === '고등학교';
+  const c = careerSummary(x, s.schoolLevel);
+  const area = (i) => { const name = x.area?.[i]; return name ? { name, ...(areas?.[`${s.schoolLevel}|${name}`] || {}) } : null; };
+  const A = [area(0), area(1), area(2)].filter(Boolean);
+  const cmp = (key, fmt = (v) => v) => A.map((a) => `${a.name} ${a[key] != null ? fmt(a[key]) : '—'}`).join(' · ');
+  const pcAvg = (a) => (Array.isArray(a) ? (a.reduce((p, q) => p + (q || 0), 0) / a.length).toFixed(1) : a);
+  const st = x.status, mv = x.moves, sf = x.staff, cl = x.clubs;
+  const highCols = ['univ', 'college', 'abroad', 'job', ...(c?.voc ? ['jobRate'] : []), 'etc'];
+  const midCols = ['general', 'vocational', 'science', 'foreign', 'arts', 'meister', 'jasa', 'jagong', 'other'];
+  return (
+    <>
+      {c && (
+        <section style={{ marginTop: 16 }}>
+          <h4 style={S.h4}>🎓 졸업생 진로 <span style={S.dim}>· 학교알리미 {c.voc ? '13-라(특성화·마이스터 취업 등 진로)' : '13-다 졸업생의 진로 현황'} · 최근 {c.years}개년</span></h4>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={S.table}>
+              <thead><tr>{(high
+                ? ['졸업', '졸업자', '4년제', '전문대', '국외', '취업', ...(c.voc ? ['취업률'] : []), '기타(재수 등)']
+                : ['졸업', '졸업자', '일반고', '특성화고', '과학고', '외고·국제고', '예고·체고', '마이스터고', '자사고', '자공고', '기타']).map((h) => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {x.career.map((r) => (
+                  <tr key={r.y}>
+                    <td style={S.td}>{gradLabel(r.y)}</td>
+                    <td style={S.tdNum}>{r.grad}명</td>
+                    {(high ? highCols : midCols).map((k) => <td key={k} style={{ ...S.tdNum, ...(k === 'univ' || k === 'jobRate' ? { color: 'var(--accent)', fontWeight: 700 } : {}) }}>{pct(r[k])}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={S.dim}>
+            {high
+              ? <>3년 평균 4년제 {pct(c.univ3)} · 전문대 {pct(c.college3)} · 기타 {pct(c.etc3)}{c.univTrend != null ? ` · 4년제 ${c.univTrend >= 0 ? '+' : ''}${c.univTrend}%p (${c.years}년 사이)` : ''}. <Term k="기타(재수 등)" />는 재수·군입대·미상 등 진학·취업이 아닌 졸업생입니다. 등록 기준이라 합격 실적과는 다릅니다.</>
+              : <>과학고·외고·국제고·예고·체고·자사고 진학 합계 {pct(c.select)} (3년 평균 {pct(c.select3)}).</>}
+          </div>
+        </section>
+      )}
+      {(st || mv || sf || cl) && (
+        <section style={{ marginTop: 16 }}>
+          <h4 style={S.h4}>🏫 교육 여건 <span style={S.dim}>· 학교알리미 2026년 5월 공시 · 괄호 = 지역 평균</span></h4>
+          <div style={S.statGrid}>
+            {st?.perClass != null && <Stat label="학급당 학생 수" value={`${st.perClass}명`} hint={`${st.perClassGrade ? `1·2·3학년 ${st.perClassGrade.join('·')}` : ''}${A.length ? ` (${cmp('perClass', pcAvg)})` : ''}`} />}
+            {st?.perTeacher != null && <Stat label={<Term k="수업교원 1인당 학생 수" />} value={`${st.perTeacher}명`} hint={`수업교원 ${st.classTeachers ?? '—'}명 · 학생 ${st.students ?? '—'}명${A.length ? ` (${cmp('perTeacher')})` : ''}`} />}
+            {sf && <Stat label={<Term k="기간제 교사 비율" />} value={pct(sf.tempRatio)} hint={`교원 ${sf.total}명 중 기간제 ${sf.temp ?? 0}명${sf.lecturer ? ` · 강사 ${sf.lecturer}명` : ''}`} />}
+            {mv && <Stat label="전입 · 전출 (작년)" value={`${mv.in} · ${mv.out}명`} hint={`학생 대비 ${pct(mv.inRate)} · ${pct(mv.outRate)}${A.length ? ` (전입 ${cmp('inRate', (v) => `${v}%`)})` : ''}`} />}
+            {mv && <Stat label={<Term k="학업중단율" />} value={pct(mv.dropoutRate)} hint={`${mv.y}학년도 ${mv.dropout}명${A.length ? ` (${cmp('dropoutRate', (v) => `${v}%`)})` : ''}`} />}
+            {cl && <Stat label="동아리" value={`${cl.clubs}개`} hint={`참여 ${num(cl.members)}명${cl.self ? ` · 자율동아리 ${cl.self}개(${num(cl.selfMembers)}명)` : ''} · ${cl.y}학년도`} />}
+          </div>
+          <div style={S.dim}>전입이 전출보다 많으면 일부러 찾아오는 학교일 수 있고, 전출·학업중단이 지역보다 높으면 이유를 상담에서 확인해 보세요. 학급당·교원 1인당 학생 수가 적을수록 수업·상담이 촘촘한 편입니다.</div>
+        </section>
+      )}
+    </>
+  );
+}
+
 function BandTable({ rows }) {
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -545,6 +678,21 @@ function CompareModal({ schools, subject, grade, onClose, explain }) {
     { label: '1학년 재적', get: (s) => (s.enrollment?.grade1 != null ? `${s.enrollment.grade1}명` : '—') },
     ...(isHigh ? [{ label: '1등급권 자리', get: (s) => (seatsOf(s) === null ? '—' : `${seatsOf(s)}개`) }] : []),
     { label: '학급 · 교원', get: (s) => `${s.edss?.classes ?? '—'}학급 · ${s.current?.teachers ?? s.edss?.teachers ?? '—'}명` },
+    ...(schools.some((s) => s.extra) ? [
+      ...(isHigh ? [
+        { label: '4년제 진학 (최근 · 3년 평균)', get: (s) => { const c = careerSummary(s.extra, '고등학교'); return c ? `${pct(c.last.univ)} · ${pct(c.univ3)}` : '—'; } },
+        { label: '전문대 진학 (최근)', get: (s) => pct(careerSummary(s.extra, '고등학교')?.last.college ?? null) },
+        { label: "'기타'(재수 등) · 취업", get: (s) => { const c = careerSummary(s.extra, '고등학교'); return c ? `${pct(c.last.etc)} · ${pct(c.last.job)}` : '—'; } },
+      ] : [
+        { label: '과학·외고·국제·예체·자사고 진학', get: (s) => pct(careerSummary(s.extra, '중학교')?.select ?? null) },
+        { label: '일반고 · 특성화고 진학', get: (s) => { const c = careerSummary(s.extra, '중학교'); return c ? `${pct(c.last.general)} · ${pct(c.last.vocational)}` : '—'; } },
+      ]),
+      { label: '학급당 학생 수', get: (s) => (s.extra?.status?.perClass != null ? `${s.extra.status.perClass}명` : '—') },
+      { label: '수업교원 1인당 학생 수', get: (s) => (s.extra?.status?.perTeacher != null ? `${s.extra.status.perTeacher}명` : '—') },
+      { label: '기간제 교사 비율', get: (s) => pct(s.extra?.staff?.tempRatio ?? null) },
+      { label: '전입 · 전출 · 학업중단', get: (s) => { const m = s.extra?.moves; return m ? `${m.in}·${m.out}·${m.dropout}명` : '—'; } },
+      { label: '동아리', get: (s) => (s.extra?.clubs ? `${s.extra.clubs.clubs}개${s.extra.clubs.self ? ` + 자율 ${s.extra.clubs.self}` : ''}` : '—') },
+    ] : []),
   ];
   const bandRows = [];
   for (const fam of SUBJECTS) {
