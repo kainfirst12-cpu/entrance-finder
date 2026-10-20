@@ -35,6 +35,7 @@ export async function getRoadmap(id) {
 export async function createRoadmap(studentId, { title, summary, body, sourceName, items = [] } = {}) {
   const pool = getPool();
   const client = await pool.connect();
+  let failed;
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
@@ -55,10 +56,11 @@ export async function createRoadmap(studentId, { title, summary, body, sourceNam
     await client.query('COMMIT');
     return { ...roadmap, items: saved };
   } catch (e) {
-    await client.query('ROLLBACK');
+    failed = e;
+    await client.query('ROLLBACK').catch(() => {});
     throw e;
   } finally {
-    client.release();
+    client.release(failed); // 오류 난 연결은 풀에 돌려놓지 않고 버린다(죽은 연결 재사용 방지)
   }
 }
 

@@ -63,6 +63,14 @@ export async function initDb() {
       ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
+      // 🔴 2026-10-20 사고: Supabase 가 10-19 17:54 재시작된 뒤 이번엔 끊김 신호(RST)가 오지 않아
+      //    풀의 연결 5개가 '반쯤 열린' 채 남았다 → 'error' 도 안 나고 DB 쓰는 요청이 전부 무한 대기
+      //    (화면엔 Failed to fetch, 관리자 대시보드 0건). 시간제한이 하나도 없었던 게 원인.
+      //    ⇒ 연결·쿼리에 시간제한을 두면 죽은 연결은 오류로 끝나고 pool.query 가 그 연결을 버린 뒤 새로 붙는다.
+      connectionTimeoutMillis: 15_000,
+      query_timeout: 120_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
     });
     // 쉬고 있던 연결이 DB 쪽에서 끊기면(재시작·점검) 풀이 'error' 를 낸다 — 받지 않으면 프로세스가 죽는다.
     // 끊긴 연결은 풀이 버리고 다음 요청 때 새로 연결하므로 기록만 남기면 된다.

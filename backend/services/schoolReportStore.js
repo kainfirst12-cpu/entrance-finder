@@ -119,6 +119,7 @@ export async function setReviewStatus(id, status) {
   if (!cur[0]) return null;
   if (status === 'rep' && !cur[0].school_key) throw new Error('학교 정보가 없는 해설(옛 복사본)은 대표본으로 정할 수 없습니다 — 공시정보 화면에서 다시 만든 해설을 써 주세요');
   const client = await pool.connect();
+  let failed;
   try {
     await client.query('BEGIN');
     if (status === 'rep') {
@@ -129,7 +130,7 @@ export async function setReviewStatus(id, status) {
         WHERE id = $1 RETURNING id, review_status, reviewed_at, school_key`, [id, status]);
     await client.query('COMMIT');
     return rows[0];
-  } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
+  } catch (e) { failed = e; await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(failed); }
 }
 
 /** 같은 학교(묶음)의 대표본 — 학원이 해설을 새로 만들기 전에 '이미 검토된 해설'로 보여 준다. 만든 곳·학생 메모는 내보내지 않는다. */
