@@ -14,11 +14,15 @@ export default function Login({ onLogin }) {
     if (!code) return;
     setLoading(true);
     setError('');
+    // 서버가 답을 안 주면 '확인 중...' 에서 영원히 멈추지 않게 20초에서 끊는다
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     try {
       const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: code.trim() }),
+        signal: ctrl.signal,
       });
       const data = await res.json();
       if (data.success) {
@@ -31,9 +35,10 @@ export default function Login({ onLogin }) {
       } else {
         setError(data.message || '코드가 올바르지 않습니다.');
       }
-    } catch {
-      setError('서버 연결 오류가 발생했습니다.');
+    } catch (e) {
+      setError(e?.name === 'AbortError' ? '서버 응답이 없습니다. 잠시 뒤 다시 시도해 주세요.' : '서버 연결 오류가 발생했습니다.');
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   };

@@ -4881,6 +4881,13 @@ function _failEntry(key) { const now = Date.now(); let e = LOGIN_FAILS.get(key);
 const loginBlocked = (ip) => _failEntry(ip).n >= LOGIN_MAX_IP || _failEntry('*').n >= LOGIN_MAX_ALL;
 const loginFailed = (ip) => { _failEntry(ip).n += 1; _failEntry('*').n += 1; };
 setInterval(() => { const now = Date.now(); for (const [k, v] of LOGIN_FAILS) if (v.until < now) LOGIN_FAILS.delete(k); }, LOGIN_WINDOW_MS).unref?.();
+// 로그인 중 DB 호출은 이 시간 안에 끝나야 한다 — 넘기면 '코드 틀림'이 아니라 '서버 응답 지연'으로 알린다
+const LOGIN_DB_TIMEOUT_MS = 10_000;
+function loginDbCall(promise) {
+  let t;
+  const timeout = new Promise((_, reject) => { t = setTimeout(() => reject(Object.assign(new Error('DB 응답 시간 초과'), { dbTimeout: true })), LOGIN_DB_TIMEOUT_MS); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
+}
 app.post('/api/login', async (req, res) => {
   const cred = (req.body.code || req.body.password || '').trim();
   if (!cred) return res.json({ success: false, message: '코드를 입력해주세요' });
@@ -4893,7 +4900,8 @@ app.post('/api/login', async (req, res) => {
   // 1) 관리자 코드
   const adminCode = process.env.ADMIN_CODE || process.env.APP_PASSWORD;
   if (adminCode && cred === adminCode) {
-    const adminUserId = await ensureAdminUser(); // 관리자도 본인 보드를 가질 수 있게 userId 부여
+    // 관리자도 본인 보드를 가질 수 있게 userId 부여 — DB 가 늦으면 userId 없이라도 들여보낸다
+    const adminUserId = await loginDbCall(ensureAdminUser()).catch((e) => { console.warn('[login] 관리자 userId 조회 실패:', e.message); return null; });
     const token = jwt.sign({ role: 'admin', name: '관리자', jti, userId: adminUserId || undefined }, JWT_SECRET, { expiresIn: '7d' });
     logEvent({ userId: null, type: 'login', detail: '관리자 로그인', ip });
     return res.json({ success: true, token, role: 'admin', name: '관리자' });
@@ -4902,7 +4910,7 @@ app.post('/api/login', async (req, res) => {
   // 2) 이용자 코드 (DB)
   if (dbEnabled()) {
     try {
-      const user = await findActiveUserByCode(cred);
+      const user = await loginDbCall(findActiveUserByCode(cred));
       if (user) {
         const token = jwt.sign(
           { role: 'user', userId: user.id, name: user.name, jti, menus: Array.isArray(user.menus) ? user.menus : null },
@@ -4918,6 +4926,8 @@ app.post('/api/login', async (req, res) => {
       }
     } catch (e) {
       console.error('[login] DB 조회 오류:', e.message);
+      // DB 문제는 코드가 틀린 게 아니다 — 실패 횟수에 넣지 않고 그대로 알린다
+      return res.status(503).json({ success: false, message: '서버(DB) 응답이 늦습니다. 잠시 뒤 다시 시도해 주세요.' });
     }
   }
 

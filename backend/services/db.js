@@ -63,6 +63,10 @@ export async function initDb() {
       ssl: /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
+      // 🔴 2026-10-20: DB 가 멈추거나 풀 5개가 다 묶이면 기본값(0=무한)이라 요청이 끝없이 기다렸다
+      //    (로그인 버튼이 '확인 중...' 에서 안 풀림). 새 연결·빈 자리 대기를 10초에서 끊어 오류로 돌려준다.
+      connectionTimeoutMillis: 10_000,
+      keepAlive: true,
     });
     // 쉬고 있던 연결이 DB 쪽에서 끊기면(재시작·점검) 풀이 'error' 를 낸다 — 받지 않으면 프로세스가 죽는다.
     // 끊긴 연결은 풀이 버리고 다음 요청 때 새로 연결하므로 기록만 남기면 된다.
