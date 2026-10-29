@@ -171,6 +171,23 @@ const CLAUDE_MODELS = {
   'claude-opus': 'claude-opus-5',
 };
 
+// 출력 한도에 걸린 섹션 — 예전엔 문장 중간에서 끊긴 채 '완성된 모양'으로 나갔다(2026-10-30 실측: 8섹션 중 4개가 표 칸 중간에서 잘림).
+export const TRUNCATED_NOTE = '\n\n> 이 항목은 출력 길이 한도에 걸려 끝부분이 잘렸습니다 — 이 섹션만 다시 분석해 주세요.';
+
+// Claude 5 계열은 사고(thinking)가 기본으로 켜져 있고 그 토큰을 max_tokens 안에서 먼저 쓴다(server.js callAIModel 과 같은 이유).
+// 섹션 한도에 사고 몫 8000 을 얹고, 그래도 max_tokens 로 끊기면 32000 으로 한 번 더, 그래도 끊기면 잘렸다고 본문에 밝힌다.
+async function streamWithBudget(client, params, maxTokens) {
+  let budget = Math.min(maxTokens + 8000, 32000);
+  for (;;) {
+    const final = await client.messages.stream({ ...params, max_tokens: budget }).finalMessage();
+    const text = stripBoldMarkers(final.content.map(b => b.type === 'text' ? b.text : '').join(''));
+    if (final.stop_reason !== 'max_tokens') return text;
+    if (budget >= 32000) { console.warn(`[callClaude] 출력 한도 ${budget} 에서도 잘림 — 잘림 표시를 붙인다`); return text + TRUNCATED_NOTE; }
+    console.warn(`[callClaude] 출력 한도 ${budget} 에서 잘림 → 32000 으로 다시`);
+    budget = 32000;
+  }
+}
+
 const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocuments = [], apiKey = null, submodel = 'claude') => {
   // 키는 호출하는 쪽(server.js)이 정한다 — 여기서 서버 키로 몰래 폴백하지 않는다(SDK 기본값도 env 라 빈 키는 막는다).
   if (!apiKey) throw new Error('API 키 없음 (설정에서 입력)');
@@ -196,14 +213,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
   try {
     const messages = buildUserMessage(userPrompt, pdfDocuments, pdfText);
     console.log(`[callClaude] 1차 시도: document ${pdfDocuments.length}개 + 텍스트 ${pdfText.length}자`);
-    const stream = client.messages.stream({
-      model: modelId,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages,
-    });
-    const final = await stream.finalMessage();
-    return stripBoldMarkers(final.content.map(b => b.type === 'text' ? b.text : '').join(''));
+    return await streamWithBudget(client, { model: modelId, system: systemPrompt, messages }, maxTokens);
   } catch (err) {
     console.error(`[callClaude] document 타입 실패 (${err.status || 'unknown'}):`, err.message);
 
@@ -211,14 +221,7 @@ const callClaude = async (systemPrompt, userPrompt, maxTokens = 2000, pdfDocumen
     try {
       console.log(`[callClaude] 2차 시도: 텍스트만 ${pdfText.length}자`);
       const messages = buildUserMessage(userPrompt, [], pdfText);
-      const stream = client.messages.stream({
-        model: modelId,
-        max_tokens: maxTokens,
-        system: systemPrompt,
-        messages,
-      });
-      const final = await stream.finalMessage();
-      return stripBoldMarkers(final.content.map(b => b.type === 'text' ? b.text : '').join(''));
+      return await streamWithBudget(client, { model: modelId, system: systemPrompt, messages }, maxTokens);
     } catch (err2) {
       console.error(`[callClaude] 2차 시도도 실패:`, err2.message);
       throw err2;

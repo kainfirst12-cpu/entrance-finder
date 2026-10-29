@@ -68,9 +68,7 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
         { role: 'user', content: contentParts },
       ],
     };
-    imgParams.max_completion_tokens = maxTokens;
-    const response = await openai.chat.completions.create(imgParams);
-    return stripBoldMarkers(response.choices[0].message.content);
+    return completeWithBudget(openai, imgParams, maxTokens);
   }
 
   const params = {
@@ -80,9 +78,22 @@ async function callGPT(systemPrompt, userPrompt, maxTokens = 2000, apiKey, submo
       { role: 'user', content: pdfContext + userPrompt },
     ],
   };
-  params.max_completion_tokens = maxTokens;
-  const response = await openai.chat.completions.create(params);
-  return stripBoldMarkers(response.choices[0].message.content);
+  return completeWithBudget(openai, params, maxTokens);
+}
+
+// GPT-5 계열은 추론 토큰이 max_completion_tokens 안에서 먼저 쓰인다 — 한도가 빠듯하면 본문이 문장 중간에서 끊긴다.
+// 추론 몫 8000 을 얹고, finish_reason 'length' 면 32000 으로 한 번 더, 그래도 끊기면 잘렸다고 본문에 밝힌다(무음 잘림 금지).
+async function completeWithBudget(openai, params, maxTokens) {
+  let budget = Math.min(maxTokens + 8000, 32000);
+  for (;;) {
+    const response = await openai.chat.completions.create({ ...params, max_completion_tokens: budget });
+    const choice = response.choices[0];
+    const text = stripBoldMarkers(choice.message.content || '');
+    if (choice.finish_reason !== 'length') return text;
+    if (budget >= 32000) { console.warn(`[GPT] 출력 한도 ${budget} 에서도 잘림 — 잘림 표시를 붙인다`); return text + '\n\n> 이 항목은 출력 길이 한도에 걸려 끝부분이 잘렸습니다 — 이 섹션만 다시 분석해 주세요.'; }
+    console.warn(`[GPT] 출력 한도 ${budget} 에서 잘림 → 32000 으로 다시`);
+    budget = 32000;
+  }
 }
 
 // base64 앞머리로 이미지 포맷 판별 — 하드코딩된 png는 jpeg 전송 시 400을 유발한다.
