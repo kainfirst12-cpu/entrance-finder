@@ -2395,7 +2395,8 @@ app.get('/api/board/teachers', requireAdmin, async (req, res) => {
 app.get('/api/board/students', requireAuth, async (req, res) => {
   if (!dbEnabled()) return res.status(400).json({ success: false, message: 'DB 비활성 상태입니다' });
   try {
-    const ownerId = Number(req.query.teacherId) || req.user.userId;
+    // teacherId(다른 선생님 보드 조망)는 관리자만 — 예전엔 학원 코드도 ?teacherId= 만 붙이면 남의 학생 목록이 읽혔다.
+    const ownerId = (req.user.role === 'admin' && Number(req.query.teacherId)) || req.user.userId;
     if (!ownerId) return res.status(400).json({ success: false, message: '소유자 없음 — 다시 로그인해 주세요' });
     res.json({ success: true, columns: BOARD_COLUMNS, students: await listStudents(ownerId) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
