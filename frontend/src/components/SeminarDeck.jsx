@@ -11,6 +11,7 @@ import { readBrand } from '../brand';
 import SlidePreview from '../seminar/SlidePreview';
 import CommonEditor from '../seminar/CommonEditor';
 import { buildCommonSlides, renderCommonSlide } from '../seminar/commonSlides';
+import { buildExamSlides, isExamChapter } from '../seminar/examSlides';
 
 // 📽️ 설명회 자료 만들기 — 담당 고등학교를 고르면 학교알리미 1학년 성취도로 학교별 분석·비교·분류 슬라이드를 만들고 PPT 로 내려받는다.
 // 슬라이드는 저장하지 않는다. 담당 학교·옵션·문구만 저장하고 열 때마다 최신 공시 데이터로 다시 그린다
@@ -18,7 +19,9 @@ import { buildCommonSlides, renderCommonSlide } from '../seminar/commonSlides';
 // 메뉴 잠금: optIn 'seminar' — 관리자 + 관리자가 직접 체크한 학원 코드만(서버 requireMenu 가 실제로 막는다).
 
 const DEFAULT_OPTS = { part: 1, title: '일반고 선택의 기준', region: '', startPage: 1, semester: 'avg', includeCover: true, includeCommon: false, commonChapters: null,
-  includeTitle: true, coverKicker: '대학입시, 미리 알고 준비하자!', coverTitle: '', coverPlace: '', coverDate: '', includeContents: true, includeAcademy: false, includeClosing: true };
+  includeTitle: true, coverKicker: '대학입시, 미리 알고 준비하자!', coverTitle: '', coverPlace: '', coverDate: '', includeContents: true, includeAcademy: false, includeClosing: true,
+  // 뽀개기 FINAL «🎤 설명회 자료로 보내기» JSON — ② 학교별 다음에 «내신 시험 분석» 장으로 들어간다(seminar/examSlides.js)
+  examChapter: null, includeExam: true, examTitle: '내신 시험 분석' };
 const emptyDeck = () => ({ id: null, title: '설명회 자료', school_ids: [], options: { ...DEFAULT_OPTS }, notes: {} });
 
 // 시도별 전 과목 파일 — 학교 항목의 bandsFile(공시정보 화면과 같은 파일)
@@ -117,23 +120,40 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
     const chs = Array.isArray(opts.commonChapters) ? opts.commonChapters : commonChNums;
     return buildCommonSlides({ ...common, slides: common.slides.filter((s) => chs.includes(Number(s.chapter))) });
   }, [common, opts.includeCommon, opts.commonChapters, commonChNums]);
-  // 순서: 표지 → 목차 → ① 공통본 → ② 학교별 → ③ 학원 소개 → Q&A·감사(연락처)
-  const academyPart = Number(opts.part) + 1;
+  // 순서: 표지 → 목차 → ① 공통본 → ② 학교별 → 내신 시험 분석(FINAL) → ③ 학원 소개 → Q&A·감사(연락처)
+  const hasSchool = !!analysis;
+  const hasExam = !!(opts.includeExam && isExamChapter(opts.examChapter) && opts.examChapter.exams.length);
+  const examPart = Number(opts.part) + (hasSchool ? 1 : 0);
+  const academyPart = hasExam ? examPart + 1 : Number(opts.part) + 1;
   const slides = useMemo(() => {
     const school = analysis ? buildSlides({ ...opts, region: opts.region || autoRegion, notes: deck.notes }, analysis) : [];
+    const exam = hasExam ? buildExamSlides(opts.examChapter, { part: examPart, title: opts.examTitle || '내신 시험 분석', academy: brand?.name }) : [];
     const acad = opts.includeAcademy && academy ? (academy.slides || []).map((s) => ({ key: `academy:${s.id}`, title: `학원 소개 · ${s.heading || s.data?.title || ''}`, els: renderCommonSlide({ ...s, chapter: academyPart }, { [academyPart]: academy.title }) })) : [];
     const parts = [
       ...(commonSlides.length ? (Array.isArray(opts.commonChapters) ? opts.commonChapters : commonChNums).map((c) => ({ no: c, title: common.chapters?.[c] || '' })) : []),
       ...(school.length ? [{ no: opts.part, title: opts.title }] : []),
+      ...(exam.length ? [{ no: examPart, title: opts.examTitle || '내신 시험 분석' }] : []),
       ...(acad.length ? [{ no: academyPart, title: academy.title }] : []),
     ];
     const head = [
       ...(opts.includeTitle ? [buildTitleSlide(opts, brand)] : []),
       ...(opts.includeContents && parts.length > 1 ? [buildContents(parts)] : []),
     ];
-    const tail = opts.includeClosing && (school.length || acad.length || commonSlides.length) ? buildClosing(academy?.info || {}, brand, opts) : [];
-    return numberSlides([...head, ...commonSlides, ...school, ...acad, ...tail], opts.startPage);
-  }, [analysis, opts, autoRegion, deck.notes, commonSlides, academy, academyPart, brand, common, commonChNums]);
+    const tail = opts.includeClosing && (school.length || exam.length || acad.length || commonSlides.length) ? buildClosing(academy?.info || {}, brand, opts) : [];
+    return numberSlides([...head, ...commonSlides, ...school, ...exam, ...acad, ...tail], opts.startPage);
+  }, [analysis, opts, autoRegion, deck.notes, commonSlides, academy, academyPart, brand, common, commonChNums, hasExam, examPart]);
+
+  // 📥 FINAL 시험 분석 넣기 — 뽀개기 FINAL 에서 내려받은 «설명회 자료» JSON
+  const loadExamFile = async (file) => {
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!isExamChapter(data)) throw new Error('뽀개기 FINAL «🎤 설명회 자료로 보내기»로 받은 파일이 아닙니다.');
+      patch({ options: { ...opts, examChapter: data, includeExam: true } });
+      const n = new Set(data.exams.map((e) => e.school)).size;
+      setMsg(`FINAL 시험 분석 ${n}개 학교 · ${data.exams.length}개 시험을 «${opts.examTitle || '내신 시험 분석'}» 장으로 넣었습니다. 저장하면 이 자료에 함께 남습니다.`);
+    } catch (e) { setErr(`FINAL 파일을 읽지 못했습니다: ${e.message}`); }
+  };
   const skipped = analysis ? analysis.items.filter((it) => !analysis.usable.includes(it)) : [];
 
   const patch = (p) => { setDeck((d) => ({ ...d, ...p })); setDirty(true); };
@@ -307,7 +327,7 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
         },
       },
       { name: 'save_seminar_deck', description: '지금 자료(담당 학교·설정·문구)를 저장한다.', schema: { type: 'object', properties: {} }, run: async () => { await save(); return '저장을 요청했습니다.'; } },
-      { name: 'download_seminar_pptx', description: '지금 슬라이드를 PPT 파일로 내려받는다.', schema: { type: 'object', properties: {} }, run: async () => { if (!slides.length) return '담당 학교가 없어 만들 슬라이드가 없습니다.'; await download(); return `${slides.length}장 PPT 내려받기를 시작했습니다.`; } },
+      { name: 'download_seminar_pptx', description: '지금 슬라이드를 PPT 파일로 내려받는다.', schema: { type: 'object', properties: {} }, run: async () => { if (!slides.length) return '담당 학교·FINAL 시험 분석이 없어 만들 슬라이드가 없습니다.'; await download(); return `${slides.length}장 PPT 내려받기를 시작했습니다.`; } },
     ],
   });
 
@@ -411,6 +431,26 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
           </section>
 
           <section style={S.card}>
+            <div style={S.secTitle}>내신 시험 분석 (뽀개기 FINAL)</div>
+            <div style={S.dim}>FINAL → 🎤 설명회 자료로 보내기에서 받은 파일을 넣으면 시험 한눈에 · 우리 동네 경향 · 학교별 분석 · 학교 경향 · 학원 적중 · 대비 전략 슬라이드가 {hasSchool ? '② 학교별 다음' : '학교별 대신'}에 들어갑니다.</div>
+            <label style={{ ...S.btn, display: 'inline-block', marginTop: 6, cursor: 'pointer' }}>
+              📥 FINAL 시험 분석 넣기
+              <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => { loadExamFile(e.target.files?.[0]); e.target.value = ''; }} />
+            </label>
+            {isExamChapter(opts.examChapter) && (
+              <>
+                <div style={{ ...S.dim, marginTop: 6 }}>
+                  {[...new Set(opts.examChapter.exams.map((e) => e.school))].join(', ')} · 시험 {opts.examChapter.exams.length}회
+                  {opts.examChapter.made_at ? ` · ${String(opts.examChapter.made_at).slice(0, 10)} 분석` : ''}
+                </div>
+                <label style={S.lbl}><input type="checkbox" checked={opts.includeExam !== false} onChange={(e) => setOpt('includeExam', e.target.checked)} /> 덱에 넣기 (파트 {examPart})</label>
+                <label style={S.lbl}>장 이름 <input style={{ ...S.input, flex: 1 }} value={opts.examTitle || ''} placeholder="내신 시험 분석" onChange={(e) => setOpt('examTitle', e.target.value)} /></label>
+                <button style={S.btn} onClick={() => patch({ options: { ...opts, examChapter: null } })}>시험 분석 빼기</button>
+              </>
+            )}
+          </section>
+
+          <section style={S.card}>
             <div style={S.secTitle}>표지 · 목차 · 마무리</div>
             <label style={S.lbl}><input type="checkbox" checked={!!opts.includeTitle} onChange={(e) => setOpt('includeTitle', e.target.checked)} /> 맨 앞 표지</label>
             {opts.includeTitle && <>
@@ -463,7 +503,7 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
 
         {/* ── 오른쪽: 미리보기 ── */}
         <div style={S.main}>
-          {!chosen.length && <div style={S.empty}>왼쪽에서 담당 학교를 고르세요. 학교 이름으로 찾거나 '이 지역 일반고 전부 넣기'를 누르면 됩니다.</div>}
+          {!chosen.length && !hasExam && <div style={S.empty}>왼쪽에서 담당 학교를 고르세요. 학교 이름으로 찾거나 '이 지역 일반고 전부 넣기'를 누르면 됩니다.</div>}
           {chosen.length > 0 && !ready && <div style={S.empty}>학교 성취도 파일을 불러오는 중…</div>}
           <div style={S.grid}>
             {slides.map((sl, i) => {
