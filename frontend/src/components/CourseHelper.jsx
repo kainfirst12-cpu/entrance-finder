@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '../apiBase';
 import { fetchGzJson, CATALOG_URL, regionLabel } from '../schoolCatalog';
-import { loadOfferings, offerStatus, MARK_COLOR } from '../course/offerings';
+import { loadOfferings, offerStatus, pyeonjeStatus, SEM_LABEL, MARK_COLOR } from '../course/offerings';
 import { resolve, AFTER, KIND_COLOR, SEMESTERS } from '../course/curriculum';
 import { Term } from '../schoolTerms';
 import StudentPicker from './StudentPicker';
 
 // 🧭 과목 선택 보조(고1) — 목표 대학·모집단위의 2028 권장과목(핵심·권장)을 모아 2·3학년 이수 계획을 짠다.
 // 데이터: /data/recommended-2028.json.gz (원장 지식베이스의 대교협 자료집 기반 정리 엑셀 → scripts/recommended/parse.py)
-// 점검: 핵심과목 빠짐 · 먼저 들을 과목(위계) · 석차등급 없는 과목(융합선택 사회·과학 등). 학교 편제(개설 여부)는 편제 데이터가 들어오면 붙인다.
+// 점검: 핵심과목 빠짐 · 먼저 들을 과목(위계) · 석차등급 없는 과목(융합선택 사회·과학 등) · 우리 학교 개설 여부.
+// 개설 여부: 편제(네이버 교육 학교 페이지 링크로 불러옴, 3학년=2027 예정)가 있으면 그것을, 없으면 2026 나이스 시간표를 본다.
 
 const DATA_URL = '/data/recommended-2028.json.gz';
 const PLACES = [...SEMESTERS, '학교지정', '공동교육과정'];
@@ -30,6 +31,11 @@ export default function CourseHelper({ onAuthError }) {
   const [schoolQ, setSchoolQ] = useState('');
   const [highs, setHighs] = useState(null);
   const [offers, setOffers] = useState(null);
+  // 우리 학교 편제 — 네이버 교육 학교 페이지 링크로 불러온다(/api/course/naver-offer)
+  const [pj, setPj] = useState(() => { try { return JSON.parse(localStorage.getItem(PLAN_KEY))?.pj || null; } catch { return null; } });
+  const [pjUrl, setPjUrl] = useState('');
+  const [pjBusy, setPjBusy] = useState(false);
+  const [pjOpen, setPjOpen] = useState(false);
 
   useEffect(() => { fetchGzJson(DATA_URL).then(setData).catch((e) => setErr(e.message)); }, []);
   useEffect(() => {
@@ -38,7 +44,20 @@ export default function CourseHelper({ onAuthError }) {
   }, []);
   const schoolHits = useMemo(() => (schoolQ.trim().length < 2 || !highs ? [] : highs.filter((h) => h.name.includes(schoolQ.trim())).slice(0, 8)), [schoolQ, highs]);
   const myOffer = school && offers ? offers[school.id] || null : null;
-  useEffect(() => { try { localStorage.setItem(PLAN_KEY, JSON.stringify({ targets, plan, school })); } catch { /* 저장소 막힘 */ } }, [targets, plan, school]);
+  useEffect(() => { try { localStorage.setItem(PLAN_KEY, JSON.stringify({ targets, plan, school, pj })); } catch { /* 저장소 막힘 */ } }, [targets, plan, school, pj]);
+  const loadPj = async () => {
+    setPjBusy(true); setErr('');
+    try {
+      const res = await fetch(`${API_BASE}/api/course/naver-offer?url=${encodeURIComponent(pjUrl.trim())}`, { headers: { Authorization: `Bearer ${localStorage.getItem('ef_token')}` } });
+      if (res.status === 401) { onAuthError?.(); return; }
+      const j = await res.json(); if (!j.success) throw new Error(j.message || '편제를 불러오지 못했습니다');
+      setPj(j); setPjUrl(''); setPjOpen(true); setMsg(`${j.schoolName} 편제를 불러왔습니다.`);
+    } catch (e) { setErr(e.message); } finally { setPjBusy(false); }
+  };
+  // 과목 하나의 '우리 학교' 상태 — 편제가 있으면 편제, 없으면 시간표
+  const statusOf = (name) => (pj ? pyeonjeStatus(pj, name) : offerStatus(myOffer, name));
+  const hasSchool = !!(pj || school);
+  const schoolName = pj?.schoolName || school?.name;
 
   const univObj = data?.univs.find((u) => u.name === univ);
   const units = useMemo(() => (univObj?.units || []).filter((x) => !unitQ.trim() || x.name.includes(unitQ.trim())), [univObj, unitQ]);
@@ -78,22 +97,26 @@ export default function CourseHelper({ onAuthError }) {
           else if (ORDER[pa] !== undefined && ORDER[at] !== undefined && ORDER[pa] > ORDER[at]) out.push({ lv: 'warn', text: `‘${p}’(${PLACE_LABEL[pa]})이 ‘${x.name}’(${PLACE_LABEL[at]})보다 늦습니다.` });
         }
       }
-      if (school && offers && (x.core.length || at)) {
+      if (pj && (x.core.length || at)) {
+        const st = pyeonjeStatus(pj, x.name);
+        if (st.mark === 'no') out.push({ lv: x.core.length ? 'warn' : 'info', text: `‘${x.name}’은(는) ${pj.schoolName} 편제표에 없습니다 — 공동교육과정·온라인학교로 들을 수 있는지 확인하세요.` });
+        else if (at && SEM_LABEL[at] && !st.sems.includes(at)) out.push({ lv: 'info', text: `‘${x.name}’은(는) ${pj.schoolName} 편제상 ${st.sems.map((k) => SEM_LABEL[k]).join('·')}에 열립니다(계획: ${PLACE_LABEL[at]}).` });
+      } else if (school && offers && (x.core.length || at)) {
         const st = offerStatus(myOffer, x.name);
         if (st.mark === 'no') out.push({ lv: x.core.length ? 'warn' : 'info', text: `‘${x.name}’은(는) ${school.name} 2026 시간표에 없습니다 — 수강 신청 수요·공동교육과정·온라인학교를 확인하세요.` });
       }
       if (at && x.subject.grading === 'abs') out.push({ lv: 'info', text: `‘${x.name}’은(는) 석차등급 없이 성취도(A~E)만 기록됩니다.` });
     }
     return out;
-  }, [merged, plan, school, offers, myOffer]);
+  }, [merged, plan, school, offers, myOffer, pj]);
   const perSem = SEMESTERS.map((s) => ({ s, n: Object.values(plan).filter((v) => v === s).length }));
 
   const markdown = () => [
     `# 2·3학년 과목 이수 계획${student ? ` — ${student.name}` : ''}`,
     '', `목표: ${targets.map((t) => `${t.univ} ${t.unit}`).join(' / ') || '(없음)'}`,
-    ...(school ? ['', `우리 학교: ${school.name} (2026 나이스 시간표 기준)`] : []),
-    '', `| 과목 | 구분 | 목표에서 |${school ? ' 우리 학교 |' : ''} 계획 |`, `|---|---|---|${school ? '---|' : ''}---|`,
-    ...merged.list.map((x) => `| ${x.name} | ${x.subject.area} ${x.subject.kind}${x.subject.grading === 'abs' ? ' (성취도만)' : ''} | ${x.core.length ? '핵심' : x.pre ? '먼저 들을 과목' : '권장'} |${school ? ` ${offerStatus(myOffer, x.name).text} |` : ''} ${PLACE_LABEL[plan[x.name]] || '—'} |`),
+    ...(hasSchool ? ['', `우리 학교: ${schoolName} (${pj ? `편제 — ${pj.provider}, 3학년은 ${pj.g3Year || '다음 해'} 개설 예정` : '2026 나이스 시간표 기준'})`] : []),
+    '', `| 과목 | 구분 | 목표에서 |${hasSchool ? ' 우리 학교 |' : ''} 계획 |`, `|---|---|---|${hasSchool ? '---|' : ''}---|`,
+    ...merged.list.map((x) => `| ${x.name} | ${x.subject.area} ${x.subject.kind}${x.subject.grading === 'abs' ? ' (성취도만)' : ''} | ${x.core.length ? '핵심' : x.pre ? '먼저 들을 과목' : '권장'} |${hasSchool ? ` ${statusOf(x.name).text} |` : ''} ${PLACE_LABEL[plan[x.name]] || '—'} |`),
     '', ...(checks.length ? ['## 점검', ...checks.map((c) => `- ${c.lv === 'warn' ? '⚠' : 'ℹ'} ${c.text}`)] : []),
     '', `※ ${data?.source || ''}. 권장과목은 지원 자격이 아니라 평가 참고 자료이며, 학교 편제·수요조사에 따라 개설 과목이 달라질 수 있습니다.`,
   ].join('\n');
@@ -147,6 +170,20 @@ export default function CourseHelper({ onAuthError }) {
               </>
             )}
             <div style={S.dim}>2026 나이스 시간표로 확인합니다. 2026 3학년은 아직 2015 교육과정이라 3학년 과목은 ‘가능성’으로만 보여요.</div>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>📋 편제표 불러오기 <span style={S.dim}>(3학년 2027 개설 예정 과목까지)</span></div>
+              {pj ? (
+                <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 3 }}><b>{pj.schoolName}</b> 편제 <button style={{ ...S.btn, padding: '2px 8px' }} onClick={() => setPjOpen(!pjOpen)}>{pjOpen ? '접기' : '보기'}</button> <button style={S.x} title="편제 지우기" onClick={() => setPj(null)}>×</button>
+                  <div style={S.dim}>제공 {pj.provider} · {String(pj.fetchedAt || '').slice(0, 10)} 불러옴. 편제가 있으면 시간표 대신 편제로 확인합니다.</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                  <input style={{ ...S.input, flex: 1 }} placeholder="네이버 교육 학교 페이지 링크" value={pjUrl} onChange={(e) => setPjUrl(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pjUrl.trim() && loadPj()} />
+                  <button style={S.btn} onClick={loadPj} disabled={pjBusy || !pjUrl.trim()}>{pjBusy ? '…' : '불러오기'}</button>
+                </div>
+              )}
+              {!pj && <div style={S.dim}>네이버에서 ‘○○고등학교’를 검색해 학교 페이지(edu.naver.com/schools/…) 주소를 붙여 넣으세요.</div>}
+            </div>
           </div>
           <div style={{ borderTop: '1px solid var(--border)', margin: '10px 0', paddingTop: 8 }}>
             <div style={S.secTitle}>학생</div>
@@ -160,6 +197,29 @@ export default function CourseHelper({ onAuthError }) {
         </section>
 
         <div style={{ flex: 1, minWidth: 380 }}>
+          {pj && pjOpen && (
+            <section style={S.card}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <div style={S.secTitle}>📋 {pj.schoolName} 편제 (개설 과목)</div>
+                <button style={S.x} onClick={() => setPjOpen(false)}>×</button>
+              </div>
+              <div style={S.pjGrid}>
+                {Object.entries(SEM_LABEL).map(([k, label]) => (
+                  <div key={k} style={S.pjCol}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)', marginBottom: 4 }}>{label}{k.startsWith('3-') && pj.g3Year ? <span style={S.dim}> · {pj.g3Year} 예정</span> : null}</div>
+                    {(pj.sems[k] || []).map((a) => (
+                      <div key={a.area} style={{ marginBottom: 4 }}>
+                        <div style={S.dim}>{a.area}</div>
+                        {a.subjects.map((t) => <span key={t} style={{ ...S.chip, fontSize: 11.5, borderColor: merged.list.some((x) => x.name.replace(/\s/g, '') === t.replace(/\s/g, '')) ? '#e05b5b' : 'var(--border)' }}>{t}</span>)}
+                      </div>
+                    ))}
+                    {!(pj.sems[k] || []).length && <div style={S.dim}>정보 없음</div>}
+                  </div>
+                ))}
+              </div>
+              <div style={S.dim}>빨간 테두리 = 목표 대학 권장과목. 제공 {pj.provider} — 학교 사정·수강 신청 인원에 따라 실제 개설은 달라질 수 있습니다. <a href={pj.url} target="_blank" rel="noreferrer">원본 보기</a></div>
+            </section>
+          )}
           {targets.map((t, ti) => (
             <section key={`${t.univ}|${t.unit}`} style={S.card}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -180,7 +240,7 @@ export default function CourseHelper({ onAuthError }) {
                 {perSem.map(({ s, n }) => <span key={s} style={S.semBadge}>{PLACE_LABEL[s]} {n}과목</span>)}
               </div>
               <table style={S.table}>
-                <thead><tr><th style={S.th}>과목</th><th style={S.th}>구분</th><th style={S.th}>목표에서</th><th style={S.th}>먼저 들을 과목</th>{school && <th style={S.th}>우리 학교</th>}<th style={S.th}>계획</th></tr></thead>
+                <thead><tr><th style={S.th}>과목</th><th style={S.th}>구분</th><th style={S.th}>목표에서</th><th style={S.th}>먼저 들을 과목</th>{hasSchool && <th style={S.th}>우리 학교</th>}<th style={S.th}>계획</th></tr></thead>
                 <tbody>
                   {merged.list.map((x) => (
                     <tr key={x.name}>
@@ -188,7 +248,7 @@ export default function CourseHelper({ onAuthError }) {
                       <td style={S.td}><span style={{ ...S.kind, background: KIND_COLOR[x.subject.kind] }}>{x.subject.area} {x.subject.kind}</span>{x.subject.grading === 'abs' && <span style={S.abs}>성취도만</span>}</td>
                       <td style={S.td}>{x.core.length ? <span style={S.core}>핵심 {x.core.map((i) => i + 1).join('·')}</span> : null} {x.rec.length ? <span style={S.dim}>권장 {x.rec.map((i) => i + 1).join('·')}</span> : null}{x.pre ? <span style={S.dim}>먼저 들을 과목</span> : null}</td>
                       <td style={S.td}><span style={S.dim}>{(AFTER[x.name] || []).join(', ') || '—'}</span></td>
-                      {school && (() => { const st = offerStatus(myOffer, x.name); return <td style={S.td}><span style={{ fontSize: 11.5, fontWeight: 700, color: MARK_COLOR[st.mark] }}>{st.text}</span></td>; })()}
+                      {hasSchool && (() => { const st = statusOf(x.name); return <td style={S.td}><span style={{ fontSize: 11.5, fontWeight: 700, color: MARK_COLOR[st.mark] }}>{st.text}</span></td>; })()}
                       <td style={S.td}>
                         <select style={S.input} value={plan[x.name] || ''} onChange={(e) => setPlan({ ...plan, [x.name]: e.target.value || undefined })}>
                           <option value="">— 안 정함</option>
@@ -209,7 +269,7 @@ export default function CourseHelper({ onAuthError }) {
               {checks.map((c, i) => <div key={i} style={{ fontSize: 13, color: c.lv === 'warn' ? '#d6a24a' : 'var(--text2)', margin: '3px 0' }}>{c.lv === 'warn' ? '⚠ ' : 'ℹ '}{c.text}</div>)}
             </section>
           )}
-          {targets.length > 0 && !school && <div style={S.dim}>왼쪽 ‘우리 학교’를 고르면 과목마다 2026 실제 수업 여부(✓ / 3학년 가능성 / 없음)가 함께 나옵니다.</div>}
+          {targets.length > 0 && !hasSchool && <div style={S.dim}>왼쪽 ‘우리 학교’를 고르거나 편제표를 불러오면 과목마다 개설 여부가 함께 나옵니다.</div>}
         </div>
       </div>
     </div>
@@ -253,6 +313,8 @@ const S = {
   kind: { display: 'inline-block', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 6, padding: '1px 7px' },
   abs: { display: 'inline-block', marginLeft: 4, fontSize: 10.5, color: '#0d9488', border: '1px solid #0d9488', borderRadius: 6, padding: '0 5px' },
   core: { fontSize: 11.5, fontWeight: 800, color: '#e05b5b' },
+  pjGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 8 },
+  pjCol: { background: 'var(--surface2)', borderRadius: 8, padding: 8 },
   semBadge: { fontSize: 12, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '3px 8px', color: 'var(--text)' },
   err: { background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.4)', color: '#f87171', borderRadius: 10, padding: '9px 13px', fontSize: 13, marginBottom: 10, cursor: 'pointer' },
   ok: { background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.35)', color: '#34d399', borderRadius: 10, padding: '9px 13px', fontSize: 13, marginBottom: 10, cursor: 'pointer' },

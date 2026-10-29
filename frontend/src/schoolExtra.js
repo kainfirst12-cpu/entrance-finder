@@ -63,3 +63,22 @@ export const SORT_GETTERS = {
   'perteacher-asc': (x) => x?.status?.perTeacher ?? null,
   'select-desc': (x) => careerSummary(x, '중학교')?.select ?? null,
 };
+
+// 서울 고입 안내 — 원장 지식베이스 '고1 입시스타터팩'(서울생활권 5권·자사 국제 외고_서울·고교 유형별 진학 경로)을 옮긴 것.
+// /data/seoul-high-guide.json : { assignment, areas{생활권}, schools{학교명}, paths }. 서울 고교에만 붙는다.
+let gp = null;
+export function loadSeoulGuide() {
+  if (!gp) gp = fetchGzJson('/data/seoul-high-guide.json').catch(() => { gp = null; return null; });
+  return gp;
+}
+const shortHigh = (n) => String(n || '').replace(/\s+/g, '').replace(/고등학교$/, '고');
+/** 학교 한 곳의 서울 고입 안내 → { school, area } (서울 고교가 아니거나 자료에 없으면 null) */
+export function seoulGuideOf(g, s) {
+  if (!g || s?.sido !== '서울특별시' || s.schoolLevel !== '고등학교') return null;
+  const key = Object.keys(g.schools || {}).find((k) => k === s.schoolName) || Object.keys(g.schools || {}).find((k) => shortHigh(k) === shortHigh(s.schoolName));
+  const school = key ? g.schools[key] : null;
+  const areaName = school?.area || Object.keys(g.areas || {}).find((a) => (g.areas[a].gus || []).includes(s.sigungu));
+  const area = areaName ? { name: areaName, ...g.areas[areaName] } : null;
+  if (!school && !area) return null;
+  return { school, area };
+}

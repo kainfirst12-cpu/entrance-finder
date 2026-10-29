@@ -13,7 +13,7 @@ export function loadOfferings() {
   return p;
 }
 
-const norm = (s) => String(s || '').replace(/\s+/g, '').replace(/Ⅰ|I(?=$)/g, '1').replace(/Ⅱ|II(?=$)/g, '2').replace(/·|ㆍ/g, '');
+export const norm = (s) => String(s || '').replace(/\s+/g, '').replace(/Ⅰ|I(?=$)/g, '1').replace(/Ⅱ|II(?=$)/g, '2').replace(/·|ㆍ/g, '');
 // 2022 과목 → 같은 계열 2015 과목(2026 3학년 시간표에서 찾을 이름)
 const LEGACY = {
   미적분Ⅱ: ['미적분'], 기하: ['기하'], '확률과 통계': ['확률과 통계'], '경제 수학': ['경제 수학'], '인공지능 수학': ['인공지능 수학'],
@@ -33,6 +33,21 @@ export function offerStatus(school, subject) {
   const legacy = (LEGACY[subject] || []).find((l) => has(school.g3, l));
   if (legacy) return { mark: 'maybe', text: `3학년 가능성 (2015 ‘${legacy}’ 운영 중)` };
   return { mark: 'no', text: '2026 시간표엔 없음' };
+}
+
+// 편제(네이버 교육 학교 페이지, 제공 윈드폴리) — 1학년 1학기~3학년 2학기 개설 과목. 3학년은 2027 개설 '예정'.
+// 시간표(실제 수업)보다 앞선 계획이라, 불러왔으면 이쪽을 먼저 본다.
+export const SEM_LABEL = { '1-1': '1학년 1학기', '1-2': '1학년 2학기', '2-1': '2학년 1학기', '2-2': '2학년 2학기', '3-1': '3학년 1학기', '3-2': '3학년 2학기' };
+/** 편제에서 과목이 열리는 학기들 → ['2-2', '3-1'] */
+export function pyeonjeSems(pj, subject) {
+  if (!pj?.sems) return [];
+  return Object.entries(pj.sems).filter(([, areas]) => areas.some((a) => a.subjects.some((t) => norm(t) === norm(subject)))).map(([k]) => k);
+}
+export function pyeonjeStatus(pj, subject) {
+  const sems = pyeonjeSems(pj, subject);
+  if (!sems.length) return { mark: 'no', text: '편제표에 없음', sems };
+  const g3 = sems.some((k) => k.startsWith('3-'));
+  return { mark: 'yes', text: `✓ 편제 ${sems.map((k) => SEM_LABEL[k].replace('학년 ', '-').replace('학기', '')).join(', ')}${g3 && pj.g3Year ? ` (3학년=${pj.g3Year} 예정)` : ''}`, sems };
 }
 export const MARK_COLOR = { yes: '#16a34a', maybe: '#d6a24a', no: '#9ca3af', unknown: '#9ca3af' };
 

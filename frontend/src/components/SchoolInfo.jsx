@@ -5,7 +5,7 @@ import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, r
 import { menuAllowed, readMenus } from '../menus';
 import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf, aDifficulty, aGradeSpan, grade1Type, enrollmentTrend } from '../schoolTerms';
 import StudentFit from './StudentFit';
-import { loadExtra, loadLocations, distanceKm, careerSummary, gradLabel, SORT_GETTERS } from '../schoolExtra';
+import { loadSeoulGuide, seoulGuideOf, loadExtra, loadLocations, distanceKm, careerSummary, gradLabel, SORT_GETTERS } from '../schoolExtra';
 const SchoolMap = lazy(() => import('./SchoolMap')); // leaflet 은 지도를 열 때만
 import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE, TRACK_PRESETS } from '../course/offerings';
 
@@ -529,6 +529,7 @@ function DetailModal({ areas, school: s, weights: w, offer: of, onClose, inCompa
         )}
 
         {s.extra && <ExtraSection s={s} areas={areas} />}
+        {isHigh && s.sido === '서울특별시' && <SeoulGuideSection s={s} />}
 
         {isHigh && of && (
           <section style={{ marginTop: 16 }}>
@@ -586,6 +587,66 @@ function CareerLine({ s }) {
 }
 
 // 상세 — 졸업생 진로(3개년) + 교육 여건(지역 평균과 나란히)
+// 서울 고입 안내 — 학교 유형·선발 방식(자사·특목은 자세히)·생활권·배정 방식·유형별 진학 경로
+function SeoulGuideSection({ s }) {
+  const [g, setG] = useState(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => { loadSeoulGuide().then(setG); }, []);
+  const hit = seoulGuideOf(g, s);
+  if (!hit) return null;
+  const { school: sc, area } = hit;
+  const general = !sc || sc.type === '일반고';
+  const path = g.paths?.byType?.find((p) => sc && (p.type === sc.type || p.type.includes(sc.type)));
+  // 2027 고입 원서 일정(유형별 전기·후기) — 자료의 selection 표
+  const sel = sc && g.selection?.rows?.find((r) => r[0] === sc.type || r[0].includes(sc.type));
+  return (
+    <section style={{ marginTop: 16 }}>
+      <h4 style={S.h4}>🧭 서울 고입 안내 <span style={S.dim}>· 고1 입시스타터팩(유니브) 정리</span></h4>
+      {sc && (
+        <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 6 }}>
+          <b>{sc.type}</b>{area ? ` · ${area.name}` : ''}{sc.district ? ` · ${sc.district}` : ''}
+          {(sc.tags || []).map((t) => <span key={t} style={{ display: 'inline-block', fontSize: 11, border: '1px solid var(--border)', borderRadius: 999, padding: '1px 7px', marginLeft: 5, color: 'var(--text2)' }}>{t}</span>)}
+        </div>
+      )}
+      {sc?.rows?.length > 0 && (
+        <table style={S.table}><tbody>{sc.rows.map(([k, v], i) => <tr key={i}><td style={{ ...S.td, fontWeight: 700, whiteSpace: 'nowrap', width: 120 }}>{k}</td><td style={S.td}>{v}</td></tr>)}</tbody></table>
+      )}
+      {sel && <div style={{ fontSize: 12.5, color: 'var(--text)', margin: '6px 0' }}>📅 {sel[0]} {sel.slice(1).filter((v) => v && v !== '-').join(' · ')} <span style={S.dim}>({g.selection.title})</span></div>}
+      {sc?.note && <div style={{ fontSize: 12.5, color: 'var(--text2)', margin: '6px 0', lineHeight: 1.6 }}>{sc.note}</div>}
+      {path?.points?.length > 0 && (
+        <div style={{ fontSize: 12.5, color: 'var(--text)', margin: '8px 0', lineHeight: 1.6 }}>
+          <b>{path.type}에서 서울권 대학 가는 길</b>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{path.points.map((p, i) => <li key={i}>{p}</li>)}</ul>
+        </div>
+      )}
+      {(general || area) && (
+        <button style={{ background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', fontSize: 12, color: 'var(--text)', cursor: 'pointer', marginTop: 4 }} onClick={() => setOpen(!open)}>
+          {open ? '접기' : `${general ? '일반고 1·2·3단계 배정 방식' : ''}${general && area ? ' · ' : ''}${area ? `${area.name} 한눈에 보기` : ''}`}
+        </button>
+      )}
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {general && g.assignment && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>{g.assignment.title}</div>
+              <table style={S.table}><tbody>{(g.assignment.rows || []).map(([k, v], i) => <tr key={i}><td style={{ ...S.td, fontWeight: 700, width: 70 }}>{k}</td><td style={S.td}>{v}</td></tr>)}</tbody></table>
+              <ul style={{ fontSize: 12, color: 'var(--text2)', paddingLeft: 18, lineHeight: 1.6 }}>{[...(g.assignment.notes || []), ...(g.assignment.special || [])].map((n, i) => <li key={i}>{n}</li>)}</ul>
+            </>
+          )}
+          {area && (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', marginTop: 6 }}>{area.name} ({(area.gus || []).join('·')})</div>
+              {area.summary && <div style={{ fontSize: 12.5, color: 'var(--text2)', margin: '4px 0', lineHeight: 1.6 }}>{area.summary}</div>}
+              {area.rows?.length > 0 && <table style={S.table}><tbody>{area.rows.map(([k, v], i) => <tr key={i}><td style={{ ...S.td, fontWeight: 700, width: 170 }}>{k}</td><td style={S.td}>{v}</td></tr>)}</tbody></table>}
+            </>
+          )}
+        </div>
+      )}
+      <div style={S.dim}>출처: {(g.sources || []).map((x) => x.title).join(' · ')}. 배정 비율은 학교별 정원 중 그 단계 몫이지 배정 확률이 아닙니다.</div>
+    </section>
+  );
+}
+
 function ExtraSection({ s, areas }) {
   const x = s.extra;
   const high = s.schoolLevel === '고등학교';

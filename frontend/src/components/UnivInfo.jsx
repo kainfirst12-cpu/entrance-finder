@@ -37,6 +37,94 @@ function Section({ title, count, children }) {
   );
 }
 
+// 인서울 주요대 정리 자료(원장 지식베이스) — 학종 서류평가 요소·비율, 교과 5등급제 반영
+const GUIDE_LABEL = { hakjong: '학종 서류평가 요소·비율', gyogwa: '학생부교과 5등급제 반영' };
+const BIG3_COLOR = { 학업: '#3b82f6', 진로: '#00b765', 공동체: '#d6a24a' };
+
+function RatioBar({ ratios }) {
+  if (!ratios?.length) return null;
+  const palette = ['#3b82f6', '#00b765', '#d6a24a', '#a855f7', '#ef4444'];
+  return (
+    <div style={S.bar}>
+      {ratios.map((r, i) => (
+        <div key={r.item} title={`${r.item} ${r.pct}%`} style={{ width: `${r.pct}%`, background: BIG3_COLOR[r.item.replace(/역량$/, '')] || palette[i % palette.length], ...S.barSeg }}>
+          {r.pct >= 12 ? `${r.item.replace(/역량$/, '')} ${r.pct}` : r.pct}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GuideSection({ g }) {
+  const u = g.univ;
+  return (
+    <Section title={`${GUIDE_LABEL[g.kind] || g.title}${g.targetYear ? ` (${g.targetYear})` : ''}`} count={`전형 ${u.tracks?.length || 0}개`}>
+      {(u.tracks || []).map((t, i) => (
+        <div key={i} style={S.guideTrack}>
+          <div style={{ fontWeight: 800, fontSize: 13.5 }}>{t.name}{t.unit && <span style={S.region}>{t.unit}</span>}</div>
+          {g.kind === 'hakjong' ? (
+            t.ratios?.length ? <><RatioBar ratios={t.ratios} /><div style={S.muted}>{t.ratioText}</div></>
+              : <div style={S.muted}>{t.ratioText || '항목별 수치 비율을 밝히지 않음 — 대학이 글로 풀어 둔 평가 내용을 읽어야 합니다(0%·균등 분할로 계산하지 마세요).'}</div>
+          ) : <DataTable rows={t.rows} />}
+        </div>
+      ))}
+      {u.note && <div style={S.guideNote}>{u.note}</div>}
+      <div style={S.source}>출처: {g.title}{g.author ? ` · ${g.author}` : ''}{g.asOf ? ` · ${g.asOf} 기준` : ''}</div>
+    </Section>
+  );
+}
+
+// 27개 대학 학종 서류평가 비교 — 학업·진로·공동체로 딱 나뉘는 전형은 막대, 나머지는 원문 표기
+function HakjongCompare({ guide, onClose }) {
+  const [only3, setOnly3] = useState(false);
+  const rows = guide.univs.flatMap((u) => u.tracks.map((t) => ({ u, t }))).filter(({ t }) => !only3 || t.big3);
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <h1 style={S.univName}>📊 {guide.title}</h1>
+        <button style={S.cmpBtn} onClick={onClose}>닫기</button>
+      </div>
+      <ul style={S.blockList}>{(guide.cautions || []).map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}</ul>
+      <label style={{ fontSize: 12.5, color: 'var(--text2)' }}><input type="checkbox" checked={only3} onChange={(e) => setOnly3(e.target.checked)} /> 학업·진로·공동체 3역량으로 나뉘는 전형만</label>
+      <table style={{ ...S.table, marginTop: 8 }}>
+        <tbody>
+          {rows.map(({ u, t }, i) => (
+            <tr key={i}>
+              <td style={{ ...S.td, ...S.tdHead, whiteSpace: 'nowrap' }}>{u.name.replace('대학교', '대')}{u.campus ? ` (${u.campus})` : ''}</td>
+              <td style={S.td}>{t.name}{t.unit ? <span style={S.region}>{t.unit}</span> : null}</td>
+              <td style={{ ...S.td, minWidth: 260 }}>{t.ratios?.length ? <RatioBar ratios={t.ratios} /> : <span style={S.muted}>{t.ratioText || '비율 미공개'}</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {guide.checklist?.length > 0 && <Section title="우리 아이 학생부 점검표"><ul style={S.blockList}>{guide.checklist.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}</ul></Section>}
+      {guide.faq?.length > 0 && <Section title="학부모가 자주 묻는 질문">{guide.faq.map((f, i) => <div key={i} style={{ marginBottom: 10, fontSize: 13 }}><b>Q. {f.q}</b><div style={{ color: 'var(--text2)', marginTop: 3 }}>{f.a}</div></div>)}</Section>}
+      <div style={S.source}>출처: {guide.title}{guide.author ? ` · ${guide.author}` : ''}{guide.asOf ? ` · ${guide.asOf} 기준` : ''}. 서류평가 안에서의 비중이며, 서류·면접 합산 비율과 다릅니다.</div>
+    </div>
+  );
+}
+
+// 교과 5등급제 반영 — 원문의 비교표(빠른 비교·등급별 점수·계산 예시)와 공통 주의점
+function GyogwaCompare({ guide, onClose }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <h1 style={S.univName}>📘 {guide.title}</h1>
+        <button style={S.cmpBtn} onClick={onClose}>닫기</button>
+      </div>
+      {guide.scope && <p style={S.lead}>{guide.scope}{guide.targetYear ? ` (${guide.targetYear} 기준)` : ''}</p>}
+      {(guide.compare || []).map((c, i) => (
+        <Section key={i} title={c.title}>
+          <DataTable rows={c.rows} />
+          {c.note && <div style={S.muted}>{Array.isArray(c.note) ? c.note.join(' ') : c.note}</div>}
+        </Section>
+      ))}
+      {guide.cautions?.length > 0 && <Section title="읽을 때 주의할 점"><ul style={S.blockList}>{guide.cautions.map((c, i) => <li key={i} style={{ marginBottom: 4 }}>{c}</li>)}</ul></Section>}
+      <div style={S.source}>출처: {guide.title}{guide.author ? ` · ${guide.author}` : ''}{guide.asOf ? ` · ${guide.asOf} 기준` : ''}. 대학별 상세는 왼쪽에서 대학을 고르면 함께 나옵니다.</div>
+    </div>
+  );
+}
+
 export default function UnivInfo({ onAuthError }) {
   const [universities, setUniversities] = useState([]);
   const [meta, setMeta] = useState(null);
@@ -46,6 +134,8 @@ export default function UnivInfo({ onAuthError }) {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState('');
+  const [guides, setGuides] = useState([]);
+  const [compare, setCompare] = useState(false);
 
   useEffect(() => {
     api('/api/univ-info/list')
@@ -56,10 +146,13 @@ export default function UnivInfo({ onAuthError }) {
       })
       .catch((e) => { if (e.auth) onAuthError?.(); else setError(e.message); })
       .finally(() => setLoadingList(false));
+    api('/api/univ-info/guides').then((j) => j.success && setGuides(j.guides || [])).catch(() => {});
   }, []);
+  const hakjongGuide = guides.find((g) => g.kind === 'hakjong');
+  const gyogwaGuide = guides.find((g) => g.kind === 'gyogwa');
 
   function openUniv(u) {
-    setSelected(u); setDetail(null); setLoadingDetail(true); setError('');
+    setCompare(false); setSelected(u); setDetail(null); setLoadingDetail(true); setError('');
     api(`/api/univ-info/${u.unvCd}`)
       .then((j) => { if (!j.success) throw new Error(j.error); setDetail(j); })
       .catch((e) => { if (e.auth) onAuthError?.(); else setError(e.message); })
@@ -83,6 +176,8 @@ export default function UnivInfo({ onAuthError }) {
       <div style={S.layout}>
         {/* 좌: 대학 목록 */}
         <div style={S.listCol}>
+          {hakjongGuide && <button style={{ ...S.cmpBtn, width: '100%', marginBottom: 8 }} onClick={() => { setCompare('hakjong'); setSelected(null); }}>📊 인서울 {hakjongGuide.univs.length}개 대학 학종 서류평가 비교</button>}
+          {gyogwaGuide && <button style={{ ...S.cmpBtn, width: '100%', marginBottom: 8, background: '#3b82f6' }} onClick={() => { setCompare('gyogwa'); setSelected(null); }}>📘 교과 5등급제 반영 비교 ({gyogwaGuide.univs.length}개 대학)</button>}
           <input style={S.input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="대학명·지역 검색" />
           <div style={S.listScroll}>
             {loadingList && <div style={S.muted}>불러오는 중…</div>}
@@ -101,7 +196,9 @@ export default function UnivInfo({ onAuthError }) {
         {/* 우: 상세 */}
         <div style={S.detailCol}>
           {error && <div style={S.error}>⚠ {error}</div>}
-          {!selected && <div style={S.placeholder}>왼쪽에서 대학을 선택하세요.</div>}
+          {compare === 'gyogwa' && gyogwaGuide && <GyogwaCompare guide={gyogwaGuide} onClose={() => setCompare(false)} />}
+          {compare === 'hakjong' && hakjongGuide && <HakjongCompare guide={hakjongGuide} onClose={() => setCompare(false)} />}
+          {!selected && !compare && <div style={S.placeholder}>왼쪽에서 대학을 선택하세요.</div>}
           {selected && (
             <>
               <h1 style={S.univName}>
@@ -112,6 +209,7 @@ export default function UnivInfo({ onAuthError }) {
               {loadingDetail && <div style={S.muted}>상세 불러오는 중…</div>}
               {detail && (
                 <>
+                  {(detail.guides || []).map((g) => <GuideSection key={g.kind} g={g} />)}
                   {detail.guide?.tables?.length > 0 && (
                     <Section title={`전형방법 (입시가이드 ${detail.guide.syr}학년도)`} count={`전형 ${detail.guide.tables.length}개`}>
                       {detail.guide.tables.map((t, i) => <DataTable key={i} rows={t} />)}
@@ -167,6 +265,11 @@ const S = {
   univName: { fontSize: 22, fontWeight: 800, margin: '0 0 16px' },
   secTitle: { fontSize: 16, fontWeight: 700, margin: '0 0 12px', paddingBottom: 6, borderBottom: '2px solid #14b8a6', color: '#e8eef3' },
   secCount: { fontSize: 12, color: '#9db0bd', fontWeight: 400 },
+  bar: { display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', margin: '5px 0 3px', maxWidth: 520 },
+  barSeg: { color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', overflow: 'hidden' },
+  guideTrack: { padding: '8px 0', borderBottom: '1px dashed var(--border, #2a3a4a)' },
+  guideNote: { fontSize: 12.5, lineHeight: 1.6, color: 'var(--text2)', background: 'var(--surface2, rgba(127,127,127,0.08))', borderRadius: 8, padding: '8px 10px', marginTop: 8 },
+  cmpBtn: { background: '#00b765', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
   table: { borderCollapse: 'collapse', width: '100%', fontSize: 13, marginBottom: 10 },
   td: { border: '1px solid #2a3a4a', padding: '6px 8px', verticalAlign: 'top', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#e8eef3' },
   tdHead: { background: '#1c2937', fontWeight: 600, color: '#9db0bd' },

@@ -33,6 +33,7 @@ import {
   getRoadmapOwner, getItemOwner as getRoadmapItemOwner,
   getRoadmapStudentId, getItemStudentId as getRoadmapItemStudentId,
 } from './services/roadmapStore.js';
+import { naverSchoolId, loadNaverOfferings } from './services/naverSchool.js';
 import { parseSheet, ingestRows, searchAdmissions, admissionStats, clearAdmissions } from './services/admissionStore.js';
 import { runFullAnalysis } from './services/claudeService.js';
 import { placementJudgeRules, caseMatchGuide } from './services/reportUtils.js';
@@ -368,6 +369,7 @@ const MENU_BY_PATH = [
   [/^\/api\/(chat|chat-upload|chat-refine|chat-edit|assistant)\b/, 'chat'],
   [/^\/api\/admissions\b/, 'admissions'],
   [/^\/api\/univ-info\b/, 'univinfo'],
+  [/^\/api\/course\b/, 'course'],
   // 해설 생성·Word/PDF 내려받기·보내기 설정은 공시정보 메뉴, 보관함(저장·목록·열기·고치기·지우기)은 따로 잠근다.
   [/^\/api\/(schoolinfo\/explain|school-reports\/(export|send-config|send))\b/, 'schoolinfo'],
   [/^\/api\/school-reports\b/, 'schoolreports'],
@@ -4064,6 +4066,35 @@ function getUnivList() {
   if (!_univList) _univList = JSON.parse(readFileSync(join(ADIGA_DIR, 'univ-list.json'), 'utf8'));
   return _univList;
 }
+// 인서울 주요대 정리 자료(학종 서류평가 비율·교과 5등급제 반영) — data/univ-guide/*.json, 원장 지식베이스 PDF 를 옮긴 것.
+// 자료는 '대학 이름 + 서울 캠퍼스' 기준이라, 어디가 목록에서는 서울에 있는 캠퍼스 한 곳에만 붙인다
+// (경기대·명지대는 본교가 경기라 서울 제2캠퍼스에 붙는다). 분교(괄호 이름)에는 붙이지 않는다.
+const UNIV_GUIDE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'data', 'univ-guide');
+let _univGuides = null;
+function getUnivGuides() {
+  if (_univGuides) return _univGuides;
+  _univGuides = [];
+  for (const [kind, file] of [['hakjong', 'hakjong-docs-2027.json'], ['gyogwa', 'gyogwa-5grade-2027.json']]) {
+    try { _univGuides.push({ kind, ...JSON.parse(readFileSync(join(UNIV_GUIDE_DIR, file), 'utf8')) }); } catch (e) { console.warn(`[univ-guide] ${file} 읽기 실패:`, e.message); }
+  }
+  return _univGuides;
+}
+function univGuidesFor(u) {
+  const m = String(u.name || '').match(/^([^([]+)\[(본교|제\d캠퍼스)\]$/);
+  if (!m) return [];
+  const base = m[1];
+  const siblings = getUnivList().universities.filter((x) => x.name.startsWith(`${base}[`));
+  const seoul = siblings.find((x) => x.region === '서울') || siblings.find((x) => x.name.endsWith('[본교]'));
+  if (seoul?.unvCd !== u.unvCd) return [];
+  return getUnivGuides().map((g) => {
+    const hit = (g.univs || []).find((x) => x.name === base);
+    return hit && { kind: g.kind, title: g.title, asOf: g.asOf, author: g.author, targetYear: g.targetYear || null, cautions: g.cautions || [], univ: hit };
+  }).filter(Boolean);
+}
+// 인서울 주요대 정리 자료 전체(비교 표용)
+app.get('/api/univ-info/guides', requireAuth, (req, res) => {
+  res.json({ success: true, guides: getUnivGuides() });
+});
 // 대학 목록 (검색어 q로 필터)
 app.get('/api/univ-info/list', requireAuth, (req, res) => {
   try {
@@ -4083,9 +4114,22 @@ app.get('/api/univ-info/:unvCd', requireAuth, (req, res) => {
   if (!/^[0-9]+$/.test(unvCd)) return res.status(400).json({ success: false, error: '잘못된 대학 코드' });
   try {
     const data = JSON.parse(readFileSync(join(ADIGA_DIR, 'univ', `${unvCd}.json`), 'utf8'));
-    res.json({ success: true, ...data });
+    const u = getUnivList().universities.find((x) => x.unvCd === unvCd);
+    res.json({ success: true, ...data, guides: u ? univGuidesFor(u) : [] });
   } catch (err) {
     res.status(404).json({ success: false, error: '해당 대학 정보를 찾을 수 없습니다.' });
+  }
+});
+
+// ── 🧭 과목 선택 보조 — 네이버 교육 학교 페이지 링크로 그 학교 편제(1-1~3-2 개설 과목) 읽기 ──
+app.get('/api/course/naver-offer', requireAuth, async (req, res) => {
+  const id = naverSchoolId(req.query.url);
+  if (!id) return res.status(400).json({ success: false, message: '네이버 교육 학교 페이지 링크(edu.naver.com/schools/…)를 붙여 넣어 주세요' });
+  try {
+    res.json({ success: true, ...(await loadNaverOfferings(id)) });
+  } catch (e) {
+    console.warn('[course/naver-offer]', id, e.message);
+    res.status(502).json({ success: false, message: e.message });
   }
 });
 
