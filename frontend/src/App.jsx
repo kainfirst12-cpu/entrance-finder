@@ -59,6 +59,10 @@ export default function App() {
   const [view, setView]               = useState(recovered ? 'result' : 'dashboard');
   const [analysisData, setAnalysisData] = useState(recovered);
   const partialRef = useRef(null);
+  // 🔑 로그인 만료(7일)로 막힌 분석 — 입력·파일을 들고 있다가 다시 로그인하면 이어서 시작한다(재입력 없게).
+  const pendingAnalysisRef = useRef(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [progressSteps, setProgressSteps] = useState([]);
   // 자료 누락 경고(페이지 잘림 등) — 조용히 삼키면 잘린 줄 모르고 리포트가 나간다.
   const [analysisWarnings, setAnalysisWarnings] = useState([]);
@@ -80,6 +84,10 @@ export default function App() {
       fetch(`${API_BASE}/api/heartbeat`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
+      }).then(res => {
+        // 만료된 토큰을 들고 앱에 남아 있으면 분석을 눌러서야 오류를 만난다 — 목록 화면에서 미리 로그인으로 보낸다.
+        // 입력·진행 중인 화면은 여기서 끊지 않는다(글이 날아간다). 분석은 시작할 때 따로 처리한다.
+        if (res.status === 401 && ['dashboard', 'list'].includes(viewRef.current)) handleLogout();
       }).catch(() => {});
     };
     ping();
@@ -129,6 +137,14 @@ export default function App() {
     if (group === 'gpt')    return gptKey;
     return apiKey;
   };
+
+  // 만료로 막혔던 분석 — 다시 로그인하면 이어서 시작
+  useEffect(() => {
+    if (!isLoggedIn || !pendingAnalysisRef.current) return;
+    const { studentData, files, extras } = pendingAnalysisRef.current;
+    pendingAnalysisRef.current = null;
+    startAnalysis(studentData, files, extras);
+  }, [isLoggedIn]);
 
   const startAnalysis = async (studentData, files, extras = {}) => {
     // extras = { pdfTexts, existingResults, sectionsToRun, pdfPassword }
@@ -180,6 +196,14 @@ export default function App() {
         },
         body: formData,
       });
+
+      // 401 = 로그인 만료 — '다시 시도'로는 풀리지 않는다. 입력을 들고 로그인 화면으로.
+      if (response.status === 401) {
+        pendingAnalysisRef.current = { studentData, files, extras };
+        alert('로그인이 만료되었습니다. 학원 코드로 다시 로그인하시면 입력하신 내용 그대로 분석을 이어서 시작합니다.');
+        handleLogout();
+        return;
+      }
 
       if (!response.ok) {
         const errBody = await response.json().catch(() => null);
