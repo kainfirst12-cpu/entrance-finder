@@ -24,7 +24,7 @@ import {
   updatePractice, deletePractice, listStudentInterviews, setPracticeOpen, linkInterviewToStudent,
   getPractice, setPracticeAiReview, forStudent,
 } from './services/interviewPracticeStore.js';
-import { searchBank, bankUnivs, bankStats, bankForCard, bankPromptBlock, getBankItem } from './services/interviewBank.js';
+import { searchBank, bankUnivs, bankStats, bankForCard, bankPromptBlock, getBankItem, bankReview } from './services/interviewBank.js';
 import { PRACTICE_REVIEW_SYSTEM, questionInfo, reviewUserMsg } from './services/practiceReview.js';
 import { runAssistantStep } from './services/assistantAgent.js';
 import {
@@ -2294,11 +2294,16 @@ app.post('/api/interview', requireMenu('interview'), async (req, res) => {
 // 📚 공식 기출 은행 — /api/interview/:id 보다 먼저 선언해야 'bank' 가 id 로 잡히지 않는다
 app.get('/api/interview/bank', requireMenu('interview'), (req, res) => {
   const q = req.query || {};
-  res.json({ success: true, ...searchBank({ q: q.q, univ: q.univ, dept: q.dept, type: q.type, year: q.year,
-    passageOnly: q.passage === '1', offset: Number(q.offset) || 0, limit: Math.min(100, Number(q.limit) || 30) }) });
+  res.json({ success: true, ...searchBank({ q: q.q, univ: q.univ, dept: q.dept, type: q.type, year: q.year, kind: q.kind, subject: q.subject,
+    passageOnly: q.passage === '1', basisOnly: q.basis === '1', offset: Number(q.offset) || 0, limit: Math.min(100, Number(q.limit) || 30) }) });
 });
 app.get('/api/interview/bank/meta', requireMenu('interview'), (req, res) => {
-  res.json({ success: true, stats: bankStats(), univs: bankUnivs() });
+  res.json({ success: true, stats: bankStats(), univs: bankUnivs(req.query.kind || '') });
+});
+// 📖 복습할 교과 단원 — 고른 대학(·학과)의 기출 문항카드가 근거로 든 과목·성취기준·교과서를 많이 나온 순으로
+app.get('/api/interview/bank/review', requireMenu('interview'), (req, res) => {
+  const q = req.query || {};
+  res.json({ success: true, ...bankReview({ univ: q.univ || '', dept: q.dept || '', kind: q.kind || '' }) });
 });
 app.get('/api/interview/bank/for-card', requireMenu('interview'), (req, res) => {
   res.json({ success: true, items: bankForCard(req.query.univ || '', req.query.dept || '', Math.min(30, Number(req.query.n) || 10)) });

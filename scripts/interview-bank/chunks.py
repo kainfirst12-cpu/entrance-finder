@@ -1,10 +1,9 @@
-# 문서별 면접 관련 쪽을 골라 연속 구간(앞뒤 1쪽 포함)으로 묶고 ~14k자 단위 청크로 자른다 → chunks.json
+# 문서별 대학별고사(면접·논술) 관련 쪽을 골라 연속 구간(앞뒤 1쪽 포함)으로 묶고 ~14k자 단위 청크로 자른다 → chunks.json
 import json, re
 man = {x['fileId']: x for x in json.load(open('manifest.json', encoding='utf-8'))}
 st = json.load(open('stats.json', encoding='utf-8'))
-IV = re.compile(r'면접|구술')
-HINT = re.compile(r'문항\s*카드|출제\s*의도|예상\s*질문|질문\s*예시|예시\s*문항|기출|제시문|문항\s*\d|질문\s*\d|[가-힣]+(나요|까요|니까|십니까|하시오|하세요|보세요)\s*\?')
-EXCL = re.compile(r'논술')
+IV = re.compile(r'면접|구술|논술')
+HINT = re.compile(r'논제|성취\s*기준|적용\s*교육\s*과정|예시\s*답안|채점\s*기준|문항\s*해설|문항\s*카드|출제\s*의도|예상\s*질문|질문\s*예시|예시\s*문항|기출|제시문|문항\s*\d|질문\s*\d|[가-힣]+(나요|까요|니까|십니까|하시오|하세요|보세요)\s*\?')
 out = []
 for s in st:
     if 'pages' not in s: continue
@@ -28,5 +27,5 @@ for s in st:
         if len(p['t'].strip()) < 30: last = j; continue
         buf.append(p); size += len(p['t']); last = j
     flush()
-json.dump(out, open('chunks.json', 'w', encoding='utf-8'), ensure_ascii=False)
+json.dump(out, open('chunks2.json', 'w', encoding='utf-8'), ensure_ascii=False)
 print('chunks', len(out), 'chars', sum(len(c['text']) for c in out), 'pages', sum(len(c['pages']) for c in out))
