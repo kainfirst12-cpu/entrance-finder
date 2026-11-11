@@ -5,6 +5,7 @@ import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, r
 import { menuAllowed, readMenus } from '../menus';
 import { Term, LAYERS, layerOf, genderOk, DISTRICTS, districtOf, aDifficulty, aGradeSpan, grade1Type, enrollmentTrend } from '../schoolTerms';
 import StudentFit from './StudentFit';
+import MiddleToHigh from './MiddleToHigh';
 import { loadSeoulGuide, seoulGuideOf, loadExtra, loadLocations, distanceKm, careerSummary, gradLabel, SORT_GETTERS } from '../schoolExtra';
 const SchoolMap = lazy(() => import('./SchoolMap')); // leaflet 은 지도를 열 때만
 import { loadOfferings, offerStatus, MARK_COLOR, PICKABLE, TRACK_PRESETS } from '../course/offerings';
@@ -85,6 +86,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
   const [district, setDistrict] = useState('전체');   // 평준화 학군(학군표가 있는 시도만)           // 학교 층 — 뽑는 범위가 다른 학교끼리는 따로 본다
   const [weights, setWeights] = useState(null);         // { [id]: { 국어:{a,pct,mean}, … } }
   const [fitOpen, setFitOpen] = useState(false);
+  const [m2hOpen, setM2hOpen] = useState(false);       // 🔀 중학교 → 고교 A 이어보기
   const [offers, setOffers] = useState(null);           // 2026 나이스 시간표 개설 과목 { [id]: { g2, g3 } }
   const [want, setWant] = useState([]);                // 듣고 싶은 2·3학년 과목
   const [wantAll, setWantAll] = useState(false);       // 고른 과목이 모두 열리는(가능성 포함) 학교만
@@ -338,6 +340,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
         <span style={{ ...S.filterLabel, marginLeft: 12 }}>학년</span>
         {[1, 2, 3].map((g) => <button key={g} style={{ ...S.chip, ...(grade === g ? S.chipOn : {}) }} onClick={() => setGrade(g)}>{g}학년</button>)}
         <span style={{ flex: 1 }} />
+        {weights && <button style={S.smallBtn} onClick={() => setM2hOpen(true)} title="이 중학교에서 A 받던 학생이 고교 1학년 그 과목에서 A를 받을 가능성 어림">🔀 중학교→고교 A 이어보기</button>}
         {isHigh && weights && <button style={S.smallBtn} onClick={() => setFitOpen(true)} title="학생 석차 백분위로 학교별 A 가능·경계·B 이하 어림">🎯 지망 판단 보조</button>}
         <span style={S.count}>{scopeLabel} {level} <b>{num(filtered.length)}곳</b></span>
       </div>
@@ -418,6 +421,9 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       )}
 
       {mapOpen && <Suspense fallback={null}><SchoolMap schools={filtered} origin={origin} onClose={() => setMapOpen(false)} onOpen={(id) => { setMapOpen(false); setDetailId(id); }} /></Suspense>}
+      {m2hOpen && <MiddleToHigh allSchools={cat.schools} weights={weights} loadFullBands={loadFullBands}
+        initialMiddle={origin || (detail?.schoolLevel === '중학교' ? detail : compareSchools.find((s) => s.schoolLevel === '중학교')) || null}
+        initialHighs={compareSchools.filter((s) => s.schoolLevel === '고등학교')} onClose={() => setM2hOpen(false)} />}
       {fitOpen && <StudentFit schools={filtered} weights={weights} onClose={() => setFitOpen(false)} />}
       {detail && <DetailModal areas={extraAreas} school={detail} weights={weights?.[detail.id]} offer={offers ? offers[detail.id] || 'none' : null} onClose={() => setDetailId(null)} inCompare={compare.includes(detail.id)} onToggleCompare={() => toggleCompare(detail.id)}
         explain={{ busy: explaining, err: explainErr, hasKey, run: (focus) => startExplain('school', [detail], focus) }} />}
