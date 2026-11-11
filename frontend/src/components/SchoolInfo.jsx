@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { CATALOG_URL, fetchGzJson } from '../schoolCatalog';
+import { CATALOG_URL, fetchGzJson, schoolNameMatch, shortSchoolName } from '../schoolCatalog';
 import DisclosureNotice from './DisclosureNotice';
 import { explainSchools, ReportEditor, SavedReports, ExplainBox, findReviewed, reviewedAsReport, ReviewedOffer } from './SchoolReport';
 import { menuAllowed, readMenus } from '../menus';
@@ -160,7 +160,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
       (gender === '전체' || (gender === '남학생' || gender === '여학생' ? genderOk(s, gender) : s.gender === gender)) &&
       (level !== '고등학교' || layer === '전체' || layerOf(s) === layer) &&
       (!wantAll || !want.length || want.every((w) => ['yes', 'maybe'].includes(offerStatus(offers?.[s.id], w).mark))) &&
-      (!kw || s.schoolName.replace(/\s+/g, '').includes(kw)),
+      (!kw || schoolNameMatch(s.schoolName, kw)),
     );
     const key = (s) => pickBand(s, subject, grade);
     const cmpNum = (get, desc) => (x, y) => {
@@ -309,7 +309,7 @@ export default function SchoolInfo({ getActiveKey, selectedModel, aiGroup, onAut
           <span style={S.filterLabel}>📍 출발 중학교</span>
           <input list="ef-middles" style={{ ...S.input, minWidth: 260 }} placeholder={sido === '전체' ? '시도를 먼저 고르면 찾기 쉬워요 (예: 부천중)' : '중학교 이름 (예: 부천중)'} value={originQ}
             onChange={(e) => { setOriginQ(e.target.value); if (middles.some((s) => middleLabel(s) === e.target.value)) setSort('near-asc'); }} />
-          <datalist id="ef-middles">{middles.map((s) => <option key={s.id} value={middleLabel(s)} />)}</datalist>
+          <datalist id="ef-middles">{middles.map((s) => <option key={s.id} value={middleLabel(s)} label={shortSchoolName(s.schoolName)} />)}</datalist>
           {origin && <>
             <select style={S.select} value={radius} onChange={(e) => setRadius(e.target.value)}>
               <option value="all">거리 제한 없음</option>

@@ -19,6 +19,22 @@ export async function fetchGzJson(url) {
   return JSON.parse(text);
 }
 
+// 학교 이름 줄임말 — 공시 이름은 «수원여자고등학교»처럼 정식 이름이라 «수원여고»로 찾으면 안 걸렸다.
+// 정식 이름과 흔히 부르는 줄임말(여고·남고·외고·과고·예고·여중·남중·○○고·○○중) 둘 다로 맞춰 본다.
+export function shortSchoolName(name) {
+  return String(name || '').replace(/\s+/g, '')
+    .replace(/여자고등학교$/, '여고').replace(/남자고등학교$/, '남고')
+    .replace(/외국어고등학교$/, '외고').replace(/과학고등학교$/, '과고').replace(/예술고등학교$/, '예고')
+    .replace(/고등학교$/, '고')
+    .replace(/여자중학교$/, '여중').replace(/남자중학교$/, '남중').replace(/중학교$/, '중');
+}
+export function schoolNameMatch(name, q) {
+  const kw = String(q || '').replace(/\s+/g, '');
+  if (!kw) return true;
+  const full = String(name || '').replace(/\s+/g, '');
+  return full.includes(kw) || shortSchoolName(full).includes(kw);
+}
+
 const SIDO_SHORT = {
   서울특별시: '서울', 부산광역시: '부산', 대구광역시: '대구', 인천광역시: '인천', 광주광역시: '광주', 대전광역시: '대전',
   울산광역시: '울산', 세종특별자치시: '세종', 경기도: '경기', 강원특별자치도: '강원', 강원도: '강원',

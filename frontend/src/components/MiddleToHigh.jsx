@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { aGradeSpan, layerOf } from '../schoolTerms';
 import { distanceKm } from '../schoolExtra';
+import { schoolNameMatch, shortSchoolName } from '../schoolCatalog';
 
 // 🔀 중학교 → 고교 A 이어보기 — «○○중에서 A 받던 학생이 △△고 1학년 그 과목에서 A 를 받을 가능성» 어림.
 // 같은 학생을 따라간 자료가 아니라 두 학교의 학교알리미 성취도 비율만으로 계산하는 참고값이다(화면에도 밝힌다).
@@ -145,7 +146,7 @@ export default function MiddleToHigh({ allSchools, weights, loadFullBands, initi
   const highOptions = useMemo(() => {
     const kw = highQ.trim().replace(/\s+/g, '');
     if (kw.length < 1) return [];
-    return highs.filter((s) => s.schoolName.replace(/\s+/g, '').includes(kw)).slice(0, 40);
+    return highs.filter((s) => schoolNameMatch(s.schoolName, kw)).slice(0, 40);
   }, [highs, highQ]);
 
   return (
@@ -162,7 +163,7 @@ export default function MiddleToHigh({ allSchools, weights, loadFullBands, initi
         <div style={S.inputRow}>
           <span style={S.lbl}>① 중학교</span>
           <input list="ef-m2h-mid" style={{ ...S.input, minWidth: 280 }} placeholder="중학교 이름 (예: 부천중)" value={midQ} onChange={(e) => setMidQ(e.target.value)} />
-          <datalist id="ef-m2h-mid">{(midQ.trim().length >= 1 ? middles.filter((s) => s.schoolName.includes(midQ.trim().split(' ')[0])).slice(0, 60) : []).map((s) => <option key={s.id} value={label(s)} />)}</datalist>
+          <datalist id="ef-m2h-mid">{(midQ.trim().length >= 1 ? middles.filter((s) => schoolNameMatch(s.schoolName, midQ.trim().split(' ')[0])).slice(0, 60) : []).map((s) => <option key={s.id} value={label(s)} label={shortSchoolName(s.schoolName)} />)}</datalist>
           <span style={S.lbl}>기준 학년</span>
           {[3, 2].map((g) => <button key={g} style={{ ...S.pick, ...(grade === g ? S.pickOn : {}) }} onClick={() => setGrade(g)}>중{g}</button>)}
         </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '../apiBase';
 import { api, postSSE, token } from '../seminar/api';
-import { fetchGzJson, CATALOG_URL, regionLabel } from '../schoolCatalog';
+import { fetchGzJson, CATALOG_URL, regionLabel, schoolNameMatch } from '../schoolCatalog';
 import { analyzeSchools, factsForAI, SUBJECTS, shortName } from '../seminar/analysis';
 import { useAssistantAgent } from '../assistant/useAssistantAgent';
 import { buildSlides, numberSlides, buildTitleSlide, buildContents, buildClosing } from '../seminar/deckModel';
@@ -166,7 +166,7 @@ function DeckBuilder({ getActiveKey, selectedModel, aiGroup, onAuthError }) {
   const sigungus = useMemo(() => [...new Set((catalog || []).filter((s) => s.sido === sido).map((s) => s.sigungu).filter(Boolean))].sort(), [catalog, sido]);
   const hits = useMemo(() => {
     const t = q.trim(); if (!catalog || t.length < 1) return [];
-    return catalog.filter((s) => s.schoolName.includes(t) && !deck.school_ids.includes(String(s.id))).slice(0, 12);
+    return catalog.filter((s) => schoolNameMatch(s.schoolName, t) &&!deck.school_ids.includes(String(s.id))).slice(0, 12);
   }, [catalog, q, deck.school_ids]);
   const addRegion = () => {
     const list = (catalog || []).filter((s) => s.sido === sido && (!sigungu || s.sigungu === sigungu) && s.schoolType === '일반고등학교');

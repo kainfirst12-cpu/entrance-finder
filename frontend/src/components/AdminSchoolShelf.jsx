@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '../apiBase';
-import { loadRegionIndex } from '../schoolCatalog';
+import { loadRegionIndex, schoolNameMatch } from '../schoolCatalog';
 
 // 🏫 학교별 정리 (관리자 전체 자료함 안의 두 번째 보기)
 //   학교 해설을 '보고서'가 아니라 '학교' 단위로 뒤집어 본다 — 같은 학교 해설이 여러 원장에게서 여러 벌 쌓이기 때문.
@@ -90,7 +90,7 @@ export default function AdminSchoolShelf({ onOpen, refreshKey }) {
     const t = q.trim().replace(/\s+/g, '');
     let l = schools.filter((s) => (!region || s.region === region)
       && (!level || s.level === level)
-      && (!t || s.name.replace(/\s+/g, '').includes(t) || s.region.includes(t)));
+      && (!t || schoolNameMatch(s.name, t) || s.region.includes(t)));
     if (status === 'norep') l = l.filter((s) => !s.rep && s.id !== 'none');
     if (status === 'new') l = l.filter((s) => s.newCount > 0);
     if (status === 'rep') l = l.filter((s) => s.rep);
