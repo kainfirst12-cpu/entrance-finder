@@ -105,7 +105,7 @@ export default function CourseHelper({ onAuthError }) {
         const st = offerStatus(myOffer, x.name);
         if (st.mark === 'no') out.push({ lv: x.core.length ? 'warn' : 'info', text: `‘${x.name}’은(는) ${school.name} 2026 시간표에 없습니다 — 수강 신청 수요·공동교육과정·온라인학교를 확인하세요.` });
       }
-      if (at && x.subject.grading === 'abs') out.push({ lv: 'info', text: `‘${x.name}’은(는) 석차등급 없이 성취도(A~E)만 기록됩니다.` });
+      if (at && x.subject.grading === 'abs') out.push({ lv: 'info', text: `‘${x.name}’은(는) 석차등급 없이 성취도로 평가합니다 — 생기부에는 원점수·과목평균·성취도별 분포비율·수강자 수가 함께 적힙니다.` });
     }
     return out;
   }, [merged, plan, school, offers, myOffer, pj]);
